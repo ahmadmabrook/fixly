@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens (single source of truth for the customer web).
+   Components should reference these via Tailwind's `var(--token-name)`
+   pattern, not via raw hex literals.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-brand-primary: #1366D6;
+  --color-brand-primary-strong: #0E4FA8;
+  --color-brand-primary-soft: #E8F1FE;
+  --color-brand-accent: #0FB5A6;
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-border: #E2E8F0;
+  --color-bg-page: #F6F8FB;
+  --color-bg-card: #FFFFFF;
+  --color-success: #15803D;
+  --color-warning: #B45309;
+  --color-danger: #B91C1C;
+  --color-star: #F5A623;
+
+  --font-family-arabic: 'Tajawal', 'Inter', sans-serif;
+  --font-family-latin: 'Inter', sans-serif;
+
+  --radius-card: 16px;
+  --radius-pill: 9999px;
+  --shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-elevated: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  font-family: var(--font-family-arabic);
+}
+
+[dir="ltr"], .font-latin {
+  font-family: var(--font-family-latin);
+}

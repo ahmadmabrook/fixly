@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+coverage/
+
+# Environment — never commit secrets. Keep .env.example.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Tooling / generated artifacts (regenerable, not source)
+.claude-flow/
+.swarm/
+.worktrees/
+ruvector.db
+*.sqlite
+graphify-out/
+
+# Nested clone (stray) — not part of the monorepo
+/fixly/

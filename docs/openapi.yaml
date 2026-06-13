@@ -1,0 +1,540 @@
+openapi: 3.0.3
+info:
+  title: Fixly API
+  version: 1.0.0
+  description: |
+    Public + admin HTTP API for Fixly. All responses follow the project's
+    envelope contract: `{ "data": ... }` on success and
+    `{ "error": { "code": string, "message": string } }` on failure. The
+    socket.io surface (`booking:status`, `location:update`) is documented
+    under the `Realtime` tag.
+servers:
+  - url: /api/v1
+    description: Same-origin (proxied via Vite in dev, ingress in prod)
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Services
+  - name: Bookings
+  - name: Admin
+  - name: Realtime
+    description: Socket.io events on `/socket.io` (WebSocket-first, polling fallback).
+
+# ---------------------------------------------------------------------------
+# Security: every non-public endpoint expects a JWT in the Authorization
+# header. Admin endpoints additionally require the caller to be an active
+# ADMIN-role user (server-enforced).
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string, example: phone must be a valid mobile number }
+
+    Meta:
+      type: object
+      properties:
+        total: { type: integer, example: 42 }
+        page: { type: integer, example: 1 }
+        pageSize: { type: integer, example: 20 }
+
+    Tokens:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken: { type: string, description: Short-lived JWT, 15 min TTL. }
+        refreshToken: { type: string, description: Long-lived opaque token, 30 day TTL. }
+        expiresIn: { type: integer, example: 900 }
+
+    Service:
+      type: object
+      properties:
+        id: { type: string, example: elec }
+        nameAr: { type: string, example: كهرباء }
+        nameEn: { type: string, example: Electricity }
+        descriptionAr: { type: string, nullable: true }
+        priceJod: { type: string, example: '50.00' }
+        durationMin: { type: integer, example: 45 }
+        isActive: { type: boolean, example: true }
+        category: { type: string, nullable: true, example: HOME_REPAIR }
+
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
+        scheduledAt: { type: string, format: date-time, nullable: true }
+        totalJod: { type: string, example: '50.00' }
+        service: { $ref: '#/components/schemas/Service' }
+
+    CreateBookingInput:
+      type: object
+      required: [serviceId, addressLine, addressLat, addressLng]
+      properties:
+        serviceId: { type: string }
+        addressLine: { type: string, minLength: 3, maxLength: 250 }
+        addressLat: { type: number, minimum: -90, maximum: 90 }
+        addressLng: { type: number, minimum: -180, maximum: 180 }
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 timestamp. Omit / set null for "now" (within 30 min).
+
+    AdminLoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalBookings: { type: integer }
+        pendingBookings: { type: integer }
+        completedBookings: { type: integer }
+        totalTechnicians: { type: integer }
+        verifiedTechnicians: { type: integer }
+        totalRevenueJod: { type: string }
+        pendingPayouts: { type: integer }
+
+    Technician:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        name: { type: string }
+        phone: { type: string }
+        isVerified: { type: boolean }
+        rating: { type: number, format: float, nullable: true }
+        completedJobs: { type: integer }
+
+    Payout:
+      type: object
+      properties:
+        id: { type: string }
+        technicianId: { type: string }
+        amountJod: { type: string }
+        status: { type: string, enum: [PENDING, PROCESSED, FAILED] }
+        requestedAt: { type: string, format: date-time }
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe (cheap)
+      responses:
+        '200': { description: Service process is up. }
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe (DB + Redis)
+      responses:
+        '200': { description: All dependencies reachable. }
+        '503': { description: A dependency is unreachable. }
+  /health:
+    get:
+      tags: [Health]
+      summary: Backward-compatible alias for /health/ready
+      deprecated: true
+      responses:
+        '200': { description: See /health/ready. }
+
+  /auth/otp/request:
+    post:
+      tags: [Auth]
+      summary: Send an OTP to a phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: '+962799000000' }
+      responses:
+        '200':
+          description: OTP dispatched.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { sent: { type: boolean } } } } }
+        '400': { $ref: '#/components/schemas/Error' }
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and exchange for tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Tokens issued.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Tokens' } } }
+        '401': { $ref: '#/components/schemas/Error' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access + refresh pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New tokens issued.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Tokens' } } }
+        '401': { $ref: '#/components/schemas/Error' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profile.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, additionalProperties: true } } }
+        '401': { $ref: '#/components/schemas/Error' }
+
+  /services:
+    get:
+      tags: [Services]
+      summary: Public service catalogue
+      responses:
+        '200':
+          description: Active services.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Service' }
+
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a booking (customer)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingInput' }
+      responses:
+        '201':
+          description: Booking created.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+        '400': { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/schemas/Error' }
+    get:
+      tags: [Bookings]
+      summary: List the caller's bookings
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of bookings.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Booking' } } } }
+  /bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Get a single booking (party only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+        '403': { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel a booking (party only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking cancelled.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+        '409': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/accept:
+    post:
+      tags: [Bookings]
+      summary: Technician accepts the booking
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking accepted.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+  /bookings/{id}/start:
+    post:
+      tags: [Bookings]
+      summary: Technician starts the service
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking started.
+  /bookings/{id}/complete:
+    post:
+      tags: [Bookings]
+      summary: Technician completes the service
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking completed.
+
+  /admin/auth/login:
+    post:
+      tags: [Admin]
+      summary: Admin email + password login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminLoginInput' }
+      responses:
+        '200':
+          description: Admin JWT issued.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Tokens' } } }
+        '401': { $ref: '#/components/schemas/Error' }
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Aggregate dashboard metrics
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Metrics.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/DashboardSummary' } } }
+  /admin/technicians:
+    get:
+      tags: [Admin]
+      summary: List technicians (paginated)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: verified
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated technicians.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Technician' } }
+                  - $ref: '#/components/schemas/Meta'
+  /admin/technicians/{id}/verify:
+    post:
+      tags: [Admin]
+      summary: Verify a technician (idempotent)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Verification state.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Technician' } } }
+  /admin/bookings:
+    get:
+      tags: [Admin]
+      summary: List bookings (paginated)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated bookings.
+  /admin/payouts:
+    get:
+      tags: [Admin]
+      summary: List payouts (paginated)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, PROCESSED, FAILED] }
+      responses:
+        '200':
+          description: Paginated payouts.
+  /admin/payouts/{id}/process:
+    post:
+      tags: [Admin]
+      summary: Mark a payout as processed
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Payout state.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Payout' } } }
+        '409': { $ref: '#/components/schemas/Error' }
+  /admin/customers:
+    get:
+      tags: [Admin]
+      summary: List customers (paginated)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: Paginated customers.
+
+# ---------------------------------------------------------------------------
+# Realtime
+# ---------------------------------------------------------------------------
+webhooks: {}
+
+x-realtime:
+  description: |
+    Socket.io endpoint at /socket.io. Authenticate on handshake with
+    `{ auth: { token: <jwt> } }`. The user must be a customer or technician
+    (admins have no socket surface).
+
+  events:
+    server->client:
+      booking:status:
+        summary: Emitted to the customer's `user:{userId}` room on lifecycle changes.
+        payload:
+          type: object
+          properties:
+            bookingId: { type: string, format: uuid }
+            status: { type: string, enum: [PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
+            titleAr: { type: string }
+            at: { type: integer, description: Server timestamp (ms since epoch) }
+      location:update:
+        summary: Emitted to `booking:{bookingId}` room when the assigned technician publishes a new fix.
+        payload:
+          type: object
+          properties:
+            technicianId: { type: string }
+            bookingId: { type: string }
+            lat: { type: number, minimum: -90, maximum: 90 }
+            lng: { type: number, minimum: -180, maximum: 180 }
+            at: { type: integer }
+    client->server:
+      booking:join:
+        summary: Subscribe to a specific booking's room. Server enforces party-of-booking.
+        payload: { type: string, format: uuid }
+      booking:leave:
+        summary: Unsubscribe from a booking's room.
+        payload: { type: string, format: uuid }
+      location:update:
+        summary: Technician publishes a position fix for a booking.
+        payload:
+          type: object
+          required: [bookingId, lat, lng]
+          properties:
+            bookingId: { type: string }
+            lat: { type: number }
+            lng: { type: number }
