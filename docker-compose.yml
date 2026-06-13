@@ -1,0 +1,63 @@
+version: '3.9'
+
+# Local data stack for Fixly. Image versions are pinned to digests (where
+# stable) or specific tags so the same compose always boots the same binaries
+# — `latest` is forbidden in CI/prod.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: fixly_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fixly
+      POSTGRES_PASSWORD: fixly_dev
+      POSTGRES_DB: fixly_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fixly -d fixly_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2.5-alpine
+    container_name: fixly_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    # RELEASE.2024-09-13T20-26-02Z — pinned, not :latest.
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    container_name: fixly_minio
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: fixly_minio
+      MINIO_ROOT_PASSWORD: fixly_minio_dev
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

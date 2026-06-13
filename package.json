@@ -1,0 +1,29 @@
+{
+  "name": "fixly",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "backend",
+    "web",
+    "admin"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter backend dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:migrate": "pnpm --filter backend prisma:migrate",
+    "db:seed": "pnpm --filter backend seed"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "devDependencies": {
+    "@types/compression": "^1.8.1"
+  }
+}

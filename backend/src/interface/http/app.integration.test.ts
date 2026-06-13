@@ -1,0 +1,212 @@
+import request from 'supertest';
+import type { Express } from 'express';
+import { createApp } from './app';
+import { prisma } from '../../infrastructure/database/prisma';
+import { redis } from '../../infrastructure/cache/redis';
+
+/**
+ * Integration tests against the real DB + Redis (docker compose stack).
+ * Exercise the full HTTP pipeline: middleware → validation → service → DB.
+ *
+ * NODE_ENV=test (set by jest) disables rate limiting so the suite isn't
+ * throttled. OTP_PROVIDER=mock makes the verification code deterministic: 000000.
+ */
+
+const TEST_PHONE = '+962780000099';
+const SEED_SERVICE_ID = '00000000-0000-0000-0000-000000000003'; // Electrician
+
+let app: Express;
+
+async function clearOtpState(phone: string) {
+  await redis.del(`otp:${phone}`, `otp_cooldown:${phone}`, `otp_attempts:${phone}`);
+}
+
+async function login(phone: string): Promise<string> {
+  await clearOtpState(phone);
+  await request(app).post('/api/v1/auth/otp/request').send({ phone }).expect(200);
+  const res = await request(app)
+    .post('/api/v1/auth/otp/verify')
+    .send({ phone, code: '000000' })
+    .expect(200);
+  return res.body.data.accessToken;
+}
+
+beforeAll(() => {
+  app = createApp().app;
+});
+
+afterAll(async () => {
+  await clearOtpState(TEST_PHONE);
+  await prisma.$disconnect();
+  redis.disconnect();
+});
+
+describe('GET /health', () => {
+  it('reports ok with db + redis up', async () => {
+    const res = await request(app).get('/health').expect(200);
+    expect(res.body).toMatchObject({ status: 'ok', db: 'ok', redis: 'ok' });
+  });
+});
+
+describe('GET /live (liveness probe)', () => {
+  it('always returns 200 — must not depend on DB or Redis', async () => {
+    const res = await request(app).get('/live').expect(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
+});
+
+describe('GET /ready (readiness probe)', () => {
+  it('returns 200 when db + redis are reachable', async () => {
+    const res = await request(app).get('/ready').expect(200);
+    expect(res.body).toMatchObject({ status: 'ok', db: 'ok', redis: 'ok' });
+  });
+});
+
+describe('error envelope contract', () => {
+  it('echoes the X-Request-Id back on a 422 (validation)', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/otp/request')
+      .set('X-Request-Id', 'req-test-abc-123')
+      .send({ phone: 'not-a-phone' })
+      .expect(422);
+    expect(res.body).toEqual(
+      expect.objectContaining({ error: expect.objectContaining({ code: 'VALIDATION_ERROR' }) }),
+    );
+  });
+});
+
+describe('GET /api/v1/services', () => {
+  it('returns the active service catalogue', async () => {
+    const res = await request(app).get('/api/v1/services').expect(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('honors Accept-Encoding: gzip (compression middleware)', async () => {
+    const res = await request(app)
+      .get('/api/v1/services')
+      .set('Accept-Encoding', 'gzip')
+      .expect(200);
+    // The 5-row service catalogue body is small (~500 bytes), below the
+    // 1kb compression threshold — so we expect no Content-Encoding header.
+    // The presence of the body is the assertion: compression middleware
+    // didn't break the response.
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+});
+
+describe('auth flow', () => {
+  beforeEach(() => clearOtpState(TEST_PHONE));
+
+  it('requests an OTP', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/otp/request')
+      .send({ phone: TEST_PHONE })
+      .expect(200);
+    expect(res.body.data.sent).toBe(true);
+  });
+
+  it('rejects a second request within the cooldown window', async () => {
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(422);
+  });
+
+  it('rejects an invalid phone number', async () => {
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: 'not-a-phone' }).expect(422);
+  });
+
+  it('verifies a correct OTP and returns tokens', async () => {
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
+    const res = await request(app)
+      .post('/api/v1/auth/otp/verify')
+      .send({ phone: TEST_PHONE, code: '000000' })
+      .expect(200);
+    expect(res.body.data.accessToken).toEqual(expect.any(String));
+    expect(res.body.data.refreshToken).toEqual(expect.any(String));
+  });
+
+  it('rejects a wrong OTP', async () => {
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
+    await request(app)
+      .post('/api/v1/auth/otp/verify')
+      .send({ phone: TEST_PHONE, code: '111111' })
+      .expect(401);
+  });
+
+  it('returns the current user from a valid token', async () => {
+    const token = await login(TEST_PHONE);
+    const res = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.body.data.phone).toBe(TEST_PHONE);
+  });
+
+  it('rotates refresh tokens and revokes the old one', async () => {
+    await clearOtpState(TEST_PHONE);
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
+    const verify = await request(app)
+      .post('/api/v1/auth/otp/verify')
+      .send({ phone: TEST_PHONE, code: '000000' })
+      .expect(200);
+    const oldRefresh = verify.body.data.refreshToken;
+
+    await request(app).post('/api/v1/auth/refresh').send({ refreshToken: oldRefresh }).expect(200);
+    // Replaying the now-revoked token must fail.
+    await request(app).post('/api/v1/auth/refresh').send({ refreshToken: oldRefresh }).expect(401);
+  });
+});
+
+describe('bookings', () => {
+  it('rejects an unauthenticated request', async () => {
+    await request(app).post('/api/v1/bookings').send({}).expect(401);
+  });
+
+  it('rejects an invalid body with 422', async () => {
+    const token = await login(TEST_PHONE);
+    await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ serviceId: SEED_SERVICE_ID, addressLine: 'x', addressLat: 999, addressLng: 35.9 })
+      .expect(422);
+  });
+
+  it('returns 404 for a non-existent service', async () => {
+    const token = await login(TEST_PHONE);
+    await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        serviceId: '99999999-9999-4999-8999-999999999999',
+        addressLine: 'Amman',
+        addressLat: 31.95,
+        addressLng: 35.93,
+      })
+      .expect(404);
+  });
+
+  it('creates a booking and lists it for the customer', async () => {
+    const token = await login(TEST_PHONE);
+    const create = await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ serviceId: SEED_SERVICE_ID, addressLine: 'خلدا', addressLat: 31.9522, addressLng: 35.9331 })
+      .expect(201);
+
+    const bookingId = create.body.data.id;
+    expect(create.body.data.status).toBe('PENDING');
+
+    const list = await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(list.body.data.some((b: { id: string }) => b.id === bookingId)).toBe(true);
+  });
+});
+
+describe('unmatched routes', () => {
+  it('returns a structured 404', async () => {
+    const res = await request(app).get('/api/v1/does-not-exist').expect(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+});

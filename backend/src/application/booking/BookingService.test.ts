@@ -1,0 +1,239 @@
+import { BookingService } from './BookingService';
+import { prisma } from '../../infrastructure/database/prisma';
+import { redis } from '../../infrastructure/cache/redis';
+import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
+
+jest.mock('../../infrastructure/cache/redis', () => ({
+  redis: { set: jest.fn(), del: jest.fn() },
+}));
+
+jest.mock('../../infrastructure/database/prisma', () => ({
+  prisma: {
+    service: { findUnique: jest.fn() },
+    booking: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+    technicianProfile: { findUnique: jest.fn() },
+    outboxEvent: { create: jest.fn() },
+    $transaction: jest.fn(),
+  },
+}));
+
+const mockedRedis = redis as jest.Mocked<typeof redis>;
+const mockedPrisma = prisma as unknown as {
+  service: { findUnique: jest.Mock };
+  booking: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+  technicianProfile: { findUnique: jest.Mock };
+  outboxEvent: { create: jest.Mock };
+  $transaction: jest.Mock;
+};
+
+describe('BookingService', () => {
+  let service: BookingService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new BookingService();
+  });
+
+  describe('createBooking', () => {
+    const input = {
+      customerId: 'c1',
+      serviceId: 's1',
+      addressLine: 'Amman',
+      addressLat: 31.95,
+      addressLng: 35.93,
+    };
+
+    it('throws NotFoundError when the service does not exist', async () => {
+      mockedPrisma.service.findUnique.mockResolvedValue(null);
+      await expect(service.createBooking(input)).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it('throws ValidationError when the service is inactive', async () => {
+      mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: false });
+      await expect(service.createBooking(input)).rejects.toBeInstanceOf(ValidationError);
+    });
+
+    it('writes booking + outbox event atomically in one transaction', async () => {
+      mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });
+      const tx = {
+        booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
+        outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
+
+      const result = await service.createBooking(input);
+
+      expect(tx.booking.create).toHaveBeenCalled();
+      expect(tx.outboxEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.created' }) }),
+      );
+      expect(result).toEqual({ id: 'b1' });
+    });
+  });
+
+  describe('accept', () => {
+    it('rejects when the distributed lock is already held', async () => {
+      mockedRedis.set.mockResolvedValue(null); // SETNX failed
+      await expect(service.accept('b1', 'tech-user')).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('releases the lock even when the booking is no longer pending', async () => {
+      mockedRedis.set.mockResolvedValue('OK');
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ status: 'CONFIRMED' }), update: jest.fn() } }),
+      );
+
+      await expect(service.accept('b1', 'tech-user')).rejects.toBeInstanceOf(ConflictError);
+      expect(mockedRedis.del).toHaveBeenCalledWith('booking_lock:b1');
+    });
+
+    it('assigns the technician (CONFIRMED), emits booking.confirmed, and releases the lock', async () => {
+      mockedRedis.set.mockResolvedValue('OK');
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'CONFIRMED', technicianId: 'tp1' });
+      const create = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' }), update },
+          outboxEvent: { create },
+        }),
+      );
+
+      const result = await service.accept('b1', 'tech-user');
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'b1', version: 2 }, data: expect.objectContaining({ technicianId: 'tp1', status: 'CONFIRMED' }) }),
+      );
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.confirmed' }) }));
+      expect(result).toMatchObject({ status: 'CONFIRMED' });
+      expect(mockedRedis.del).toHaveBeenCalledWith('booking_lock:b1');
+    });
+  });
+
+  describe('advanceStatus', () => {
+    it('rejects a non-technician', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue(null);
+      await expect(service.advanceStatus('b1', 'u1', 'EN_ROUTE')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects a technician who is not the assigned one', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp2', status: 'CONFIRMED', version: 0 }), update: jest.fn() }, outboxEvent: { create: jest.fn() } }),
+      );
+      await expect(service.advanceStatus('b1', 'u1', 'EN_ROUTE')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects an out-of-order transition (CONFIRMED → ARRIVED)', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'CONFIRMED', version: 0, customerId: 'c1' }), update: jest.fn() }, outboxEvent: { create: jest.fn() } }),
+      );
+      await expect(service.advanceStatus('b1', 'u1', 'ARRIVED')).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('advances CONFIRMED → EN_ROUTE with a version guard + booking.en_route event', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'EN_ROUTE' });
+      const create = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'CONFIRMED', version: 5, customerId: 'c1' }), update }, outboxEvent: { create } }),
+      );
+
+      await service.advanceStatus('b1', 'u1', 'EN_ROUTE');
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'b1', version: 5 }, data: expect.objectContaining({ status: 'EN_ROUTE', version: { increment: 1 } }) }),
+      );
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.en_route' }) }));
+    });
+  });
+
+  // Helper: a $transaction tx whose booking.findUnique returns `fresh`.
+  function txWith(fresh: Record<string, unknown>) {
+    const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'DONE' });
+    const create = jest.fn().mockResolvedValue({});
+    mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+      fn({ booking: { findUnique: jest.fn().mockResolvedValue(fresh), update }, outboxEvent: { create } }),
+    );
+    return { update, create };
+  }
+
+  describe('complete', () => {
+    it('throws NotFoundError when the booking does not exist', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue(null); // getById
+      await expect(service.complete('b1', 'c1')).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it('throws ForbiddenError when the requester does not own the booking', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({
+        id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS',
+      });
+      await expect(service.complete('b1', 'stranger')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('throws ConflictError when the fresh status is not completable', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'COMPLETED' });
+      txWith({ id: 'b1', status: 'COMPLETED', version: 0 });
+      await expect(service.complete('b1', 'c1')).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('completes from IN_PROGRESS with a version guard + booking.completed outbox event', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
+      const { update, create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3 });
+
+      await service.complete('b1', 'c1');
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'b1', version: 3 },
+          data: expect.objectContaining({ status: 'COMPLETED', version: { increment: 1 } }),
+        }),
+      );
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.completed' }) }),
+      );
+    });
+  });
+
+  describe('cancel', () => {
+    it('throws ConflictError when already COMPLETED', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'COMPLETED' });
+      txWith({ id: 'b1', status: 'COMPLETED', version: 0 });
+      await expect(service.cancel('b1', 'c1', 'changed mind')).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('cancels a PENDING booking with version guard + booking.cancelled outbox event', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'PENDING' });
+      const { update, create } = txWith({ id: 'b1', status: 'PENDING', version: 1 });
+
+      await service.cancel('b1', 'c1', 'changed mind');
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'b1', version: 1 },
+          data: expect.objectContaining({ status: 'CANCELLED', version: { increment: 1 } }),
+        }),
+      );
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.cancelled' }) }),
+      );
+    });
+  });
+
+  describe('getById', () => {
+    it('returns immediately for the owning customer without a profile lookup', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null });
+      const result = await service.getById('b1', 'c1');
+      expect(result).toEqual({ id: 'b1', customerId: 'c1', technicianId: null });
+      expect(mockedPrisma.technicianProfile.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('forbids a user who is neither the customer nor the assigned technician', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: 'tp1' });
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp2' });
+      await expect(service.getById('b1', 'other')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+  });
+});
