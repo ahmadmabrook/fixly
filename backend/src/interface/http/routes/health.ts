@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { redis } from '../../../infrastructure/cache/redis';
 
@@ -14,25 +14,35 @@ livenessRouter.get('/', (_req, res) => {
 });
 
 /**
- * Readiness probe. Pings every external dependency the request path needs.
- * Returns 503 if any of them is down so the load balancer stops sending
- * traffic until the dependency recovers.
+ * Single source of truth for the deep dependency check used by both /ready
+ * and the legacy /health route. Pings every external dependency the request
+ * path needs and writes a 200 (all up) or 503 (any down) response. The
+ * top-level `status` reflects the aggregate so a degraded check never reads
+ * "ok" while returning 503.
  */
-export const readinessRouter: Router = Router();
-readinessRouter.get('/', async (_req, res) => {
+async function writeReadiness(res: Response): Promise<void> {
   const [db, cache] = await Promise.allSettled([
     prisma.$queryRaw`SELECT 1`,
     redis.ping(),
   ]);
 
-  const status = {
-    status: 'ok',
-    db: db.status === 'fulfilled' ? 'ok' : 'error',
-    redis: cache.status === 'fulfilled' ? 'ok' : 'error',
-  };
-  const httpStatus = status.db === 'ok' && status.redis === 'ok' ? 200 : 503;
-  res.status(httpStatus).json(status);
-});
+  const dbOk = db.status === 'fulfilled';
+  const redisOk = cache.status === 'fulfilled';
+  const healthy = dbOk && redisOk;
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'degraded',
+    db: dbOk ? 'ok' : 'error',
+    redis: redisOk ? 'ok' : 'error',
+  });
+}
+
+/**
+ * Readiness probe. Returns 503 if any dependency is down so the load
+ * balancer stops sending traffic until the dependency recovers.
+ */
+export const readinessRouter: Router = Router();
+readinessRouter.get('/', (_req, res) => writeReadiness(res));
 
 /**
  * Legacy `/health` route. Kept for backwards compatibility with existing
@@ -40,18 +50,4 @@ readinessRouter.get('/', async (_req, res) => {
  * prefer /ready (and /live for the cheap aliveness signal).
  */
 export const healthRouter: Router = Router();
-healthRouter.get('/', async (_req, res) => {
-  const [db, cache] = await Promise.allSettled([
-    prisma.$queryRaw`SELECT 1`,
-    redis.ping(),
-  ]);
-
-  const status = {
-    status: 'ok',
-    db: db.status === 'fulfilled' ? 'ok' : 'error',
-    redis: cache.status === 'fulfilled' ? 'ok' : 'error',
-  };
-
-  const httpStatus = status.db === 'ok' && status.redis === 'ok' ? 200 : 503;
-  res.status(httpStatus).json(status);
-});
+healthRouter.get('/', (_req, res) => writeReadiness(res));

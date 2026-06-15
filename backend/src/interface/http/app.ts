@@ -7,6 +7,7 @@ import compression from 'compression';
 import pinoHttp from 'pino-http';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
+import { registry, httpRequestDuration, httpRequestsTotal } from '../../shared/metrics';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFound';
 import { globalLimiter, authLimiter, rateLimitEnabled } from './middleware/rateLimit';
@@ -45,6 +46,26 @@ export function createApp(): { app: Express; httpServer: http.Server } {
     customProps: (req) => ({ reqId: (req as { id?: string }).id }),
   }));
 
+  // Per-request latency + count, labelled by matched route (not raw path, so
+  // /services/:id collapses to one series instead of exploding cardinality).
+  app.use((req, res, next) => {
+    const stop = httpRequestDuration.startTimer();
+    res.on('finish', () => {
+      const route = req.route?.path ? `${req.baseUrl}${req.route.path}` : req.baseUrl || 'unmatched';
+      const labels = { method: req.method, route, status: String(res.statusCode) };
+      stop(labels);
+      httpRequestsTotal.inc(labels);
+    });
+    next();
+  });
+
+  // Prometheus scrape endpoint. Unmetered; keep it on the internal network /
+  // behind the LB (not publicly routable) in production.
+  app.get('/metrics', async (_req, res) => {
+    res.set('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  });
+
   // Liveness: cheap, dependency-free — must NOT depend on the DB.
   // A pod can keep running even when the DB is briefly unreachable.
   app.use('/live', livenessRouter);
@@ -68,12 +89,14 @@ export function createApp(): { app: Express; httpServer: http.Server } {
 
   const httpServer = http.createServer(app);
   // Hard timeouts protect against slowloris-style attacks and hung upstream
-  // proxies that hold a connection open. keepAliveTimeout must be < headersTimeout
-  // per Node docs, otherwise headers never time out.
-  httpServer.headersTimeout = 65_000;     // a touch above ALB's default 60s
-  httpServer.keepAliveTimeout = 5_000;    // long enough for normal clients
-  httpServer.requestTimeout = 30_000;    // socket-level read/write budget
-  httpServer.timeout = 30_000;           // full request lifecycle cap
+  // proxies. keepAliveTimeout MUST be > the upstream LB's idle timeout (ALB
+  // default 60s) so the LB — not the backend — closes idle keep-alive sockets;
+  // otherwise the LB can reuse a socket the backend just closed → sporadic 502s.
+  // headersTimeout must in turn be > keepAliveTimeout (Node requirement).
+  httpServer.keepAliveTimeout = 65_000;   // > ALB 60s idle
+  httpServer.headersTimeout = 66_000;     // > keepAliveTimeout
+  httpServer.requestTimeout = 30_000;     // socket-level read/write budget
+  httpServer.timeout = 30_000;            // full request lifecycle cap
   return { app, httpServer };
 }
 

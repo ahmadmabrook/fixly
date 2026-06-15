@@ -1,13 +1,18 @@
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
+import { outboxEventsProcessedTotal, outboxDrainedPerTick } from '../../shared/metrics';
 
 export type OutboxEventHandler = (payload: unknown) => Promise<void>;
 
 export interface OutboxWorkerOptions {
   /** ms between drain cycles when no events are pending. */
   pollIntervalMs?: number;
-  /** max events claimed per cycle. */
+  /** max events claimed per batch (one DB fetch). */
   batchSize?: number;
+  /** max full batches to drain in a single tick before yielding. Caps the
+   *  worst case so one tick can't run unbounded, while letting a tick clear a
+   *  large burst instead of leaking 1 batch/poll (the old throughput ceiling). */
+  maxBatchesPerTick?: number;
   /** max retries before a FAILED event is moved to terminal FAILED. */
   maxAttempts?: number;
   /** per-handler timeout. A handler that doesn't resolve within this window
@@ -16,8 +21,9 @@ export interface OutboxWorkerOptions {
   handlerTimeoutMs?: number;
 }
 
-const DEFAULT_POLL_MS = 5000;
-const BATCH_SIZE = 100;
+const DEFAULT_POLL_MS = 2000;
+const BATCH_SIZE = 200;
+const MAX_BATCHES_PER_TICK = 50; // up to BATCH_SIZE × this per tick
 const MAX_ATTEMPTS = 5;
 const ERROR_MSG_MAX = 500;
 // A claimed (PROCESSING) row whose worker crashed is requeued after this long.
@@ -60,6 +66,7 @@ export class OutboxWorker {
     this.options = {
       pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_MS,
       batchSize: options.batchSize ?? BATCH_SIZE,
+      maxBatchesPerTick: options.maxBatchesPerTick ?? MAX_BATCHES_PER_TICK,
       maxAttempts: options.maxAttempts ?? MAX_ATTEMPTS,
       handlerTimeoutMs: options.handlerTimeoutMs ?? DEFAULT_HANDLER_TIMEOUT_MS,
     };
@@ -105,15 +112,35 @@ export class OutboxWorker {
   private async tick(): Promise<void> {
     if (this.draining) return; // never overlap drain cycles
     this.draining = true;
-    this.inflightDrain = this.drain();
+    this.inflightDrain = this.drainToEmpty();
     try {
-      await this.inflightDrain;
+      const drained = await this.inflightDrain;
+      outboxDrainedPerTick.observe(drained);
     } catch (err) {
       logger.error(err, 'OutboxWorker: drain cycle error');
     } finally {
       this.draining = false;
       this.inflightDrain = null;
     }
+  }
+
+  /**
+   * Drain repeatedly within a single tick until the queue is empty (or no
+   * forward progress is made, or the per-tick batch cap is hit). This is what
+   * lets the worker keep up with bursts: a full batch means "probably more
+   * waiting", so we immediately fetch the next one instead of sleeping a whole
+   * poll interval. Returns the total events marked DONE this tick.
+   */
+  async drainToEmpty(): Promise<number> {
+    let total = 0;
+    for (let i = 0; i < this.options.maxBatchesPerTick; i++) {
+      const { fetched, processed } = await this.drainBatch();
+      total += processed;
+      // Empty queue, or a batch that made no progress (all claimed by other
+      // instances / all failing) — stop and let the next tick retry.
+      if (fetched === 0 || processed === 0) break;
+    }
+    return total;
   }
 
   /**
@@ -132,6 +159,13 @@ export class OutboxWorker {
 
   /** Process one batch of PENDING events concurrently. Returns the count marked DONE. */
   async drain(): Promise<number> {
+    return (await this.drainBatch()).processed;
+  }
+
+  /** One batch: reap stale rows, fetch up to batchSize PENDING, dispatch them.
+   *  Returns how many were fetched (to decide whether to keep draining) and how
+   *  many reached DONE. */
+  private async drainBatch(): Promise<{ fetched: number; processed: number }> {
     if (Date.now() - this.lastReapAt > REAP_INTERVAL_MS) {
       this.lastReapAt = Date.now();
       await this.reapStale();
@@ -155,7 +189,8 @@ export class OutboxWorker {
     }
 
     const results = await Promise.allSettled([...byBooking.values()].map((g) => this.processGroup(g)));
-    return results.reduce((sum, r) => sum + (r.status === 'fulfilled' ? r.value : 0), 0);
+    const processed = results.reduce((sum, r) => sum + (r.status === 'fulfilled' ? r.value : 0), 0);
+    return { fetched: events.length, processed };
   }
 
   /** Process one booking's events in createdAt order; stop at the first that
@@ -190,6 +225,7 @@ export class OutboxWorker {
         where: { id: event.id },
         data: { status: 'DONE', processedAt: new Date(), lockedAt: null },
       });
+      outboxEventsProcessedTotal.inc({ event_type: event.eventType, result: 'done' });
       return true;
     } catch (err) {
       const errorMsg = (err instanceof Error ? err.message : String(err)).slice(0, ERROR_MSG_MAX);
@@ -201,6 +237,7 @@ export class OutboxWorker {
           ? { status: 'FAILED', failedAt: new Date(), errorMsg, lockedAt: null }
           : { status: 'PENDING', errorMsg, lockedAt: null }, // back to the queue for retry
       });
+      outboxEventsProcessedTotal.inc({ event_type: event.eventType, result: terminal ? 'failed' : 'retry' });
       logger.error({ eventId: event.id, eventType: event.eventType, attempts, terminal, errorMsg }, 'Outbox handler failed');
       return false;
     }

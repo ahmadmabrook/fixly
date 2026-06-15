@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Backend: type-check, unit + integration tests, build, lint, perf smoke ──
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: fixly
+          POSTGRES_PASSWORD: fixly_dev
+          POSTGRES_DB: fixly_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fixly -d fixly_db"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.2.5-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://fixly:fixly_dev@localhost:5432/fixly_db
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-secret-at-least-32-characters-long
+      OTP_PROVIDER: mock
+      PAYMENT_PROVIDER: mock
+      LOG_LEVEL: silent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter backend prisma:generate
+      - run: pnpm --filter backend prisma:migrate:deploy
+      - run: pnpm --filter backend seed
+      - run: pnpm --filter backend build
+      - run: pnpm --filter backend test
+      # Perf smoke: prove the SLOs still hold (rate limiter off via NODE_ENV=test).
+      - name: Perf smoke
+        run: |
+          node backend/dist/main.js &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:4000/health && break || sleep 1
+          done
+          DURATION=8 pnpm --filter backend perf
+          kill $SERVER_PID
+
+  # ── Web: type-check, tests, build, lint ─────────────────────────────────────
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web test
+      - run: pnpm --filter web build
+
+  # ── Admin: type-check, tests, build ─────────────────────────────────────────
+  admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter admin test
+      - run: pnpm --filter admin build

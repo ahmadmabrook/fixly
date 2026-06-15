@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   BrowserRouter, Routes, Route, Navigate, useNavigate, useParams,
 } from 'react-router-dom';
@@ -105,8 +105,15 @@ function ServiceRoute({ onRequireLogin }: { onRequireLogin: (returnTo: string) =
 function BookingRoute({ onRequireLogin }: { onRequireLogin: (returnTo: string) => void }) {
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  if (!useAuth.getState().accessToken) {
-    onRequireLogin(`/services/${id}/book`);
+  // Subscribe to auth state so this re-renders on login/logout.
+  const accessToken = useAuth((s) => s.accessToken);
+  // Open the login modal as a side effect — never call a parent's setState
+  // during render (React warns and it can cause cross-component update bugs).
+  useEffect(() => {
+    if (!accessToken) onRequireLogin(`/services/${id}/book`);
+  }, [accessToken, id, onRequireLogin]);
+
+  if (!accessToken) {
     return (
       <main className="max-w-[1200px] mx-auto px-6 py-16 text-center">
         <p style={{ color: '#475569', fontSize: 16 }}>سجّل دخولك لإكمال الحجز.</p>

@@ -210,3 +210,14 @@ describe('unmatched routes', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('GET /metrics', () => {
+  it('exposes Prometheus metrics including HTTP + process series', async () => {
+    // Generate at least one request so the HTTP histogram has a sample.
+    await request(app).get('/health');
+    const res = await request(app).get('/metrics').expect(200);
+    expect(res.text).toContain('http_request_duration_seconds');
+    expect(res.text).toContain('http_requests_total');
+    expect(res.text).toContain('process_cpu_user_seconds_total'); // default Node metrics
+  });
+});

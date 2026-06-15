@@ -1,0 +1,6 @@
+[mcp_servers.ruflo]
+command = "sh"
+args = [
+    "-c",
+    "CLAUDE_FLOW_CWD=/Users/ahmadmabrouk/Desktop/Fixly exec npx -y @claude-flow/cli@latest",
+]

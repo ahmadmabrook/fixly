@@ -1,5 +1,6 @@
-import { ReactNode } from 'react';
+import { ReactNode, useId } from 'react';
 import { toast } from 'sonner';
+import { useDialog } from '../hooks/useDialog';
 
 export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info') => {
   if (kind === 'success') toast.success(msg);
@@ -160,16 +161,7 @@ export function ActionBtn({
  * (verify technician, process payout). Keeps the contract simple: parent
  * owns the open state, dialog calls onConfirm / onCancel.
  */
-export function ConfirmDialog({
-  open,
-  title,
-  body,
-  confirmLabel = 'تأكيد',
-  cancelLabel = 'إلغاء',
-  confirmVariant = 'primary',
-  onConfirm,
-  onCancel,
-}: {
+interface ConfirmDialogProps {
   open: boolean;
   title: string;
   body?: string;
@@ -178,17 +170,34 @@ export function ConfirmDialog({
   confirmVariant?: 'primary' | 'danger';
   onConfirm: () => void;
   onCancel: () => void;
-}) {
-  if (!open) return null;
+}
+
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  // Open-guard wrapper: the body (which calls the useDialog hook) only mounts
+  // while open, so the Escape/focus-trap listener never runs for a closed
+  // dialog and the rules-of-hooks aren't violated by the early return.
+  if (!props.open) return null;
+  return <ConfirmDialogBody {...props} />;
+}
+
+function ConfirmDialogBody({
+  title,
+  body,
+  confirmLabel = 'تأكيد',
+  cancelLabel = 'إلغاء',
+  confirmVariant = 'primary',
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  const ref = useDialog<HTMLDivElement>(onCancel);
+  const titleId = useId();
+  const bodyId = useId();
   const confirmStyle: React.CSSProperties =
     confirmVariant === 'danger'
       ? { background: '#B91C1C', color: '#FFF', border: 'none' }
       : { background: '#1366D6', color: '#FFF', border: 'none' };
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
       onClick={onCancel}
       style={{
         position: 'fixed', inset: 0, zIndex: 50,
@@ -197,6 +206,11 @@ export function ConfirmDialog({
       }}
     >
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={body ? bodyId : undefined}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#FFF', borderRadius: 16, padding: 24, width: '100%',
@@ -204,9 +218,9 @@ export function ConfirmDialog({
         }}
         dir="rtl"
       >
-        <h3 style={{ fontWeight: 700, fontSize: 18, color: '#0F172A' }}>{title}</h3>
+        <h3 id={titleId} style={{ fontWeight: 700, fontSize: 18, color: '#0F172A' }}>{title}</h3>
         {body && (
-          <p style={{ color: '#475569', fontSize: 14, marginTop: 8, lineHeight: 1.6 }}>{body}</p>
+          <p id={bodyId} style={{ color: '#475569', fontSize: 14, marginTop: 8, lineHeight: 1.6 }}>{body}</p>
         )}
         <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button

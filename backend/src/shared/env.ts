@@ -19,6 +19,8 @@ interface Env {
   OTP_PROVIDER: string;
   PAYMENT_PROVIDER: string;
   OUTBOX_POLL_MS: number;
+  OUTBOX_BATCH_SIZE: number;
+  OUTBOX_MAX_BATCHES_PER_TICK: number;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -77,7 +79,9 @@ export function loadEnv(): Env {
     CORS_ORIGIN,
     OTP_PROVIDER,
     PAYMENT_PROVIDER,
-    OUTBOX_POLL_MS: parseInt(process.env.OUTBOX_POLL_MS ?? '5000', 10),
+    OUTBOX_POLL_MS: parseInt(process.env.OUTBOX_POLL_MS ?? '2000', 10),
+    OUTBOX_BATCH_SIZE: parseInt(process.env.OUTBOX_BATCH_SIZE ?? '200', 10),
+    OUTBOX_MAX_BATCHES_PER_TICK: parseInt(process.env.OUTBOX_MAX_BATCHES_PER_TICK ?? '50', 10),
   };
 
   return cached;

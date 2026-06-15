@@ -10,6 +10,29 @@ interface AuthModalProps {
   onSuccess: () => void;
 }
 
+/**
+ * Read the `role` claim from a JWT without verifying it (the server is the
+ * source of truth — this is only for choosing client-side UI defaults). JWT
+ * payloads are base64URL ("-"/"_", no padding), which `atob` can't decode
+ * directly, so normalise first. Any malformed token falls back to CUSTOMER
+ * instead of throwing and failing an otherwise-successful login.
+ */
+function roleFromJwt(token: string): string {
+  try {
+    const part = token.split('.')[1] ?? '';
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '=');
+    const payload = JSON.parse(atob(padded)) as { role?: string };
+    return payload.role ?? 'CUSTOMER';
+  } catch {
+    return 'CUSTOMER';
+  }
+}
+
+function errorMessage(e: unknown, fallback = 'حدث خطأ'): string {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('+962');
@@ -25,8 +48,8 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       await api.post('/auth/otp/request', { phone });
       setStep('otp');
       notify('تم إرسال رمز التحقق', 'success');
-    } catch (e: any) {
-      notify(e.message, 'error');
+    } catch (e: unknown) {
+      notify(errorMessage(e), 'error');
     } finally {
       setLoading(false);
     }
@@ -37,14 +60,12 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
     try {
       const res = await api.post<{ accessToken: string; refreshToken: string }>('/auth/otp/verify', { phone, code: otp });
       const { accessToken, refreshToken } = res;
-      // decode role from JWT payload (base64 middle segment)
-      const payload = JSON.parse(atob(accessToken.split('.')[1]));
-      setTokens(accessToken, payload.role ?? 'CUSTOMER');
+      setTokens(accessToken, roleFromJwt(accessToken));
       localStorage.setItem('refresh_token', refreshToken);
       notify('تم تسجيل الدخول بنجاح', 'success');
       onSuccess();
-    } catch (e: any) {
-      notify(e.message, 'error');
+    } catch (e: unknown) {
+      notify(errorMessage(e), 'error');
     } finally {
       setLoading(false);
     }

@@ -177,6 +177,45 @@ describe('OutboxWorker (handler timeout)', () => {
   });
 });
 
+describe('OutboxWorker (drainToEmpty — burst throughput)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedPrisma.outboxEvent.update.mockResolvedValue({});
+    mockedPrisma.outboxEvent.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('keeps fetching batches until the queue is empty (no 1-batch/poll ceiling)', async () => {
+    worker = new OutboxWorker({ batchSize: 2 });
+    worker.register('booking.created', jest.fn().mockResolvedValue(undefined));
+    mockedPrisma.outboxEvent.findMany
+      .mockResolvedValueOnce([makeEvent({ id: 'e1', bookingId: 'b1' }), makeEvent({ id: 'e2', bookingId: 'b2' })]) // full → keep going
+      .mockResolvedValueOnce([]); // empty → stop
+
+    expect(await worker.drainToEmpty()).toBe(2);
+    expect(mockedPrisma.outboxEvent.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('respects maxBatchesPerTick so one tick cannot run unbounded', async () => {
+    worker = new OutboxWorker({ batchSize: 1, maxBatchesPerTick: 3 });
+    worker.register('booking.created', jest.fn().mockResolvedValue(undefined));
+    // Always returns a full batch → would loop forever without the cap.
+    mockedPrisma.outboxEvent.findMany.mockResolvedValue([makeEvent()]);
+
+    expect(await worker.drainToEmpty()).toBe(3);
+    expect(mockedPrisma.outboxEvent.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops early when a batch makes no progress (all claimed by other instances)', async () => {
+    worker = new OutboxWorker({ batchSize: 2 });
+    worker.register('booking.created', jest.fn().mockResolvedValue(undefined));
+    mockedPrisma.outboxEvent.findMany.mockResolvedValue([makeEvent({ id: 'e1' })]);
+    mockedPrisma.outboxEvent.updateMany.mockResolvedValue({ count: 0 }); // claim always lost
+
+    expect(await worker.drainToEmpty()).toBe(0);
+    expect(mockedPrisma.outboxEvent.findMany).toHaveBeenCalledTimes(1); // no spin
+  });
+});
+
 describe('OutboxWorker (shutdown drain)', () => {
   beforeEach(() => {
     jest.clearAllMocks();

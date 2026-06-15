@@ -8,13 +8,18 @@ const STATUS_LABELS: Record<string, string> = { '': 'الكل', PENDING: 'معل
 
 export default function Payouts() {
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(0);
+  const limit = 50;
   const [confirmPayout, setConfirmPayout] = useState<PayoutItem | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-payouts', status],
+    queryKey: ['admin-payouts', status, page],
     queryFn: () => {
-      const params = new URLSearchParams();
+      // Always send limit/offset: the API caps unpaginated lists at 50, so
+      // without this the admin can never see/process payouts beyond the first
+      // page (a real operational gap when the PENDING queue is long).
+      const params = new URLSearchParams({ limit: String(limit), offset: String(page * limit) });
       if (status) params.set('status', status);
       return api.list<PayoutItem>(`/payouts?${params}`);
     },
@@ -50,7 +55,7 @@ export default function Payouts() {
           {STATUSES.map((s) => (
             <button
               key={s}
-              onClick={() => setStatus(s)}
+              onClick={() => { setStatus(s); setPage(0); }}
               style={{
                 padding: '6px 14px',
                 borderRadius: 20,
@@ -114,6 +119,26 @@ export default function Payouts() {
               ))}
             </tbody>
           </TableWrapper>
+        )}
+
+        {total > limit && (
+          <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9' }}>
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.4 : 1 }}
+            >
+              السابق
+            </button>
+            <span style={{ fontSize: 13, color: '#64748B' }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={(page + 1) * limit >= total}
+              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: (page + 1) * limit >= total ? 'not-allowed' : 'pointer', opacity: (page + 1) * limit >= total ? 0.4 : 1 }}
+            >
+              التالي
+            </button>
+          </div>
         )}
       </Card>
 
