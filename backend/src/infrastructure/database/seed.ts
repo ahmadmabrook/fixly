@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { logger } from '../../shared/logger';
@@ -108,7 +109,7 @@ async function seed() {
     },
   });
 
-  logger.info({ customer: customer.phone, technician: techUser.phone }, 'Sample users seeded');
+  logger.info({ customerPhoneFp: 'redacted', technicianPhoneFp: 'redacted' }, 'Sample users seeded');
 
   // Admin user — credentials come from env so we never bake a known password
   // into the repo. Production REQUIRES an explicit, strong ADMIN_PASSWORD;
@@ -139,7 +140,7 @@ async function seed() {
     },
   });
 
-  logger.info({ adminEmail }, 'Admin user seeded');
+  logger.info({ adminEmailFp: createHash('sha256').update(adminEmail).digest('hex').slice(0, 12) }, 'Admin user seeded');
   logger.info('Seed complete');
 }
 

@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma, BookingStatus, PayoutStatus } from '@prisma/client';
@@ -14,6 +15,12 @@ import { PaymentService } from '../payment/PaymentService';
 import { PaymentProviderFactory } from '../../infrastructure/providers/PaymentProviderFactory';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
+
+/** Short fingerprint of an email for log correlation. Same email → same fp;
+ *  different emails → different fp; the email itself cannot be recovered. */
+function emailFingerprint(email: string): string {
+  return createHash('sha256').update(email.toLowerCase().trim()).digest('hex').slice(0, 12);
+}
 
 const PAYOUT_INCLUDE = { technician: { include: { user: true } } } as const;
 const ADMIN_REFRESH_EXPIRES_DAYS = 30;
@@ -65,7 +72,7 @@ export class AdminService {
       // disabled account). Pino's redact config strips the password before
       // it ever hits the log sink — see shared/logger.ts.
       logger.warn(
-        { event: 'admin.login.fail', email, ip, reason: !admin ? 'no_user' : !admin.isActive ? 'disabled' : 'bad_password' },
+        { event: 'admin.login.fail', emailFp: emailFingerprint(email), ip, reason: !admin ? 'no_user' : !admin.isActive ? 'disabled' : 'bad_password' },
         'Admin login failed',
       );
       throw new UnauthorizedError('Invalid credentials');

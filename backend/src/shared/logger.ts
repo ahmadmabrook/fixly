@@ -4,7 +4,7 @@ export const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
   // Keep PII / credentials out of logs.
   redact: {
-    paths: ['phone', '*.phone', 'code', '*.code', 'password', '*.password', 'token', '*.token'],
+    paths: ['phone', '*.phone', 'email', '*.email', 'code', '*.code', 'password', '*.password', 'token', '*.token', 'refreshToken', '*.refreshToken', 'accessToken', '*.accessToken'],
     censor: '[redacted]',
   },
   transport:

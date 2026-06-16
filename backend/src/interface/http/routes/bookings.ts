@@ -16,7 +16,10 @@ bookingsRouter.post(
   validate([
     // NOTE: not .isUUID() — seeded service IDs use a non-conformant version nibble (0).
     body('serviceId').isString().trim().notEmpty(),
-    body('addressLine').isString().trim().notEmpty(),
+    // Cap address length so a client can't dump megabytes of text into the DB
+    // (or trigger a slow sort in the future). 500 is more than enough for a
+    // house/building/landmark description.
+    body('addressLine').isString().trim().isLength({ min: 1, max: 500 }),
     body('addressLat').isFloat({ min: -90, max: 90 }),
     body('addressLng').isFloat({ min: -180, max: 180 }),
     body('scheduledAt').optional({ nullable: true }).isISO8601(),

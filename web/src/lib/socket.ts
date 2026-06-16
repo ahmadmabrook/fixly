@@ -10,6 +10,8 @@ interface BookingStatusEvent {
 
 let sharedSocket: Socket | null = null;
 const statusListeners = new Map<string, Set<(s: string) => void>>();
+// Joins queued before the socket is connected — flushed on `connect`.
+const pendingJoins: string[] = [];
 
 /** Lazily open a single socket for the whole app. We tear it down on logout. */
 export function getOrCreateSocket(token: string): Socket {
@@ -23,6 +25,15 @@ export function getOrCreateSocket(token: string): Socket {
     path: '/socket.io',
     auth: { token },
     transports: ['websocket', 'polling'],
+  });
+  // Flush any joins that arrived before the handshake completed. Without
+  // this, a route that subscribed synchronously on mount would silently miss
+  // every status event until the next re-render.
+  sharedSocket.on('connect', () => {
+    if (!sharedSocket) return;
+    for (const bookingId of pendingJoins.splice(0)) {
+      sharedSocket.emit('booking:join', bookingId);
+    }
   });
   return sharedSocket;
 }
@@ -45,9 +56,13 @@ export function subscribeToStatus(bookingId: string, cb: (s: string) => void): (
     statusListeners.set(bookingId, bucket);
   }
   bucket.add(cb);
-  // Tell the server we're interested in this booking.
+  // Tell the server we're interested in this booking. If the socket is
+  // still handshaking, queue the join and flush on `connect` (see
+  // getOrCreateSocket) so a late-arriving component doesn't miss events.
   if (sharedSocket?.connected) {
     sharedSocket.emit('booking:join', bookingId);
+  } else if (sharedSocket) {
+    pendingJoins.push(bookingId);
   }
   return () => {
     bucket?.delete(cb);

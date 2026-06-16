@@ -268,10 +268,12 @@ describe('AdminService.login (failed-login logging)', () => {
     const { UnauthorizedError } = require('../../shared/errors');
     await expect(service.login('nobody@fixly.jo', 'whatever', '1.2.3.4'))
       .rejects.toBeInstanceOf(UnauthorizedError);
+    // Email is now logged as a 12-char fingerprint (emailFp) so logs are safe
+    // to export to third-party observability without leaking admin emails.
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'admin.login.fail',
-        email: 'nobody@fixly.jo',
+        emailFp: expect.stringMatching(/^[0-9a-f]{12}$/),
         ip: '1.2.3.4',
         reason: 'no_user',
       }),

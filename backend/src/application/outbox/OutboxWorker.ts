@@ -190,6 +190,14 @@ export class OutboxWorker {
 
     const results = await Promise.allSettled([...byBooking.values()].map((g) => this.processGroup(g)));
     const processed = results.reduce((sum, r) => sum + (r.status === 'fulfilled' ? r.value : 0), 0);
+    // A group rejection here is an unexpected processGroup failure (not a
+    // handler rejection — those are caught inside processOne). It would
+    // otherwise vanish silently and the worker would just process 0 events.
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        logger.error({ err: r.reason }, 'OutboxWorker: processGroup rejected unexpectedly');
+      }
+    }
     return { fetched: events.length, processed };
   }
 
