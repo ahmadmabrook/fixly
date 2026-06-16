@@ -5,6 +5,7 @@ import { OtpProviderFactory } from '../../../infrastructure/providers/OtpProvide
 import { authenticate } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
+import { USER_REFRESH_COOKIE, setUserRefreshCookie, clearUserRefreshCookie } from '../cookies';
 
 export const authRouter: Router = Router();
 
@@ -26,17 +27,29 @@ authRouter.post(
     body('code').isLength({ min: 6, max: 6 }).isNumeric(),
   ]),
   asyncHandler(async (req, res) => {
-    const tokens = await authService.verifyOtp(req.body.phone, req.body.code);
-    res.json({ data: tokens });
+    const { accessToken, refreshToken } = await authService.verifyOtp(req.body.phone, req.body.code);
+    // Refresh token → httpOnly cookie (never exposed to JS); access token → body.
+    setUserRefreshCookie(res, refreshToken);
+    res.json({ data: { accessToken } });
   }),
 );
 
 authRouter.post(
   '/refresh',
-  validate([body('refreshToken').isString().notEmpty()]),
   asyncHandler(async (req, res) => {
-    const tokens = await authService.refresh(req.body.refreshToken);
-    res.json({ data: tokens });
+    // Refresh token comes from the httpOnly cookie, not the body.
+    const { accessToken, refreshToken } = await authService.refresh(req.cookies?.[USER_REFRESH_COOKIE]);
+    setUserRefreshCookie(res, refreshToken);
+    res.json({ data: { accessToken } });
+  }),
+);
+
+authRouter.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    await authService.logout(req.cookies?.[USER_REFRESH_COOKIE]);
+    clearUserRefreshCookie(res);
+    res.json({ data: { ok: true } });
   }),
 );
 

@@ -65,6 +65,11 @@ export function createSocketServer(httpServer: HttpServer) {
     // Personal room for direct notifications (booking status, etc.)
     socket.join(`user:${userId}`);
 
+    // Bookings this socket has proven it is the ASSIGNED technician for. A
+    // booking's assignment is immutable once set, so we verify once (on join)
+    // and skip the per-ping DB lookup on the hot location:update path.
+    const assignedBookings = new Set<string>();
+
     // Subscribe to a booking's live channel — only if the user is a party to it.
     socket.on('booking:join', async (bookingId: string) => {
       if (typeof bookingId !== 'string' || bookingId.length === 0) return;
@@ -72,19 +77,24 @@ export function createSocketServer(httpServer: HttpServer) {
         where: { id: bookingId },
         select: { customerId: true, technicianId: true },
       });
-      const allowed =
-        !!booking &&
-        (booking.customerId === userId ||
-          (!!booking.technicianId && booking.technicianId === (await techProfileId(socket, userId))));
-      if (!allowed) {
+      if (!booking) {
+        logger.warn({ userId, bookingId }, 'Denied booking:join (booking not found)');
+        return;
+      }
+      const isAssignedTech = !!booking.technicianId && booking.technicianId === (await techProfileId(socket, userId));
+      if (booking.customerId !== userId && !isAssignedTech) {
         logger.warn({ userId, bookingId }, 'Denied booking:join (not a party to booking)');
         return;
       }
+      if (isAssignedTech) assignedBookings.add(bookingId);
       socket.join(`booking:${bookingId}`);
     });
 
     socket.on('booking:leave', (bookingId: string) => {
-      if (typeof bookingId === 'string') socket.leave(`booking:${bookingId}`);
+      if (typeof bookingId === 'string') {
+        socket.leave(`booking:${bookingId}`);
+        assignedBookings.delete(bookingId);
+      }
     });
 
     // Only the ASSIGNED technician may publish location for a booking.
@@ -93,11 +103,17 @@ export function createSocketServer(httpServer: HttpServer) {
         logger.warn({ userId }, 'Discarded malformed location:update');
         return;
       }
-      const booking = await prisma.booking.findUnique({
-        where: { id: payload.bookingId },
-        select: { technicianId: true },
-      });
-      if (!booking?.technicianId || booking.technicianId !== (await techProfileId(socket, userId))) {
+      // Fast path: assignment already verified at join time (no DB hit).
+      let allowed = assignedBookings.has(payload.bookingId);
+      if (!allowed) {
+        const booking = await prisma.booking.findUnique({
+          where: { id: payload.bookingId },
+          select: { technicianId: true },
+        });
+        allowed = !!booking?.technicianId && booking.technicianId === (await techProfileId(socket, userId));
+        if (allowed) assignedBookings.add(payload.bookingId);
+      }
+      if (!allowed) {
         logger.warn({ userId, bookingId: payload.bookingId }, 'Denied location:update (not assigned technician)');
         return;
       }

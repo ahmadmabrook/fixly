@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut } from 'lucide-react';
 import { useAuth } from '../lib/store';
+import { logout as apiLogout } from '../lib/api';
 
 const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'لوحة التحكم' },
@@ -11,11 +12,11 @@ const NAV = [
 ];
 
 export default function Sidebar() {
-  const { admin, logout } = useAuth();
+  const admin = useAuth((s) => s.admin);
   const navigate = useNavigate();
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await apiLogout(); // revoke refresh token + clear cookie server-side
     navigate('/login', { replace: true });
   }
 

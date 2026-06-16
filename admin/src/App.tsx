@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './lib/store';
-import { onAuthExpired } from './lib/api';
+import { onAuthExpired, restoreSession } from './lib/api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -35,6 +35,31 @@ function AuthExpiredRedirect() {
  * their own <MemoryRouter> with a controlled initial path.
  */
 export function AppShell() {
+  // The access token lives only in memory, so on load we silently restore the
+  // session from the httpOnly refresh cookie BEFORE the auth guard runs —
+  // otherwise a reload would always bounce a logged-in admin to /login.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let active = true;
+    // Only refresh if a prior session is hinted (persisted admin profile), so
+    // an anonymous visitor goes straight to /login without a pointless 401.
+    const hadSession = localStorage.getItem('admin_user') !== null;
+    (hadSession ? restoreSession() : Promise.resolve(false)).finally(() => {
+      if (active) setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ color: '#64748B', fontSize: 14 }}>
+        جارٍ التحميل…
+      </div>
+    );
+  }
+
   return (
     <>
       <AuthExpiredRedirect />

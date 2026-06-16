@@ -192,6 +192,14 @@ export class BookingService {
         throw new ConflictError('Booking cannot be completed from its current status');
       }
 
+      // Money guard: never let a booking complete (→ capture) unless its funds
+      // were actually authorized — otherwise a pre-auth failure means delivering
+      // the service for free.
+      const payment = await tx.payment.findUnique({ where: { bookingId }, select: { status: true } });
+      if (!payment || (payment.status !== 'PRE_AUTHORIZED' && payment.status !== 'CAPTURED')) {
+        throw new ConflictError('Payment is not authorized for this booking');
+      }
+
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
         data: { status: 'COMPLETED', completedAt: new Date(), version: { increment: 1 } },

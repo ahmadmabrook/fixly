@@ -1,19 +1,39 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import { Prisma, BookingStatus, PayoutStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
+import { hashToken } from '../auth/AuthService';
 import { UnauthorizedError, NotFoundError, ConflictError } from '../../shared/errors';
 import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
+import { payoutReconciledTotal, payoutStuckGauge } from '../../shared/metrics';
 import type { IPayoutProvider } from '../../domain/providers/IPayoutProvider';
 import { PayoutProviderFactory } from '../../infrastructure/providers/PayoutProviderFactory';
+import { PaymentService } from '../payment/PaymentService';
+import { PaymentProviderFactory } from '../../infrastructure/providers/PaymentProviderFactory';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 const PAYOUT_INCLUDE = { technician: { include: { user: true } } } as const;
+const ADMIN_REFRESH_EXPIRES_DAYS = 30;
 
 export class AdminService {
-  constructor(private readonly payoutProvider: IPayoutProvider = PayoutProviderFactory.create()) {}
+  constructor(
+    private readonly payoutProvider: IPayoutProvider = PayoutProviderFactory.create(),
+    private readonly paymentService: PaymentService = new PaymentService(PaymentProviderFactory.create(), env().PAYMENT_PROVIDER),
+  ) {}
+
+  /**
+   * Admin-initiated (partial or full) refund of a booking's captured payment,
+   * with an audit trail. Delegates the money mechanics + guards to
+   * PaymentService.refundBooking.
+   */
+  async refundBookingPayment(bookingId: string, amountJod: number | string, actorId: string, ip?: string) {
+    const payment = await this.paymentService.refundBooking(bookingId, amountJod);
+    await this.audit(prisma, actorId, 'payment.refund', { type: 'Booking', id: bookingId }, { amountJod: String(amountJod) }, ip);
+    return payment;
+  }
 
   /** Append an immutable audit record. Pass the tx client to keep it atomic with the mutation. */
   private async audit(
@@ -53,8 +73,57 @@ export class AdminService {
 
     await this.audit(prisma, admin.id, 'admin.login', undefined, undefined, ip);
 
+    const { accessToken, refreshToken } = await this.issueAdminTokens(admin.id);
+    return {
+      accessToken,
+      refreshToken,
+      admin: { id: admin.id, name: admin.name, email: admin.email },
+    };
+  }
+
+  /**
+   * Rotate an admin refresh token (presented via httpOnly cookie). Mirrors the
+   * customer flow: atomic revoke-old + issue-new, with reuse detection that
+   * revokes the whole family if an already-revoked token is replayed.
+   */
+  async refresh(refreshToken?: string) {
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      throw new UnauthorizedError('Missing refresh token');
+    }
+    const tokenHash = hashToken(refreshToken);
+
+    return prisma.$transaction(async (tx) => {
+      const record = await tx.adminRefreshToken.findUnique({ where: { tokenHash }, include: { admin: true } });
+      if (!record || record.expiresAt < new Date()) {
+        throw new UnauthorizedError('Invalid refresh token');
+      }
+      if (record.revokedAt) {
+        await tx.adminRefreshToken.updateMany({
+          where: { adminId: record.adminId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        throw new UnauthorizedError('Token reuse detected — all sessions revoked');
+      }
+      if (!record.admin.isActive) throw new UnauthorizedError('Account is disabled');
+
+      await tx.adminRefreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
+      const tokens = await this.issueAdminTokens(record.adminId, tx);
+      return { ...tokens, admin: { id: record.admin.id, name: record.admin.name, email: record.admin.email } };
+    });
+  }
+
+  /** Revoke the presented admin refresh token (logout). Silent no-op if absent. */
+  async logout(refreshToken?: string): Promise<void> {
+    if (!refreshToken) return;
+    await prisma.adminRefreshToken.updateMany({
+      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  private async issueAdminTokens(adminId: string, tx: DbClient = prisma) {
     const accessToken = jwt.sign(
-      { userId: admin.id, role: 'ADMIN', typ: 'admin' },
+      { userId: adminId, role: 'ADMIN', typ: 'admin' },
       env().JWT_SECRET,
       {
         algorithm: 'HS256',
@@ -63,11 +132,11 @@ export class AdminService {
         audience: 'fixly-admin',
       },
     );
-
-    return {
-      accessToken,
-      admin: { id: admin.id, name: admin.name, email: admin.email },
-    };
+    const refreshToken = uuidv4();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + ADMIN_REFRESH_EXPIRES_DAYS);
+    await tx.adminRefreshToken.create({ data: { adminId, tokenHash: hashToken(refreshToken), expiresAt } });
+    return { accessToken, refreshToken };
   }
 
   async getStats() {
@@ -213,10 +282,18 @@ export class AdminService {
    *  3. finalize COMPLETED + PAYOUT ledger entry + audit in one tx.
    */
   async processPayout(id: string, actorId: string, ip?: string) {
-    const payout = await prisma.payout.findUnique({ where: { id } });
+    const payout = await prisma.payout.findUnique({
+      where: { id },
+      include: { technician: { select: { user: { select: { isActive: true } } } } },
+    });
     if (!payout) throw new NotFoundError('Payout');
     if (payout.status === 'COMPLETED') {
       return prisma.payout.findUniqueOrThrow({ where: { id }, include: PAYOUT_INCLUDE });
+    }
+    // N-6: never disburse to a deactivated technician — funds stay PENDING until
+    // the account is restored (or the payout is handled manually).
+    if (!payout.technician.user.isActive) {
+      throw new ConflictError('Technician account is inactive — payout blocked');
     }
 
     // Phase 1 — atomic claim.
@@ -237,22 +314,91 @@ export class AdminService {
     try {
       ({ providerRef } = await this.payoutProvider.disburse(id, Number(payout.amountJod)));
     } catch (err) {
-      await prisma.payout.update({ where: { id }, data: { status: 'FAILED' } });
+      // Provider rejected outright → no money moved → safe to mark FAILED.
+      await prisma.payout.updateMany({ where: { id, status: 'PROCESSING' }, data: { status: 'FAILED' } });
       throw new ConflictError('Payout disbursement failed');
     }
 
-    // Phase 3 — finalize.
+    // Phase 3 — finalize (transition-guarded; idempotent vs. reconciliation).
+    await this.finalizePayout(id, Number(payout.amountJod), providerRef, actorId, ip);
+    return prisma.payout.findUniqueOrThrow({ where: { id }, include: PAYOUT_INCLUDE });
+  }
+
+  /**
+   * Flip a PROCESSING payout → COMPLETED + write the PAYOUT ledger entry, under
+   * a transition guard so a request finalize and a concurrent reconciliation
+   * can never both apply it (no duplicate ledger / double accounting). The
+   * ledger + audit are written ONLY by whichever caller wins the transition.
+   * `actorId` is omitted for system reconciliation (no real admin actor).
+   */
+  private async finalizePayout(
+    id: string,
+    amountJod: number,
+    providerRef: string,
+    actorId?: string,
+    ip?: string,
+  ): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
-      const updated = await tx.payout.update({
-        where: { id },
+      const claim = await tx.payout.updateMany({
+        where: { id, status: 'PROCESSING' },
         data: { status: 'COMPLETED', processedAt: new Date() },
-        include: PAYOUT_INCLUDE,
       });
+      if (claim.count === 0) return false; // someone else already finalized it
       await tx.ledgerEntry.create({
-        data: { payoutId: id, type: 'PAYOUT', amountJod: payout.amountJod, description: `Payout ${id} (${providerRef})` },
+        data: { payoutId: id, type: 'PAYOUT', direction: 'DEBIT', currency: env().CURRENCY, amountJod, description: `Payout ${id} (${providerRef})` },
       });
-      await this.audit(tx, actorId, 'payout.process', { type: 'Payout', id }, { amountJod: Number(payout.amountJod), providerRef }, ip);
-      return updated;
+      if (actorId) {
+        await this.audit(tx, actorId, 'payout.process', { type: 'Payout', id }, { amountJod, providerRef }, ip);
+      }
+      return true;
     });
+  }
+
+  /**
+   * Reconcile payouts stuck in PROCESSING — the crash window between an external
+   * disbursement and the finalize commit. For each, ask the provider for the
+   * authoritative state (keyed by payoutId) and:
+   *   COMPLETED → finalize (money was sent; complete + ledger),
+   *   FAILED    → mark FAILED (safe to retry; no money moved),
+   *   PENDING/UNKNOWN → leave for the next cycle (never auto-fail an unknown).
+   * Runs on a timer from main.ts. Returns the number resolved.
+   */
+  async reconcileStuckPayouts(): Promise<number> {
+    const stuck = await prisma.payout.findMany({ where: { status: 'PROCESSING' }, select: { id: true, amountJod: true } });
+    payoutStuckGauge.set(stuck.length);
+    let resolved = 0;
+
+    for (const payout of stuck) {
+      let state: 'COMPLETED' | 'FAILED' | 'PENDING' | 'UNKNOWN';
+      let providerRef: string | undefined;
+      try {
+        ({ state, providerRef } = await this.payoutProvider.getStatus(payout.id));
+      } catch (err) {
+        logger.warn({ err, payoutId: payout.id }, 'reconcile: provider status query failed, leaving PROCESSING');
+        continue;
+      }
+
+      if (state === 'COMPLETED') {
+        const applied = await this.finalizePayout(payout.id, Number(payout.amountJod), providerRef ?? `reconciled_${payout.id}`);
+        if (applied) {
+          resolved++;
+          payoutReconciledTotal.inc({ outcome: 'completed' });
+          logger.warn({ payoutId: payout.id }, 'reconcile: finalized a stuck payout (provider COMPLETED)');
+        }
+      } else if (state === 'FAILED') {
+        const failed = await prisma.payout.updateMany({ where: { id: payout.id, status: 'PROCESSING' }, data: { status: 'FAILED' } });
+        if (failed.count > 0) {
+          resolved++;
+          payoutReconciledTotal.inc({ outcome: 'failed' });
+          logger.warn({ payoutId: payout.id }, 'reconcile: marked a stuck payout FAILED (provider FAILED)');
+        }
+      } else {
+        payoutReconciledTotal.inc({ outcome: 'unresolved' });
+        logger.warn({ payoutId: payout.id, state }, 'reconcile: payout state still unresolved, will retry');
+      }
+    }
+
+    payoutStuckGauge.set(stuck.length - resolved);
+    return resolved;
   }
 }

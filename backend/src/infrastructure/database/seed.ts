@@ -110,19 +110,36 @@ async function seed() {
 
   logger.info({ customer: customer.phone, technician: techUser.phone }, 'Sample users seeded');
 
-  // Admin user
-  const passwordHash = await bcrypt.hash('admin12345', 12);
+  // Admin user — credentials come from env so we never bake a known password
+  // into the repo. Production REQUIRES an explicit, strong ADMIN_PASSWORD;
+  // local dev may fall back to a clearly-labelled default.
+  const isProd = process.env.NODE_ENV === 'production';
+  const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@fixly.jo';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (isProd && !adminPassword) {
+    throw new Error('ADMIN_PASSWORD is required to seed the admin user in production');
+  }
+  if (adminPassword && adminPassword.length < 12) {
+    throw new Error('ADMIN_PASSWORD must be at least 12 characters');
+  }
+  if (!adminPassword) {
+    logger.warn('ADMIN_PASSWORD not set — seeding the DEV-ONLY default admin password. Do NOT use in production.');
+  }
+
+  // Dev/test fall back to a well-known local password; production must override.
+  const passwordHash = await bcrypt.hash(adminPassword ?? 'admin12345', 12);
   await prisma.adminUser.upsert({
-    where: { email: 'admin@fixly.jo' },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: 'admin@fixly.jo',
+      email: adminEmail,
       passwordHash,
       name: 'مدير Fixly',
     },
   });
 
-  logger.info('Admin user seeded: admin@fixly.jo');
+  logger.info({ adminEmail }, 'Admin user seeded');
   logger.info('Seed complete');
 }
 

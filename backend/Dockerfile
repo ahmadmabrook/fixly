@@ -52,5 +52,11 @@ ENV PORT=4000
 # distroless nonroot image already runs as uid 65532; document the port.
 EXPOSE 4000
 
+# Container-level liveness check. distroless has no shell/curl, so use node's
+# global fetch against the dependency-free /live endpoint. Orchestrators that
+# read Docker health (Compose, Swarm) get a signal without an external probe.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
 # Liveness probe-friendly: the process should print logs and listen on PORT.
 CMD ["dist/main.js"]

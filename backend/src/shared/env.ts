@@ -21,6 +21,16 @@ interface Env {
   OUTBOX_POLL_MS: number;
   OUTBOX_BATCH_SIZE: number;
   OUTBOX_MAX_BATCHES_PER_TICK: number;
+  /** Bearer token guarding GET /metrics. Empty = open (dev only; hidden in prod). */
+  METRICS_TOKEN: string;
+  /** Platform commission (%) withheld from a technician's payout. Default 15%. */
+  PLATFORM_COMMISSION_PCT: number;
+  /** Days a pre-authorization hold is assumed valid before capture needs a re-auth. */
+  AUTH_HOLD_EXPIRY_DAYS: number;
+  /** ISO-4217 currency for all money. Single-currency today; column-backed for later. */
+  CURRENCY: string;
+  /** Shared secret to verify PSP webhook signatures. Required in prod for webhooks. */
+  PSP_WEBHOOK_SECRET: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -69,6 +79,16 @@ export function loadEnv(): Env {
     throw new Error('PAYMENT_PROVIDER=mock is not allowed in production');
   }
 
+  const PLATFORM_COMMISSION_PCT = Number(process.env.PLATFORM_COMMISSION_PCT ?? '15');
+  if (!Number.isFinite(PLATFORM_COMMISSION_PCT) || PLATFORM_COMMISSION_PCT < 0 || PLATFORM_COMMISSION_PCT > 100) {
+    throw new Error('PLATFORM_COMMISSION_PCT must be a number between 0 and 100');
+  }
+
+  const PSP_WEBHOOK_SECRET = process.env.PSP_WEBHOOK_SECRET ?? '';
+  if (isProd && PAYMENT_PROVIDER !== 'mock' && PSP_WEBHOOK_SECRET === '') {
+    throw new Error('PSP_WEBHOOK_SECRET is required in production to verify payment webhooks');
+  }
+
   cached = {
     NODE_ENV,
     PORT: parseInt(process.env.PORT ?? '4000', 10),
@@ -82,6 +102,11 @@ export function loadEnv(): Env {
     OUTBOX_POLL_MS: parseInt(process.env.OUTBOX_POLL_MS ?? '2000', 10),
     OUTBOX_BATCH_SIZE: parseInt(process.env.OUTBOX_BATCH_SIZE ?? '200', 10),
     OUTBOX_MAX_BATCHES_PER_TICK: parseInt(process.env.OUTBOX_MAX_BATCHES_PER_TICK ?? '50', 10),
+    METRICS_TOKEN: process.env.METRICS_TOKEN ?? '',
+    PLATFORM_COMMISSION_PCT,
+    AUTH_HOLD_EXPIRY_DAYS: parseInt(process.env.AUTH_HOLD_EXPIRY_DAYS ?? '6', 10),
+    CURRENCY: process.env.CURRENCY ?? 'JOD',
+    PSP_WEBHOOK_SECRET,
   };
 
   return cached;

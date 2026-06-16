@@ -77,6 +77,47 @@ describe('POST /api/v1/admin/login', () => {
       .expect(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
+
+  it('sets an httpOnly admin refresh cookie and does NOT return it in the body', async () => {
+    const res = await request(app)
+      .post('/api/v1/admin/login')
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+      .expect(200);
+    expect(res.body.data.refreshToken).toBeUndefined();
+    const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+    expect(cookies.some((c) => c.startsWith('admin_refresh_token=') && /HttpOnly/i.test(c))).toBe(true);
+  });
+});
+
+describe('admin session (cookie refresh + logout)', () => {
+  it('rotates the admin access token via the refresh cookie, then revokes on logout', async () => {
+    const login = await request(app)
+      .post('/api/v1/admin/login')
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+      .expect(200);
+    const cookie = ((login.headers['set-cookie'] as unknown as string[]) ?? [])
+      .find((c) => c.startsWith('admin_refresh_token='))!.split(';')[0];
+
+    // Refresh issues a fresh access token using only the cookie.
+    const refreshed = await request(app)
+      .post('/api/v1/admin/auth/refresh')
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(refreshed.body.data.accessToken).toEqual(expect.any(String));
+
+    // The old (rotated) cookie is now revoked — reuse is rejected.
+    await request(app).post('/api/v1/admin/auth/refresh').set('Cookie', cookie).expect(401);
+
+    // A fresh login + logout revokes that session's token.
+    const relogin = await request(app)
+      .post('/api/v1/admin/login')
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+      .expect(200);
+    const cookie2 = ((relogin.headers['set-cookie'] as unknown as string[]) ?? [])
+      .find((c) => c.startsWith('admin_refresh_token='))!.split(';')[0];
+    await request(app).post('/api/v1/admin/auth/logout').set('Cookie', cookie2).expect(200);
+    await request(app).post('/api/v1/admin/auth/refresh').set('Cookie', cookie2).expect(401);
+  });
 });
 
 describe('admin route authorization', () => {
@@ -110,6 +151,33 @@ describe('admin route authorization', () => {
       totalRevenueJod: expect.any(Number),
       pendingPayouts: expect.any(Number),
     });
+  });
+});
+
+describe('admin refund route', () => {
+  const SOME_UUID = '99999999-9999-4999-8999-999999999999';
+
+  it('rejects an unauthenticated refund (401)', async () => {
+    await request(app).post(`/api/v1/admin/bookings/${SOME_UUID}/refund`).send({ amountJod: 1 }).expect(401);
+  });
+
+  it('rejects a non-positive amount with 422', async () => {
+    const token = await adminLogin();
+    await request(app)
+      .post(`/api/v1/admin/bookings/${SOME_UUID}/refund`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ amountJod: 0 })
+      .expect(422);
+  });
+
+  it('returns 404 when the booking has no captured payment', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .post(`/api/v1/admin/bookings/${SOME_UUID}/refund`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ amountJod: 1 })
+      .expect(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
 

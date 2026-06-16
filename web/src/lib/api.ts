@@ -20,27 +20,34 @@ interface Envelope<T> {
 
 let refreshInFlight: Promise<string | null> | null = null;
 
+/** Decode the (unverified) `role` claim from a JWT for UI defaults only. */
+function roleFromJwt(token: string): string {
+  try {
+    const part = token.split('.')[1] ?? '';
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '=');
+    return (JSON.parse(atob(padded)) as { role?: string }).role ?? 'CUSTOMER';
+  } catch {
+    return 'CUSTOMER';
+  }
+}
+
 /**
  * Single-flight refresh: parallel 401s share the same in-progress refresh
- * instead of firing N requests. Returns the new access token, or null on
- * failure (the caller will then sign the user out).
+ * instead of firing N requests. The refresh token rides in the httpOnly cookie
+ * (sent because credentials:'include'), never JS-readable. Returns the new
+ * access token, or null on failure (the caller then signs the user out).
  */
 async function tryRefresh(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return null;
   refreshInFlight = (async () => {
     try {
-      const res = await fetch(BASE + '/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+      const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
       if (!res.ok) return null;
-      const body = (await res.json()) as { data: { accessToken: string; refreshToken: string } };
-      useAuth.getState().setTokens(body.data.accessToken, useAuth.getState().role ?? 'CUSTOMER');
-      localStorage.setItem('refresh_token', body.data.refreshToken);
-      return body.data.accessToken;
+      const body = (await res.json()) as { data: { accessToken: string } };
+      const access = body.data.accessToken;
+      useAuth.getState().setTokens(access, useAuth.getState().role ?? roleFromJwt(access));
+      return access;
     } catch {
       return null;
     } finally {
@@ -50,10 +57,26 @@ async function tryRefresh(): Promise<string | null> {
   return refreshInFlight;
 }
 
+/** Restore an authenticated session on app load from the refresh cookie.
+ *  Returns true if a session was re-established. */
+export async function restoreSession(): Promise<boolean> {
+  return (await tryRefresh()) !== null;
+}
+
+/** Revoke the session server-side (clears the cookie) and drop local state. */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'include' });
+  } finally {
+    useAuth.getState().logout();
+  }
+}
+
 async function request<T>(path: string, opts: RequestInit = {}, retried = false): Promise<T> {
   const token = useAuth.getState().accessToken;
   const res = await fetch(BASE + path, {
     ...opts,
+    credentials: 'include', // send/receive the httpOnly refresh cookie
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -66,10 +89,8 @@ async function request<T>(path: string, opts: RequestInit = {}, retried = false)
     if (newToken) return request<T>(path, opts, true);
     // Refresh failed — drop the session so the UI reflects logged-out state.
     useAuth.getState().logout();
-    localStorage.removeItem('refresh_token');
   } else if (res.status === 401) {
     useAuth.getState().logout();
-    localStorage.removeItem('refresh_token');
   }
 
   if (!res.ok) {

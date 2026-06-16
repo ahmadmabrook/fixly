@@ -4,6 +4,7 @@ import {
 } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuth } from './lib/store';
+import { restoreSession, logout as apiLogout } from './lib/api';
 import { BookingSocketProvider } from './lib/socket-provider';
 import TopNav from './components/TopNav';
 import Footer from './components/Footer';
@@ -31,8 +32,16 @@ type ModalState =
  */
 export default function App() {
   const [modal, setModal] = useState<ModalState>({ open: false });
-  const { accessToken, logout } = useAuth();
+  const accessToken = useAuth((s) => s.accessToken);
   const authed = !!accessToken;
+
+  // On load the access token lives only in memory (gone after a reload), so
+  // silently re-establish the session from the httpOnly refresh cookie — but
+  // only if we previously had one (role hint), so anonymous visitors don't
+  // fire a pointless refresh/401 on every page load.
+  useEffect(() => {
+    if (localStorage.getItem('role')) void restoreSession();
+  }, []);
 
   const openLoginModal = useCallback((returnTo: string) => {
     setModal({ open: true, returnTo });
@@ -44,7 +53,7 @@ export default function App() {
     <BrowserRouter>
       <BookingSocketProvider>
         <div dir="rtl" className="min-h-screen" style={{ background: '#F6F8FB' }}>
-          <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={logout} />
+          <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
 
           <Routes>
             <Route path="/" element={<Landing />} />

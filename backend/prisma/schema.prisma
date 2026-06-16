@@ -82,9 +82,25 @@ model AdminUser {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  auditLogs AdminAuditLog[]
+  auditLogs     AdminAuditLog[]
+  refreshTokens AdminRefreshToken[]
 
   @@map("admin_users")
+}
+
+model AdminRefreshToken {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  adminId   String   @db.Uuid
+  // SHA-256 of the opaque token; the raw value goes out only via httpOnly cookie.
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("admin_refresh_tokens")
 }
 
 /// Immutable trail of privileged admin actions (who did what, when, from where).
@@ -210,20 +226,30 @@ enum BookingStatus {
 // ─────────────────────────────────────────────
 
 model Payment {
-  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  bookingId       String        @unique @db.Uuid
-  status          PaymentStatus @default(PENDING)
-  provider        String
-  providerRef     String?
-  amountJod       Decimal       @db.Decimal(10, 3)
-  preAuthorizedAt DateTime?
-  capturedAt      DateTime?
-  refundedAt      DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bookingId         String        @unique @db.Uuid
+  status            PaymentStatus @default(PENDING)
+  provider          String
+  providerRef       String?
+  currency          String        @default("JOD")
+  // Authorized (held) amount. Capture/refund amounts may be ≤ this (partial).
+  amountJod         Decimal       @db.Decimal(10, 3)
+  capturedAmountJod Decimal?      @db.Decimal(10, 3)
+  // Cumulative amount refunded — supports multiple partial refunds.
+  refundedAmountJod Decimal       @default(0) @db.Decimal(10, 3)
+  // Platform commission withheld at capture (the rest accrues to the technician).
+  feeJod            Decimal?      @db.Decimal(10, 3)
+  preAuthorizedAt   DateTime?
+  capturedAt        DateTime?
+  refundedAt        DateTime?
+  disputedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   booking       Booking        @relation(fields: [bookingId], references: [id])
   ledgerEntries LedgerEntry[]
+  payout        Payout?
+  disputes      Dispute[]
 
   @@map("payments")
 }
@@ -232,7 +258,10 @@ enum PaymentStatus {
   PENDING
   PRE_AUTHORIZED
   CAPTURED
+  PARTIALLY_REFUNDED
   REFUNDED
+  DISPUTED
+  CHARGEBACK
   FAILED
 }
 
@@ -242,6 +271,11 @@ model LedgerEntry {
   paymentId   String?     @db.Uuid
   payoutId    String?     @db.Uuid
   type        LedgerType
+  // Double-entry direction so SUM over a payment nets correctly
+  // (CREDIT = money in to platform, DEBIT = money out). Nullable only for
+  // pre-existing rows written before this column existed.
+  direction   LedgerDirection?
+  currency    String      @default("JOD")
   amountJod   Decimal     @db.Decimal(10, 3)
   description String?
   createdAt   DateTime    @default(now())
@@ -260,17 +294,30 @@ enum LedgerType {
   REFUND
   PAYOUT
   FEE
+  DISPUTE
+  CHARGEBACK
+  ADJUSTMENT
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
 }
 
 model Payout {
   id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   technicianId String       @db.Uuid
+  // Source payment this payout was accrued from. Unique → at most one payout
+  // per captured payment, making accrual idempotent.
+  paymentId    String?      @unique @db.Uuid
+  currency     String       @default("JOD")
   amountJod    Decimal      @db.Decimal(10, 3)
   status       PayoutStatus @default(PENDING)
   processedAt  DateTime?
   createdAt    DateTime     @default(now())
 
   technician    TechnicianProfile @relation(fields: [technicianId], references: [id])
+  payment       Payment?          @relation(fields: [paymentId], references: [id])
   ledgerEntries LedgerEntry[]
 
   @@index([technicianId])
@@ -284,6 +331,42 @@ enum PayoutStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+/// A PSP-reported dispute / chargeback against a captured payment.
+model Dispute {
+  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  paymentId   String        @db.Uuid
+  providerRef String?
+  reason      String?
+  amountJod   Decimal       @db.Decimal(10, 3)
+  status      DisputeStatus @default(OPEN)
+  openedAt    DateTime      @default(now())
+  resolvedAt  DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@map("disputes")
+}
+
+enum DisputeStatus {
+  OPEN
+  WON
+  LOST
+}
+
+/// Idempotent store of inbound PSP webhook events (dedupe at-least-once delivery).
+model PspWebhookEvent {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  provider   String
+  eventId    String
+  eventType  String
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+  @@map("psp_webhook_events")
 }
 
 // ─────────────────────────────────────────────

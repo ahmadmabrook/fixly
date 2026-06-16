@@ -17,6 +17,7 @@ export default function Login() {
     try {
       const res = await fetch('/api/v1/admin/login', {
         method: 'POST',
+        credentials: 'include', // accept the httpOnly refresh cookie
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });

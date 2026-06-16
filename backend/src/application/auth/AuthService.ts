@@ -116,6 +116,16 @@ export class AuthService {
     return user;
   }
 
+  /** Revoke the presented refresh token (logout). Idempotent + silent: an
+   *  unknown/absent token is a no-op so logout never leaks token validity. */
+  async logout(refreshToken?: string): Promise<void> {
+    if (!refreshToken) return;
+    await prisma.refreshToken.updateMany({
+      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   private async issueTokens(
     userId: string,
     role: string,

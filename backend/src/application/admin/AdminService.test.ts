@@ -5,7 +5,7 @@ import type { IPayoutProvider } from '../../domain/providers/IPayoutProvider';
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
-    payout: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+    payout: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
     ledgerEntry: { create: jest.fn() },
     adminAuditLog: { create: jest.fn() },
     adminUser: { findUnique: jest.fn() },
@@ -19,7 +19,7 @@ jest.mock('../../shared/env', () => ({
 }));
 
 const mockedPrisma = prisma as unknown as {
-  payout: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; updateMany: jest.Mock; update: jest.Mock };
+  payout: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; update: jest.Mock };
   ledgerEntry: { create: jest.Mock };
   adminAuditLog: { create: jest.Mock };
   adminUser: { findUnique: jest.Mock };
@@ -34,12 +34,19 @@ describe('AdminService.processPayout', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    provider = { disburse: jest.fn().mockResolvedValue({ providerRef: 'mock_payout_1', status: 'DISBURSED' }) };
+    provider = {
+      disburse: jest.fn().mockResolvedValue({ providerRef: 'mock_payout_1', status: 'DISBURSED' }),
+      getStatus: jest.fn().mockResolvedValue({ state: 'COMPLETED', providerRef: 'mock_payout_1' }),
+    };
     service = new AdminService(provider);
-    // finalize tx runs its callback against a tx with the needed writers
+    // finalize tx runs its callback against a tx with the needed writers.
+    // finalizePayout uses a transition-guarded updateMany (count=1 = it won).
     mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
       fn({
-        payout: { update: jest.fn().mockResolvedValue({ id: 'p1', status: 'COMPLETED' }) },
+        payout: {
+          update: jest.fn().mockResolvedValue({ id: 'p1', status: 'COMPLETED' }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
         ledgerEntry: { create: jest.fn().mockResolvedValue({}) },
         adminAuditLog: { create: jest.fn().mockResolvedValue({}) },
       }),
@@ -62,7 +69,7 @@ describe('AdminService.processPayout', () => {
 
   it('rejects a payout already in PROCESSING (claim lost)', async () => {
     mockedPrisma.payout.findUnique
-      .mockResolvedValueOnce({ id: 'p1', status: 'PENDING', amountJod: 50 }) // initial read
+      .mockResolvedValueOnce({ id: 'p1', status: 'PENDING', amountJod: 50, technician: { user: { isActive: true } } }) // initial read
       .mockResolvedValueOnce({ id: 'p1', status: 'PROCESSING' });             // post-claim re-read
     mockedPrisma.payout.updateMany.mockResolvedValue({ count: 0 }); // someone else claimed it
     await expect(service.processPayout('p1', 'admin1')).rejects.toBeInstanceOf(ConflictError);
@@ -70,7 +77,7 @@ describe('AdminService.processPayout', () => {
   });
 
   it('disburses a PENDING payout then finalizes COMPLETED + ledger + audit', async () => {
-    mockedPrisma.payout.findUnique.mockResolvedValue({ id: 'p1', status: 'PENDING', amountJod: 50 });
+    mockedPrisma.payout.findUnique.mockResolvedValue({ id: 'p1', status: 'PENDING', amountJod: 50, technician: { user: { isActive: true } } });
     mockedPrisma.payout.updateMany.mockResolvedValue({ count: 1 }); // claim won
 
     await service.processPayout('p1', 'admin1', '1.2.3.4');
@@ -80,14 +87,103 @@ describe('AdminService.processPayout', () => {
   });
 
   it('marks the payout FAILED and throws when disbursement fails', async () => {
-    mockedPrisma.payout.findUnique.mockResolvedValue({ id: 'p1', status: 'PENDING', amountJod: 50 });
+    mockedPrisma.payout.findUnique.mockResolvedValue({ id: 'p1', status: 'PENDING', amountJod: 50, technician: { user: { isActive: true } } });
     mockedPrisma.payout.updateMany.mockResolvedValue({ count: 1 });
     provider.disburse.mockRejectedValue(new Error('provider down'));
 
     await expect(service.processPayout('p1', 'admin1')).rejects.toBeInstanceOf(ConflictError);
-    expect(mockedPrisma.payout.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'p1' }, data: { status: 'FAILED' } }),
+    expect(mockedPrisma.payout.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: 'p1', status: 'PROCESSING' }, data: { status: 'FAILED' } }),
     );
+  });
+
+  it('blocks disbursement to an inactive technician (N-6)', async () => {
+    mockedPrisma.payout.findUnique.mockResolvedValue({ id: 'p1', status: 'PENDING', amountJod: 50, technician: { user: { isActive: false } } });
+    await expect(service.processPayout('p1', 'admin1')).rejects.toBeInstanceOf(ConflictError);
+    expect(provider.disburse).not.toHaveBeenCalled();
+    expect(mockedPrisma.payout.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminService.refundBookingPayment', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('delegates to PaymentService.refundBooking and writes an audit record', async () => {
+    const refundBooking = jest.fn().mockResolvedValue({ id: 'pay-1', status: 'PARTIALLY_REFUNDED' });
+    const paymentService = { refundBooking } as unknown as import('../payment/PaymentService').PaymentService;
+    const adminService = new AdminService({ disburse: jest.fn(), getStatus: jest.fn() } as unknown as IPayoutProvider, paymentService);
+
+    const result = await adminService.refundBookingPayment('bk-1', 5, 'admin1', '1.2.3.4');
+
+    expect(refundBooking).toHaveBeenCalledWith('bk-1', 5);
+    expect(mockedPrisma.adminAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'payment.refund', targetId: 'bk-1', actorId: 'admin1' }) }),
+    );
+    expect(result).toEqual({ id: 'pay-1', status: 'PARTIALLY_REFUNDED' });
+  });
+});
+
+describe('AdminService.reconcileStuckPayouts', () => {
+  let provider: jest.Mocked<IPayoutProvider>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    provider = {
+      disburse: jest.fn(),
+      getStatus: jest.fn(),
+    };
+    service = new AdminService(provider);
+    mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        payout: { update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        ledgerEntry: { create: jest.fn().mockResolvedValue({}) },
+        adminAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      }),
+    );
+  });
+
+  it('finalizes a stuck payout when the provider reports COMPLETED (money was sent)', async () => {
+    mockedPrisma.payout.findMany.mockResolvedValue([{ id: 'p1', amountJod: 50 }]);
+    provider.getStatus.mockResolvedValue({ state: 'COMPLETED', providerRef: 'r1' });
+
+    const resolved = await service.reconcileStuckPayouts();
+
+    expect(resolved).toBe(1);
+    expect(provider.getStatus).toHaveBeenCalledWith('p1');
+    expect(mockedPrisma.$transaction).toHaveBeenCalledTimes(1); // guarded finalize
+  });
+
+  it('marks a stuck payout FAILED when the provider reports FAILED (no money moved)', async () => {
+    mockedPrisma.payout.findMany.mockResolvedValue([{ id: 'p1', amountJod: 50 }]);
+    provider.getStatus.mockResolvedValue({ state: 'FAILED' });
+    mockedPrisma.payout.updateMany.mockResolvedValue({ count: 1 });
+
+    const resolved = await service.reconcileStuckPayouts();
+
+    expect(resolved).toBe(1);
+    expect(mockedPrisma.payout.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'p1', status: 'PROCESSING' }, data: { status: 'FAILED' } }),
+    );
+    expect(mockedPrisma.$transaction).not.toHaveBeenCalled(); // no finalize
+  });
+
+  it('leaves a payout PROCESSING when the provider state is still PENDING/UNKNOWN', async () => {
+    mockedPrisma.payout.findMany.mockResolvedValue([{ id: 'p1', amountJod: 50 }]);
+    provider.getStatus.mockResolvedValue({ state: 'PENDING' });
+
+    const resolved = await service.reconcileStuckPayouts();
+
+    expect(resolved).toBe(0);
+    expect(mockedPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockedPrisma.payout.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when there are no stuck payouts', async () => {
+    mockedPrisma.payout.findMany.mockResolvedValue([]);
+    expect(await service.reconcileStuckPayouts()).toBe(0);
+    expect(provider.getStatus).not.toHaveBeenCalled();
   });
 });
 

@@ -14,7 +14,10 @@ interface AuthState {
 }
 
 export const useAuth = create<AuthState>((set) => ({
-  accessToken: localStorage.getItem('admin_access_token'),
+  // Access token in memory only (never localStorage); restored on load via the
+  // httpOnly refresh cookie. Only the non-credential admin profile is persisted
+  // so the shell can render name/email immediately on reload.
+  accessToken: null,
   admin: (() => {
     try {
       const raw = localStorage.getItem('admin_user');
@@ -24,12 +27,10 @@ export const useAuth = create<AuthState>((set) => ({
     }
   })(),
   setAuth(token, admin) {
-    localStorage.setItem('admin_access_token', token);
     localStorage.setItem('admin_user', JSON.stringify(admin));
     set({ accessToken: token, admin });
   },
   logout() {
-    localStorage.removeItem('admin_access_token');
     localStorage.removeItem('admin_user');
     set({ accessToken: null, admin: null });
   },

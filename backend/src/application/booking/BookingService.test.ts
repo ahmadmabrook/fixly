@@ -151,11 +151,16 @@ describe('BookingService', () => {
   });
 
   // Helper: a $transaction tx whose booking.findUnique returns `fresh`.
-  function txWith(fresh: Record<string, unknown>) {
+  // `payment` is the row complete()'s money-guard reads (default: authorized).
+  function txWith(fresh: Record<string, unknown>, payment: Record<string, unknown> | null = { status: 'PRE_AUTHORIZED' }) {
     const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'DONE' });
     const create = jest.fn().mockResolvedValue({});
     mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
-      fn({ booking: { findUnique: jest.fn().mockResolvedValue(fresh), update }, outboxEvent: { create } }),
+      fn({
+        booking: { findUnique: jest.fn().mockResolvedValue(fresh), update },
+        payment: { findUnique: jest.fn().mockResolvedValue(payment) },
+        outboxEvent: { create },
+      }),
     );
     return { update, create };
   }
@@ -194,6 +199,13 @@ describe('BookingService', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.completed' }) }),
       );
+    });
+
+    it('refuses to complete when the payment is not authorized (P-1: no free service)', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
+      const { create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3 }, null); // no payment row
+      await expect(service.complete('b1', 'c1')).rejects.toBeInstanceOf(ConflictError);
+      expect(create).not.toHaveBeenCalled();
     });
   });
 

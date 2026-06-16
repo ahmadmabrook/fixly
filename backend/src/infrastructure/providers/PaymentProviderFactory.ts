@@ -4,8 +4,8 @@ import { MockPaymentProvider } from './MockPaymentProvider';
 
 export class PaymentProviderFactory {
   static create(): IPaymentProvider {
-    const provider = env().PAYMENT_PROVIDER;
-    if (provider === 'mock') return new MockPaymentProvider();
-    throw new Error(`Unknown payment provider: ${provider}`);
+    const e = env();
+    if (e.PAYMENT_PROVIDER === 'mock') return new MockPaymentProvider(e.PSP_WEBHOOK_SECRET);
+    throw new Error(`Unknown payment provider: ${e.PAYMENT_PROVIDER}`);
   }
 }

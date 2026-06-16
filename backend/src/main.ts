@@ -9,10 +9,12 @@ import { redis } from './infrastructure/cache/redis';
 import { OutboxWorker } from './application/outbox/OutboxWorker';
 import { PaymentService } from './application/payment/PaymentService';
 import { NotificationService } from './application/notification/NotificationService';
+import { AdminService } from './application/admin/AdminService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
-import { outboxPendingGauge } from './shared/metrics';
+import { outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge } from './shared/metrics';
 
 const PENDING_GAUGE_INTERVAL_MS = 15_000;
+const PAYOUT_RECONCILE_INTERVAL_MS = 60_000;
 
 async function main() {
   const env = loadEnv(); // fail-fast on missing/unsafe config
@@ -36,19 +38,40 @@ async function main() {
   const gaugeTimer = setInterval(() => void refreshPendingGauge(), PENDING_GAUGE_INTERVAL_MS);
   gaugeTimer.unref();
 
+  // Reconcile payouts stranded in PROCESSING by a crash between the external
+  // disbursement and the finalize commit (money-safety recovery).
+  const adminService = new AdminService();
+  const reconcileTimer = setInterval(() => {
+    void adminService
+      .reconcileStuckPayouts()
+      .catch((err) => logger.warn({ err }, 'Payout reconciliation cycle failed'));
+  }, PAYOUT_RECONCILE_INTERVAL_MS);
+  reconcileTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
 
-  registerShutdown(httpServer, io.close.bind(io), worker, gaugeTimer);
+  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer]);
 }
 
 async function refreshPendingGauge(): Promise<void> {
   try {
-    const pending = await prisma.outboxEvent.count({ where: { status: 'PENDING' } });
+    const expiryCutoff = new Date(Date.now() - loadEnv().AUTH_HOLD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    const [pending, failed, stuckPreauth] = await Promise.all([
+      prisma.outboxEvent.count({ where: { status: 'PENDING' } }),
+      // Terminal-FAILED money events = uncollected revenue / held customer funds.
+      prisma.outboxEvent.count({ where: { status: 'FAILED' } }),
+      // Holds past expiry that were never captured → capture at risk.
+      prisma.payment.count({ where: { status: 'PRE_AUTHORIZED', preAuthorizedAt: { lt: expiryCutoff } } }),
+    ]);
     outboxPendingGauge.set(pending);
+    outboxFailedGauge.set(failed);
+    paymentStuckPreauthGauge.set(stuckPreauth);
+    if (failed > 0) logger.error({ failed }, 'Outbox has terminal-FAILED events — money action(s) need triage');
+    if (stuckPreauth > 0) logger.error({ stuckPreauth }, 'Pre-authorizations past expiry without capture — funds at risk');
   } catch (err) {
-    logger.warn({ err }, 'Failed to refresh outbox pending gauge');
+    logger.warn({ err }, 'Failed to refresh health gauges');
   }
 }
 
@@ -99,7 +122,7 @@ function registerShutdown(
   httpServer: Server,
   closeIo: () => void,
   worker: OutboxWorker,
-  gaugeTimer: NodeJS.Timeout,
+  timers: NodeJS.Timeout[],
 ) {
   let shuttingDown = false;
 
@@ -115,7 +138,7 @@ function registerShutdown(
     timer.unref();
 
     try {
-      clearInterval(gaugeTimer);
+      for (const t of timers) clearInterval(t);
       // Stop the worker and wait for any in-flight drain to settle BEFORE
       // tearing down the DB / Redis — otherwise a pre-auth mid-flight would
       // crash and need the reaper to recover.

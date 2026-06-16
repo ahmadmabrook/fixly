@@ -56,3 +56,40 @@ export const paymentOpsTotal = new client.Counter({
   labelNames: ['op', 'result'] as const, // result: ok | skipped | failed
   registers: [registry],
 });
+
+/** Payouts resolved by the reconciliation job, labelled by outcome. */
+export const payoutReconciledTotal = new client.Counter({
+  name: 'payout_reconciled_total',
+  help: 'Stuck payouts resolved by reconciliation',
+  labelNames: ['outcome'] as const, // completed | failed | unresolved
+  registers: [registry],
+});
+
+/** Payouts currently stuck in PROCESSING (set by the reconciliation job). */
+export const payoutStuckGauge = new client.Gauge({
+  name: 'payout_stuck_processing',
+  help: 'Payouts currently in PROCESSING (disbursement not yet finalized)',
+  registers: [registry],
+});
+
+/** Outbox events in terminal FAILED — a payment FAILED here = money not moved. */
+export const outboxFailedGauge = new client.Gauge({
+  name: 'outbox_failed_events',
+  help: 'Outbox events in terminal FAILED state (need manual triage)',
+  registers: [registry],
+});
+
+/** Payments stuck in PRE_AUTHORIZED past the hold-expiry window (capture at risk). */
+export const paymentStuckPreauthGauge = new client.Gauge({
+  name: 'payment_stuck_preauthorized',
+  help: 'Payments still PRE_AUTHORIZED past the hold-expiry window',
+  registers: [registry],
+});
+
+/** PSP webhook events handled, labelled by type + result. */
+export const pspWebhookTotal = new client.Counter({
+  name: 'psp_webhook_events_total',
+  help: 'Inbound PSP webhook events processed',
+  labelNames: ['type', 'result'] as const, // result: ok | duplicate | invalid | error
+  registers: [registry],
+});

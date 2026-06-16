@@ -7,21 +7,19 @@ beforeEach(() => {
 });
 
 describe('useAuth store', () => {
-  it('persists tokens to localStorage on setTokens', () => {
+  it('keeps the access token in memory and persists only the (non-sensitive) role', () => {
     useAuth.getState().setTokens('abc', 'CUSTOMER');
-    expect(localStorage.getItem('access_token')).toBe('abc');
-    expect(localStorage.getItem('role')).toBe('CUSTOMER');
     expect(useAuth.getState().accessToken).toBe('abc');
+    // Access token must NOT be persisted (XSS exposure); role is a safe UI hint.
+    expect(localStorage.getItem('access_token')).toBeNull();
+    expect(localStorage.getItem('role')).toBe('CUSTOMER');
   });
 
-  it('clears tokens and the refresh token on logout', () => {
+  it('clears the session on logout', () => {
     useAuth.getState().setTokens('abc', 'CUSTOMER');
-    localStorage.setItem('refresh_token', 'r1');
     useAuth.getState().logout();
     expect(useAuth.getState().accessToken).toBeNull();
     expect(useAuth.getState().role).toBeNull();
-    expect(localStorage.getItem('access_token')).toBeNull();
     expect(localStorage.getItem('role')).toBeNull();
-    expect(localStorage.getItem('refresh_token')).toBeNull();
   });
 });

@@ -3,7 +3,6 @@ import { api, ApiError } from './api';
 import { useAuth } from './store';
 
 const NEW_ACCESS = 'new-access';
-const NEW_REFRESH = 'new-refresh';
 
 function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
@@ -20,17 +19,17 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('api single-flight refresh', () => {
-  it('refreshes the access token on 401 and replays the request', async () => {
+describe('api single-flight refresh (cookie-based)', () => {
+  it('refreshes the access token on 401 (via cookie) and replays the request', async () => {
     useAuth.getState().setTokens('expired', 'CUSTOMER');
-    localStorage.setItem('refresh_token', 'old-refresh');
 
-    const calls: Array<{ url: string; method: string }> = [];
+    const calls: Array<{ url: string; method: string; credentials?: string }> = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const method = (init?.method ?? 'GET').toString();
-      calls.push({ url, method });
+      calls.push({ url, method, credentials: init?.credentials as string | undefined });
       if (url.endsWith('/auth/refresh') && method === 'POST') {
-        return jsonResponse(200, { data: { accessToken: NEW_ACCESS, refreshToken: NEW_REFRESH } });
+        // Server returns only the access token; refresh token is the httpOnly cookie.
+        return jsonResponse(200, { data: { accessToken: NEW_ACCESS } });
       }
       if (url.endsWith('/services') && calls.filter((c) => c.url.endsWith('/services')).length === 1) {
         return jsonResponse(401, { error: { code: 'UNAUTHORIZED' } });
@@ -47,12 +46,12 @@ describe('api single-flight refresh', () => {
       expect.stringContaining('/services'),
     ]);
     expect(useAuth.getState().accessToken).toBe(NEW_ACCESS);
-    expect(localStorage.getItem('refresh_token')).toBe(NEW_REFRESH);
+    // Every call must include credentials so the httpOnly cookie is sent.
+    expect(calls.every((c) => c.credentials === 'include')).toBe(true);
   });
 
   it('logs the user out when refresh fails', async () => {
     useAuth.getState().setTokens('expired', 'CUSTOMER');
-    localStorage.setItem('refresh_token', 'old-refresh');
 
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/auth/refresh')) {
@@ -64,17 +63,15 @@ describe('api single-flight refresh', () => {
 
     await expect(api.get('/services')).rejects.toBeInstanceOf(ApiError);
     expect(useAuth.getState().accessToken).toBeNull();
-    expect(localStorage.getItem('refresh_token')).toBeNull();
   });
 
   it('does not loop refresh forever on persistent 401', async () => {
     useAuth.getState().setTokens('expired', 'CUSTOMER');
-    localStorage.setItem('refresh_token', 'old-refresh');
 
     const fetchMock = vi.fn(async (url: string) => {
       // Refresh succeeds but the replayed request still 401s — should not retry again.
       if (url.endsWith('/auth/refresh')) {
-        return jsonResponse(200, { data: { accessToken: NEW_ACCESS, refreshToken: NEW_REFRESH } });
+        return jsonResponse(200, { data: { accessToken: NEW_ACCESS } });
       }
       return jsonResponse(401, { error: { code: 'BANNED' } });
     });

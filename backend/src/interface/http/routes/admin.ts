@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body, query, param } from 'express-validator';
-import { BookingStatus, PayoutStatus } from '@prisma/client';
+import { Prisma, BookingStatus, PayoutStatus } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { authenticate, requireRole } from '../middleware/auth';
@@ -8,6 +8,7 @@ import { authLimiter, rateLimitEnabled } from '../middleware/rateLimit';
 import { AdminService } from '../../../application/admin/AdminService';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { UnauthorizedError } from '../../../shared/errors';
+import { ADMIN_REFRESH_COOKIE, setAdminRefreshCookie, clearAdminRefreshCookie } from '../cookies';
 
 /**
  * Re-check the admin still exists and is active on every privileged request.
@@ -31,7 +32,7 @@ export const adminRouter: Router = Router();
 
 const adminService = new AdminService();
 
-// POST /login — no auth, rate-limited
+// POST /login — no auth, rate-limited. Refresh token → httpOnly cookie.
 adminRouter.post(
   '/login',
   (req, res, next) => (rateLimitEnabled() ? authLimiter(req, res, next) : next()),
@@ -40,8 +41,30 @@ adminRouter.post(
     body('password').isString().notEmpty(),
   ]),
   asyncHandler(async (req, res) => {
-    const result = await adminService.login(req.body.email, req.body.password, req.ip);
-    res.json({ data: result });
+    const { accessToken, refreshToken, admin } = await adminService.login(req.body.email, req.body.password, req.ip);
+    setAdminRefreshCookie(res, refreshToken);
+    res.json({ data: { accessToken, admin } });
+  }),
+);
+
+// POST /auth/refresh — rotate via the httpOnly cookie (no access token needed).
+adminRouter.post(
+  '/auth/refresh',
+  (req, res, next) => (rateLimitEnabled() ? authLimiter(req, res, next) : next()),
+  asyncHandler(async (req, res) => {
+    const { accessToken, refreshToken, admin } = await adminService.refresh(req.cookies?.[ADMIN_REFRESH_COOKIE]);
+    setAdminRefreshCookie(res, refreshToken);
+    res.json({ data: { accessToken, admin } });
+  }),
+);
+
+// POST /auth/logout — revoke the refresh token + clear the cookie.
+adminRouter.post(
+  '/auth/logout',
+  asyncHandler(async (req, res) => {
+    await adminService.logout(req.cookies?.[ADMIN_REFRESH_COOKIE]);
+    clearAdminRefreshCookie(res);
+    res.json({ data: { ok: true } });
   }),
 );
 
@@ -138,5 +161,35 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const payout = await adminService.processPayout(req.params.id, req.user!.userId, req.ip);
     res.json({ data: payout });
+  }),
+);
+
+// POST /bookings/:id/refund — admin-initiated partial/full refund of a capture.
+adminRouter.post(
+  '/bookings/:id/refund',
+  validate([
+    param('id').isUUID(),
+    // Accept a decimal string or number; validate as a positive ≤3-dp (fils)
+    // amount WITHOUT coercing to a float (preserves money precision end-to-end).
+    body('amountJod').custom((value) => {
+      let d: Prisma.Decimal;
+      try {
+        d = new Prisma.Decimal(String(value));
+      } catch {
+        throw new Error('amountJod must be a number');
+      }
+      if (!d.isFinite() || d.lessThanOrEqualTo(0)) throw new Error('amountJod must be greater than 0');
+      if (d.decimalPlaces() > 3) throw new Error('amountJod supports at most 3 decimal places');
+      return true;
+    }),
+  ]),
+  asyncHandler(async (req, res) => {
+    const payment = await adminService.refundBookingPayment(
+      req.params.id,
+      req.body.amountJod as number | string,
+      req.user!.userId,
+      req.ip,
+    );
+    res.json({ data: payment });
   }),
 );

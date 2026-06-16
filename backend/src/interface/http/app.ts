@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
@@ -16,6 +17,9 @@ import { authRouter } from './routes/auth';
 import { servicesRouter } from './routes/services';
 import { bookingsRouter } from './routes/bookings';
 import { adminRouter } from './routes/admin';
+import { createWebhookRouter } from './routes/webhooks';
+import { PaymentService } from '../../application/payment/PaymentService';
+import { PaymentProviderFactory } from '../../infrastructure/providers/PaymentProviderFactory';
 
 export function createApp(): { app: Express; httpServer: http.Server } {
   const app = express();
@@ -35,8 +39,23 @@ export function createApp(): { app: Express; httpServer: http.Server } {
   // Compress JSON responses. threshold=1kb skips the small error envelopes
   // where the gzip header overhead dwarfs the body.
   app.use(compression({ threshold: 1024 }));
-  app.use(cors({ origin: env().CORS_ORIGIN }));
+  // credentials:true so the browser sends the httpOnly refresh cookie on
+  // cross-origin auth calls. Requires an explicit origin (not '*') in prod —
+  // enforced by env validation.
+  // credentials:true is incompatible with a literal '*' origin in browsers, so
+  // when configured open (dev) we reflect the request origin (origin:true);
+  // production always uses the explicit allowlist (env forbids '*' there).
+  const corsOrigin = env().CORS_ORIGIN;
+  app.use(cors({ origin: corsOrigin === '*' ? true : corsOrigin, credentials: true }));
+
+  // PSP webhooks need the RAW body for signature verification, so they are
+  // mounted before the JSON body parser (which would otherwise consume it).
+  const paymentProvider = PaymentProviderFactory.create();
+  const webhookPaymentService = new PaymentService(paymentProvider, env().PAYMENT_PROVIDER);
+  app.use('/api/v1/webhooks', createWebhookRouter(webhookPaymentService, paymentProvider, env().PAYMENT_PROVIDER));
+
   app.use(express.json({ limit: '100kb' }));
+  app.use(cookieParser());
   app.use(pinoHttp({
     logger,
     // pino-http generates an `req.id` per request; expose it on res so the
@@ -59,12 +78,30 @@ export function createApp(): { app: Express; httpServer: http.Server } {
     next();
   });
 
-  // Prometheus scrape endpoint. Unmetered; keep it on the internal network /
-  // behind the LB (not publicly routable) in production.
-  app.get('/metrics', async (_req, res) => {
-    res.set('Content-Type', registry.contentType);
-    res.end(await registry.metrics());
-  });
+  // Prometheus scrape endpoint. Guarded so it isn't a public recon surface:
+  //  - if METRICS_TOKEN is set, require `Authorization: Bearer <token>`;
+  //  - else allow in non-prod (dev convenience) but 404 in production, so an
+  //    unconfigured deploy never silently exposes internal metrics.
+  app.get(
+    '/metrics',
+    (req, res, next) => {
+      const token = env().METRICS_TOKEN;
+      if (token) {
+        if (req.headers.authorization !== `Bearer ${token}`) {
+          res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Metrics token required' } });
+          return;
+        }
+      } else if (env().NODE_ENV === 'production') {
+        res.status(404).end();
+        return;
+      }
+      next();
+    },
+    async (_req, res) => {
+      res.set('Content-Type', registry.contentType);
+      res.end(await registry.metrics());
+    },
+  );
 
   // Liveness: cheap, dependency-free — must NOT depend on the DB.
   // A pod can keep running even when the DB is briefly unreachable.

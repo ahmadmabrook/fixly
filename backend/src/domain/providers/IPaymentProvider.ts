@@ -6,6 +6,7 @@ export interface PreAuthResult {
 export interface CaptureResult {
   providerRef: string;
   status: 'CAPTURED';
+  capturedAmountJod: number;
 }
 
 export interface VoidResult {
@@ -16,22 +17,58 @@ export interface VoidResult {
 export interface RefundResult {
   providerRef: string;
   status: 'REFUNDED';
+  refundedAmountJod: number;
+}
+
+export type PaymentProviderState =
+  | 'AUTHORIZED'
+  | 'CAPTURED'
+  | 'PARTIALLY_REFUNDED'
+  | 'REFUNDED'
+  | 'VOIDED'
+  | 'DISPUTED'
+  | 'EXPIRED'
+  | 'UNKNOWN';
+
+export interface PaymentStatusResult {
+  state: PaymentProviderState;
+  capturedAmountJod?: number;
+  refundedAmountJod?: number;
+}
+
+/** Normalised inbound PSP webhook event (after signature verification + parse). */
+export interface PspWebhookEvent {
+  /** Provider's unique event id — used to dedupe at-least-once delivery. */
+  eventId: string;
+  type:
+    | 'payment.captured'
+    | 'payment.refunded'
+    | 'payment.dispute.opened'
+    | 'payment.dispute.closed'
+    | 'payment.auth.expired'
+    | string;
+  providerRef: string;
+  amountJod?: number;
+  reason?: string;
+  /** For dispute.closed: true = merchant won, false = lost (chargeback). */
+  disputeWon?: boolean;
 }
 
 /**
- * Payment service provider (PSP) port. The `idempotencyKey` is passed to the
- * real PSP so a retried call (outbox at-least-once, or a crash between the
- * provider call and the DB commit) is de-duplicated by the PSP instead of
- * double-charging / double-refunding. Mocks ignore it; real adapters MUST
- * forward it (e.g. Stripe's `Idempotency-Key` header).
+ * Payment service provider (PSP) port. `idempotencyKey` is forwarded to the PSP
+ * so a retried call (outbox at-least-once, or a crash between the call and our
+ * DB commit) is de-duplicated — never double-charged/refunded. Amounts are in
+ * JOD; partial capture/refund pass an explicit amount ≤ the authorized/captured value.
  */
 export interface IPaymentProvider {
-  /** Place a hold for a freshly created booking. */
   preAuthorize(bookingId: string, amountJod: number, idempotencyKey?: string): Promise<PreAuthResult>;
-  /** Capture a previously placed hold (on completion). */
-  capture(providerRef: string, idempotencyKey?: string): Promise<CaptureResult>;
-  /** Release an uncaptured hold (booking cancelled before capture). */
+  capture(providerRef: string, amountJod: number, idempotencyKey?: string): Promise<CaptureResult>;
   void(providerRef: string, idempotencyKey?: string): Promise<VoidResult>;
-  /** Refund already-captured funds (booking cancelled/refunded after capture). */
-  refund(providerRef: string, idempotencyKey?: string): Promise<RefundResult>;
+  refund(providerRef: string, amountJod: number, idempotencyKey?: string): Promise<RefundResult>;
+  /** Authoritative state at the PSP (used for reconciliation). */
+  getStatus(providerRef: string): Promise<PaymentStatusResult>;
+  /** Verify a webhook signature against the raw body. */
+  verifyWebhook(rawBody: string, signature: string | undefined): boolean;
+  /** Parse a verified webhook body into a normalised event. */
+  parseWebhook(rawBody: string): PspWebhookEvent;
 }

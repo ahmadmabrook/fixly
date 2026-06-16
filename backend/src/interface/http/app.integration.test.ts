@@ -115,14 +115,16 @@ describe('auth flow', () => {
     await request(app).post('/api/v1/auth/otp/request').send({ phone: 'not-a-phone' }).expect(422);
   });
 
-  it('verifies a correct OTP and returns tokens', async () => {
+  it('verifies a correct OTP, returns the access token, and sets an httpOnly refresh cookie', async () => {
     await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
     const res = await request(app)
       .post('/api/v1/auth/otp/verify')
       .send({ phone: TEST_PHONE, code: '000000' })
       .expect(200);
     expect(res.body.data.accessToken).toEqual(expect.any(String));
-    expect(res.body.data.refreshToken).toEqual(expect.any(String));
+    expect(res.body.data.refreshToken).toBeUndefined(); // refresh token is cookie-only now
+    const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+    expect(cookies.some((c) => c.startsWith('refresh_token=') && /HttpOnly/i.test(c))).toBe(true);
   });
 
   it('rejects a wrong OTP', async () => {
@@ -142,18 +144,35 @@ describe('auth flow', () => {
     expect(res.body.data.phone).toBe(TEST_PHONE);
   });
 
-  it('rotates refresh tokens and revokes the old one', async () => {
+  it('rotates the refresh cookie and revokes the old one (reuse detection)', async () => {
     await clearOtpState(TEST_PHONE);
     await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
     const verify = await request(app)
       .post('/api/v1/auth/otp/verify')
       .send({ phone: TEST_PHONE, code: '000000' })
       .expect(200);
-    const oldRefresh = verify.body.data.refreshToken;
+    const cookies = (verify.headers['set-cookie'] as unknown as string[]) ?? [];
+    const refreshCookie = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
 
-    await request(app).post('/api/v1/auth/refresh').send({ refreshToken: oldRefresh }).expect(200);
-    // Replaying the now-revoked token must fail.
-    await request(app).post('/api/v1/auth/refresh').send({ refreshToken: oldRefresh }).expect(401);
+    // First refresh with the cookie succeeds and rotates the token.
+    await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(200);
+    // Replaying the now-revoked cookie value must fail.
+    await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(401);
+  });
+
+  it('logs out: clears the cookie and revokes the refresh token', async () => {
+    await clearOtpState(TEST_PHONE);
+    await request(app).post('/api/v1/auth/otp/request').send({ phone: TEST_PHONE }).expect(200);
+    const verify = await request(app)
+      .post('/api/v1/auth/otp/verify')
+      .send({ phone: TEST_PHONE, code: '000000' })
+      .expect(200);
+    const cookies = (verify.headers['set-cookie'] as unknown as string[]) ?? [];
+    const refreshCookie = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
+
+    await request(app).post('/api/v1/auth/logout').set('Cookie', refreshCookie).expect(200);
+    // The revoked token can no longer refresh.
+    await request(app).post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(401);
   });
 });
 
@@ -219,5 +238,28 @@ describe('GET /metrics', () => {
     expect(res.text).toContain('http_request_duration_seconds');
     expect(res.text).toContain('http_requests_total');
     expect(res.text).toContain('process_cpu_user_seconds_total'); // default Node metrics
+  });
+});
+
+describe('POST /api/v1/webhooks/psp', () => {
+  it('accepts a verified event and dedupes re-delivery', async () => {
+    const eventId = `evt-test-${Date.now()}`;
+    const body = JSON.stringify({ eventId, type: 'payment.refunded', providerRef: 'no-such-ref', amountJod: 1 });
+
+    const first = await request(app)
+      .post('/api/v1/webhooks/psp')
+      .set('Content-Type', 'application/json')
+      .send(body)
+      .expect(200);
+    expect(first.body.data.ok).toBe(true);
+
+    const second = await request(app)
+      .post('/api/v1/webhooks/psp')
+      .set('Content-Type', 'application/json')
+      .send(body)
+      .expect(200);
+    expect(second.body.data.duplicate).toBe(true);
+
+    await prisma.pspWebhookEvent.deleteMany({ where: { eventId } });
   });
 });

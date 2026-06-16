@@ -23,11 +23,61 @@ interface Envelope<T> {
   meta?: { total: number; limit: number; offset: number };
 }
 
-/** Single fetch + auth-header + 401-handling primitive. No envelope parsing. */
-async function rawRequest(path: string, opts: RequestInit = {}): Promise<Response> {
+function fireAuthExpired(): void {
+  onAuthExpired.forEach((cb) => {
+    try { cb(); } catch { /* swallow listener errors */ }
+  });
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Rotate the admin session using the httpOnly refresh cookie (single-flight).
+ * Returns true if a fresh access token was obtained. The refresh token is never
+ * JS-readable; it rides in the cookie sent via credentials:'include'.
+ */
+async function tryRefresh(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string } } };
+      const access = body.data?.accessToken;
+      if (!access) return false;
+      const admin = body.data?.admin ?? useAuth.getState().admin ?? { id: '', name: '', email: '' };
+      useAuth.getState().setAuth(access, admin);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+/** Restore the admin session on load from the refresh cookie. */
+export async function restoreSession(): Promise<boolean> {
+  return tryRefresh();
+}
+
+/** Revoke the admin session server-side (clears the cookie) + drop local state. */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'include' });
+  } finally {
+    useAuth.getState().logout();
+    fireAuthExpired();
+  }
+}
+
+/** Single fetch + auth-header + cookie + 401-handling (one silent refresh). */
+async function rawRequest(path: string, opts: RequestInit = {}, retried = false): Promise<Response> {
   const token = useAuth.getState().accessToken;
   const res = await fetch(BASE + path, {
     ...opts,
+    credentials: 'include', // send/receive the httpOnly refresh cookie
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -35,14 +85,14 @@ async function rawRequest(path: string, opts: RequestInit = {}): Promise<Respons
     },
   });
 
-  if (res.status === 401) {
-    // Global 401 handler: clear the auth state and notify subscribers so the
-    // router bounces the user to /login. We intentionally do this BEFORE
-    // parsing the body so the store update is immediate.
+  if (res.status === 401 && !retried) {
+    // Try one silent refresh before giving up.
+    if (await tryRefresh()) return rawRequest(path, opts, true);
     useAuth.getState().logout();
-    onAuthExpired.forEach((cb) => {
-      try { cb(); } catch { /* swallow listener errors */ }
-    });
+    fireAuthExpired();
+  } else if (res.status === 401) {
+    useAuth.getState().logout();
+    fireAuthExpired();
   }
   return res;
 }

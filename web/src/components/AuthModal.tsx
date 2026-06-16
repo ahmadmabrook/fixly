@@ -58,10 +58,10 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   async function verifyOtp() {
     setLoading(true);
     try {
-      const res = await api.post<{ accessToken: string; refreshToken: string }>('/auth/otp/verify', { phone, code: otp });
-      const { accessToken, refreshToken } = res;
+      // Access token comes back in the body; the refresh token is set as an
+      // httpOnly cookie by the server (not readable/storable by JS).
+      const { accessToken } = await api.post<{ accessToken: string }>('/auth/otp/verify', { phone, code: otp });
       setTokens(accessToken, roleFromJwt(accessToken));
-      localStorage.setItem('refresh_token', refreshToken);
       notify('تم تسجيل الدخول بنجاح', 'success');
       onSuccess();
     } catch (e: unknown) {
