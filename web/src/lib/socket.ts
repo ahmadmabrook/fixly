@@ -98,3 +98,39 @@ export function useBookingSocket(bookingId: string | null): string | null {
   }, [bookingId]);
   return status;
 }
+
+export interface LiveLocation {
+  lat: number;
+  lng: number;
+  at: number;
+}
+
+/**
+ * Subscribe to the assigned technician's live location for a booking. Joins the
+ * booking room (server authorises) and listens for `location:update`. Returns
+ * the latest point, or null until the first ping.
+ */
+export function useBookingLocation(bookingId: string | null): LiveLocation | null {
+  const [loc, setLoc] = useState<LiveLocation | null>(null);
+  useEffect(() => {
+    if (!bookingId) {
+      setLoc(null);
+      return;
+    }
+    const sock = getSharedSocket();
+    if (!sock) return;
+    const join = () => sock.emit('booking:join', bookingId);
+    if (sock.connected) join();
+    sock.on('connect', join);
+    const onLoc = (e: { bookingId: string; lat: number; lng: number; at?: number }) => {
+      if (e.bookingId === bookingId) setLoc({ lat: e.lat, lng: e.lng, at: e.at ?? Date.now() });
+    };
+    sock.on('location:update', onLoc);
+    return () => {
+      sock.off('location:update', onLoc);
+      sock.off('connect', join);
+      if (sock.connected) sock.emit('booking:leave', bookingId);
+    };
+  }, [bookingId]);
+  return loc;
+}

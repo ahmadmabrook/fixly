@@ -9,6 +9,12 @@ import Bookings from './pages/Bookings';
 import Technicians from './pages/Technicians';
 import Payouts from './pages/Payouts';
 import Customers from './pages/Customers';
+import Guarantee from './pages/Guarantee';
+import Support from './pages/Support';
+import Reports from './pages/Reports';
+import Broadcast from './pages/Broadcast';
+import Withdrawals from './pages/Withdrawals';
+import Admins from './pages/Admins';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -76,7 +82,13 @@ export function AppShell() {
           <Route path="dashboard"   element={<Dashboard />} />
           <Route path="bookings"    element={<Bookings />} />
           <Route path="technicians" element={<Technicians />} />
+          <Route path="guarantee"   element={<Guarantee />} />
+          <Route path="support"     element={<Support />} />
           <Route path="payouts"     element={<Payouts />} />
+          <Route path="withdrawals" element={<Withdrawals />} />
+          <Route path="reports"     element={<Reports />} />
+          <Route path="broadcast"   element={<Broadcast />} />
+          <Route path="admins"      element={<Admins />} />
           <Route path="customers"   element={<Customers />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

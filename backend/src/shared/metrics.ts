@@ -93,3 +93,49 @@ export const pspWebhookTotal = new client.Counter({
   labelNames: ['type', 'result'] as const, // result: ok | duplicate | invalid | error
   registers: [registry],
 });
+
+// ── Domain counters (guarantee / support / withdrawals / broadcasts) ──────────
+
+/** Guarantee tickets opened (customer) and reviewed (admin), by outcome. */
+export const guaranteeTicketsTotal = new client.Counter({
+  name: 'guarantee_tickets_total',
+  help: 'Guarantee ticket lifecycle events',
+  labelNames: ['action'] as const, // opened | approved | rejected
+  registers: [registry],
+});
+
+/** Support tickets opened by customers. */
+export const supportTicketsTotal = new client.Counter({
+  name: 'support_tickets_total',
+  help: 'Support tickets opened',
+  registers: [registry],
+});
+
+/** Technician withdrawals requested (tech) and processed (finance), by decision. */
+export const withdrawalsRequestedTotal = new client.Counter({
+  name: 'withdrawals_requested_total',
+  help: 'Technician withdrawal requests created',
+  registers: [registry],
+});
+export const withdrawalsProcessedTotal = new client.Counter({
+  name: 'withdrawals_processed_total',
+  help: 'Technician withdrawals finalised by an admin',
+  labelNames: ['decision'] as const, // PAID | REJECTED
+  registers: [registry],
+});
+
+/** Admin broadcasts sent, by audience segment. */
+export const broadcastsSentTotal = new client.Counter({
+  name: 'broadcasts_sent_total',
+  help: 'Admin broadcast notifications sent',
+  labelNames: ['segment'] as const, // ALL | CUSTOMERS | TECHNICIANS
+  registers: [registry],
+});
+
+/** Reviews submitted, by direction. */
+export const reviewsSubmittedTotal = new client.Counter({
+  name: 'reviews_submitted_total',
+  help: 'Reviews submitted after completion',
+  labelNames: ['direction'] as const, // customer_to_tech | tech_to_customer
+  registers: [registry],
+});

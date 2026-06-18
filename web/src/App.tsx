@@ -4,6 +4,7 @@ import {
 } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuth } from './lib/store';
+import { useLang } from './lib/i18n';
 import { restoreSession, logout as apiLogout } from './lib/api';
 import { BookingSocketProvider } from './lib/socket-provider';
 import TopNav from './components/TopNav';
@@ -14,6 +15,11 @@ import Catalog from './pages/Catalog';
 import ServicePage from './pages/ServicePage';
 import BookingPage from './pages/BookingPage';
 import MyBookings from './pages/MyBookings';
+import BookingDetail from './pages/BookingDetail';
+import TrackingPage from './pages/TrackingPage';
+import GuaranteePage from './pages/GuaranteePage';
+import Account from './pages/Account';
+import TechPortal from './pages/tech/TechPortal';
 
 type ModalState =
   | { open: false }
@@ -34,6 +40,15 @@ export default function App() {
   const [modal, setModal] = useState<ModalState>({ open: false });
   const accessToken = useAuth((s) => s.accessToken);
   const authed = !!accessToken;
+  const lang = useLang((s) => s.lang);
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  // Keep <html dir/lang> in sync with the chosen language (set on load too, not
+  // just on toggle, so a persisted 'en' applies before any interaction).
+  useEffect(() => {
+    document.documentElement.dir = dir;
+    document.documentElement.lang = lang;
+  }, [dir, lang]);
 
   // On load the access token lives only in memory (gone after a reload), so
   // silently re-establish the session from the httpOnly refresh cookie — but
@@ -52,7 +67,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <BookingSocketProvider>
-        <div dir="rtl" className="min-h-screen" style={{ background: '#F6F8FB' }}>
+        <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
           <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
 
           <Routes>
@@ -69,6 +84,26 @@ export default function App() {
             <Route
               path="/my-bookings"
               element={authed ? <MyBookings /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/bookings/:id"
+              element={authed ? <BookingDetail /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/bookings/:id/track"
+              element={authed ? <TrackingPage /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/guarantee"
+              element={authed ? <GuaranteePage /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/account"
+              element={authed ? <Account /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/tech"
+              element={authed ? <TechPortal /> : <Navigate to="/" replace />}
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

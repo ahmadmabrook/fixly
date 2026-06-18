@@ -16,7 +16,17 @@ tags:
   - name: Health
   - name: Auth
   - name: Services
+  - name: Reviews
+  - name: Promo
   - name: Bookings
+  - name: Addresses
+  - name: PaymentMethods
+  - name: Notifications
+  - name: Devices
+  - name: Guarantee
+  - name: Support
+  - name: Technician
+    description: Technician self-service portal (onboarding, availability, jobs, earnings, withdrawals).
   - name: Admin
   - name: Realtime
     description: Socket.io events on `/socket.io` (WebSocket-first, polling fallback).
@@ -136,6 +146,152 @@ components:
         status: { type: string, enum: [PENDING, PROCESSED, FAILED] }
         requestedAt: { type: string, format: date-time }
 
+    PromoQuote:
+      type: object
+      properties:
+        code: { type: string }
+        discountJod: { type: string }
+        finalJod: { type: string }
+        originalJod: { type: string }
+
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        photos: { type: array, items: { type: string } }
+        reviewerName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Address:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        line: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+        building: { type: string, nullable: true }
+        apartment: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        isDefault: { type: boolean }
+
+    PaymentMethod:
+      type: object
+      description: Display metadata only — never a PAN.
+      properties:
+        id: { type: string, format: uuid }
+        brand: { type: string }
+        last4: { type: string }
+        expMonth: { type: integer }
+        expYear: { type: integer }
+        isDefault: { type: boolean }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        titleAr: { type: string }
+        bodyAr: { type: string }
+        isRead: { type: boolean }
+        bookingId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    GuaranteeTicket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [OPEN, IN_REVIEW, RESOLVED, REJECTED] }
+        description: { type: string, nullable: true }
+        mediaUrls: { type: array, items: { type: string } }
+        adminNote: { type: string, nullable: true }
+        scheduledVisitAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    SupportMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        senderRole: { type: string, enum: [CUSTOMER, ADMIN] }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    SupportTicket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        subject: { type: string }
+        status: { type: string, enum: [OPEN, IN_PROGRESS, CLOSED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        messages: { type: array, items: { $ref: '#/components/schemas/SupportMessage' } }
+
+    TechnicianProfileMe:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, SUSPENDED] }
+        isVerified: { type: boolean }
+        isAvailable: { type: boolean }
+        rejectionReason: { type: string, nullable: true }
+        hourlyRateJod: { type: string, nullable: true }
+        vehicle: { type: string, nullable: true }
+        rating: { type: string }
+        totalReviews: { type: integer }
+        services: { type: array, items: { type: object } }
+
+    TechEarnings:
+      type: object
+      properties:
+        todayJod: { type: string }
+        monthJod: { type: string }
+        totalJod: { type: string }
+        balanceJod: { type: string }
+        lastWithdrawalAt: { type: string, format: date-time, nullable: true }
+
+    Withdrawal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        amountJod: { type: string }
+        status: { type: string, enum: [REQUESTED, PROCESSING, PAID, REJECTED] }
+        iban: { type: string, nullable: true }
+        bankName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    FinancialReport:
+      type: object
+      properties:
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              period: { type: string, format: date-time }
+              bookings: { type: integer }
+              grossJod: { type: number }
+              platformFeeJod: { type: number }
+              technicianNetJod: { type: number }
+        totals:
+          type: object
+          properties:
+            bookings: { type: integer }
+            grossJod: { type: number }
+            platformFeeJod: { type: number }
+            technicianNetJod: { type: number }
+
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [SUPER_ADMIN, OPS, FINANCE, SUPPORT] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -205,23 +361,30 @@ paths:
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: Exchange a refresh token for a new access + refresh pair
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [refreshToken]
-              properties:
-                refreshToken: { type: string }
+      summary: Rotate the session using the httpOnly refresh cookie
+      description: >
+        Reads the `refresh_token` httpOnly cookie (no request body), rotates it,
+        sets a new cookie, and returns a fresh access token. Reuse of a revoked
+        cookie revokes the whole session family.
       responses:
         '200':
-          description: New tokens issued.
+          description: New access token issued; new refresh cookie set.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: 'refresh_token=…; HttpOnly; Secure; SameSite=Strict' }
           content:
             application/json:
-              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Tokens' } } }
+              schema: { type: object, properties: { data: { type: object, properties: { accessToken: { type: string } } } } }
         '401': { $ref: '#/components/schemas/Error' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the refresh token and clear the cookie
+      responses:
+        '200':
+          description: Logged out (cookie cleared).
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { ok: { type: boolean } } } } }
   /auth/me:
     get:
       tags: [Auth]
@@ -334,19 +497,29 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
-  /bookings/{id}/start:
+  /bookings/{id}/status:
     post:
       tags: [Bookings]
-      summary: Technician starts the service
+      summary: Technician advances an active booking (EN_ROUTE → ARRIVED → IN_PROGRESS)
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string, format: uuid }
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: { type: string, enum: [EN_ROUTE, ARRIVED, IN_PROGRESS] }
       responses:
         '200':
-          description: Booking started.
+          description: Booking advanced.
+        '409': { $ref: '#/components/schemas/Error' }
   /bookings/{id}/complete:
     post:
       tags: [Bookings]
@@ -361,10 +534,10 @@ paths:
         '200':
           description: Booking completed.
 
-  /admin/auth/login:
+  /admin/login:
     post:
       tags: [Admin]
-      summary: Admin email + password login
+      summary: Admin email + password login (sets an httpOnly refresh cookie)
       requestBody:
         required: true
         content:
@@ -372,12 +545,52 @@ paths:
             schema: { $ref: '#/components/schemas/AdminLoginInput' }
       responses:
         '200':
-          description: Admin JWT issued.
+          description: Access token + admin profile; refresh cookie set.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: 'admin_refresh_token=…; HttpOnly; Secure; SameSite=Strict' }
           content:
             application/json:
-              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Tokens' } } }
+              schema: { type: object, properties: { data: { type: object, properties: { accessToken: { type: string }, admin: { type: object, additionalProperties: true } } } } }
         '401': { $ref: '#/components/schemas/Error' }
-  /admin/dashboard:
+  /admin/auth/refresh:
+    post:
+      tags: [Admin]
+      summary: Rotate the admin session via the httpOnly refresh cookie
+      responses:
+        '200':
+          description: New admin access token; new refresh cookie set.
+        '401': { $ref: '#/components/schemas/Error' }
+  /admin/auth/logout:
+    post:
+      tags: [Admin]
+      summary: Revoke the admin refresh token and clear the cookie
+      responses:
+        '200': { description: Logged out. }
+  /admin/bookings/{id}/refund:
+    post:
+      tags: [Admin]
+      summary: Partial/full refund of a booking's captured payment (audited)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amountJod]
+              properties:
+                amountJod: { type: string, description: 'Positive amount, ≤ outstanding captured, max 3 decimals (fils).' }
+      responses:
+        '200': { description: Refund applied; updated payment returned. }
+        '404': { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/schemas/Error' }
+  /admin/stats:
     get:
       tags: [Admin]
       summary: Aggregate dashboard metrics
@@ -489,6 +702,580 @@ paths:
       responses:
         '200':
           description: Paginated customers.
+
+  # ---- Reviews (public) ----
+  /reviews/recent:
+    get:
+      tags: [Reviews]
+      summary: Recent high-rated verified reviews (public, for the landing page)
+      responses:
+        '200': { description: A short list of recent reviews (reviewer first-name only). }
+
+  /technicians/{id}:
+    get:
+      tags: [Reviews]
+      summary: Public technician card (rating, vehicle, verified)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Technician public profile. }
+        '404': { description: Not found. }
+  /technicians/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Verified reviews + rating summary for a technician
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: limit, schema: { type: integer } }
+        - { in: query, name: offset, schema: { type: integer } }
+      responses:
+        '200': { description: Summary + paginated reviews. }
+
+  # ---- Promo ----
+  /promo/validate:
+    post:
+      tags: [Promo]
+      summary: Validate a promo code against a service price
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, serviceId]
+              properties:
+                code: { type: string }
+                serviceId: { type: string }
+      responses:
+        '200':
+          description: Discount + final amount.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PromoQuote' }
+        '422': { description: Invalid/expired/exhausted code (error.code = PROMO_*). }
+
+  # ---- Bookings (additions) ----
+  /bookings/{id}/reschedule:
+    post:
+      tags: [Bookings]
+      summary: Reschedule a not-yet-started booking
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [scheduledAt], properties: { scheduledAt: { type: string, format: date-time } } } } }
+      responses: { '200': { description: Updated booking. } }
+  /bookings/{id}/review:
+    post:
+      tags: [Bookings]
+      summary: Rate the other party after completion (customer↔technician)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+                photos: { type: array, items: { type: string } }
+      responses: { '201': { description: Review created. } }
+  /bookings/{id}/additional-work:
+    get:
+      tags: [Bookings]
+      summary: List additional-work items for a booking
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: Items. } }
+    post:
+      tags: [Bookings]
+      summary: Technician proposes additional work (IN_PROGRESS only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [description, amountJod], properties: { description: { type: string }, amountJod: { type: number } } } } }
+      responses: { '201': { description: Proposed item. } }
+  /bookings/{id}/additional-work/{itemId}/respond:
+    post:
+      tags: [Bookings]
+      summary: Customer approves/declines a proposed additional-work item
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: path, name: itemId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [approve], properties: { approve: { type: boolean } } } } }
+      responses: { '200': { description: Updated item (approval adds to the booking total). } }
+
+  # ---- Addresses ----
+  /addresses:
+    get:
+      tags: [Addresses]
+      summary: List my saved addresses
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Addresses. } }
+    post:
+      tags: [Addresses]
+      summary: Add an address
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [label, line, lat, lng], properties: { label: { type: string }, line: { type: string }, lat: { type: number }, lng: { type: number }, building: { type: string }, apartment: { type: string }, notes: { type: string }, isDefault: { type: boolean } } } } }
+      responses: { '201': { description: Created. } }
+  /addresses/{id}:
+    patch:
+      tags: [Addresses]
+      summary: Update an address
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated. } }
+    delete:
+      tags: [Addresses]
+      summary: Delete an address
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Deleted. } }
+
+  # ---- Payment methods (mock cards) ----
+  /payment-methods:
+    get:
+      tags: [PaymentMethods]
+      summary: List my saved cards (no PAN stored)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Cards. } }
+    post:
+      tags: [PaymentMethods]
+      summary: Add a card (mock-tokenised)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [brand, last4, expMonth, expYear], properties: { brand: { type: string, enum: [visa, mastercard, amex] }, last4: { type: string }, expMonth: { type: integer }, expYear: { type: integer }, isDefault: { type: boolean } } } } }
+      responses: { '201': { description: Created. } }
+  /payment-methods/{id}/default:
+    post:
+      tags: [PaymentMethods]
+      summary: Set a card as default
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: OK. } }
+  /payment-methods/{id}:
+    delete:
+      tags: [PaymentMethods]
+      summary: Remove a card
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Deleted. } }
+
+  # ---- Notifications + devices ----
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: My notification inbox (+ unread count in meta)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Notifications. } }
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark a notification read
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated. } }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all read
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK. } }
+  /devices:
+    post:
+      tags: [Devices]
+      summary: Register a push device token
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token, platform], properties: { token: { type: string }, platform: { type: string, enum: [ios, android, web] } } } } }
+      responses: { '201': { description: Registered. } }
+  /devices/{token}:
+    delete:
+      tags: [Devices]
+      summary: Unregister a device token
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      responses: { '204': { description: Removed. } }
+
+  # ---- Guarantee (customer) ----
+  /guarantee/eligible:
+    get:
+      tags: [Guarantee]
+      summary: Completed bookings still inside the 30-day guarantee window
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Eligible bookings. } }
+  /guarantee:
+    get:
+      tags: [Guarantee]
+      summary: My guarantee tickets
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Tickets. } }
+    post:
+      tags: [Guarantee]
+      summary: Open a guarantee ticket
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [bookingId, description], properties: { bookingId: { type: string, format: uuid }, description: { type: string }, mediaUrls: { type: array, items: { type: string } } } } } }
+      responses: { '201': { description: Created. } }
+  /guarantee/{id}:
+    get:
+      tags: [Guarantee]
+      summary: A guarantee ticket I own
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Ticket. } }
+
+  # ---- Support (customer) ----
+  /support:
+    get:
+      tags: [Support]
+      summary: My support tickets
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Tickets. } }
+    post:
+      tags: [Support]
+      summary: Open a support ticket
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [subject, body], properties: { subject: { type: string }, body: { type: string } } } } }
+      responses: { '201': { description: Created. } }
+  /support/{id}:
+    get:
+      tags: [Support]
+      summary: A support ticket with its messages
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Ticket + thread. } }
+  /support/{id}/messages:
+    post:
+      tags: [Support]
+      summary: Reply to my support ticket
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string } } } } }
+      responses: { '201': { description: Message appended. } }
+
+  # ---- Technician self-service ----
+  /technician/onboarding:
+    post:
+      tags: [Technician]
+      summary: Apply / resubmit as a technician
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [serviceIds, hourlyRateJod], properties: { serviceIds: { type: array, items: { type: string } }, hourlyRateJod: { type: number, minimum: 40, maximum: 60 }, vehicle: { type: string }, bio: { type: string }, idDocUrl: { type: string }, certificateUrl: { type: string }, selfieUrl: { type: string } } } } }
+      responses: { '201': { description: Profile (status PENDING). } }
+  /technician/me:
+    get:
+      tags: [Technician]
+      summary: My technician profile + approval status
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Profile. }, '404': { description: Not a technician yet. } }
+  /technician/availability:
+    patch:
+      tags: [Technician]
+      summary: Go online/offline (APPROVED only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [isAvailable], properties: { isAvailable: { type: boolean } } } } }
+      responses: { '200': { description: Updated. }, '403': { description: Not approved. } }
+  /technician/location:
+    post:
+      tags: [Technician]
+      summary: Push current location
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [lat, lng], properties: { lat: { type: number }, lng: { type: number } } } } }
+      responses: { '200': { description: Updated. } }
+  /technician/jobs:
+    get:
+      tags: [Technician]
+      summary: Nearby unassigned job requests
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Jobs with distance. } }
+  /technician/earnings:
+    get:
+      tags: [Technician]
+      summary: Earnings (today/month/total) + withdrawable balance
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Earnings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/TechEarnings' }
+  /technician/withdrawals:
+    get:
+      tags: [Technician]
+      summary: My withdrawal history
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Withdrawals. } }
+    post:
+      tags: [Technician]
+      summary: Request a cash-out (min 20 JOD, once / 24h)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [amountJod], properties: { amountJod: { type: number, minimum: 20 }, iban: { type: string }, bankName: { type: string } } } } }
+      responses: { '201': { description: Requested. } }
+
+  # ---- Admin: technicians / customers moderation ----
+  /admin/technicians/{id}:
+    get:
+      tags: [Admin]
+      summary: Technician detail (docs, services, recent reviews) — OPS
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Detail. } }
+  /admin/technicians/{id}/reject:
+    post:
+      tags: [Admin]
+      summary: Reject a technician application (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } } }
+      responses: { '200': { description: Rejected. } }
+  /admin/technicians/{id}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspend an approved technician (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } } }
+      responses: { '200': { description: Suspended. } }
+  /admin/customers/{id}/bookings:
+    get:
+      tags: [Admin]
+      summary: A customer's booking history (OPS/SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Bookings. } }
+  /admin/customers/{id}/block:
+    post:
+      tags: [Admin]
+      summary: Block a customer (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Blocked. } }
+  /admin/customers/{id}/unblock:
+    post:
+      tags: [Admin]
+      summary: Unblock a customer (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Unblocked. } }
+
+  # ---- Admin: guarantee / support ----
+  /admin/guarantee:
+    get:
+      tags: [Admin]
+      summary: Guarantee ticket queue (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: status, schema: { type: string } }]
+      responses: { '200': { description: Tickets. } }
+  /admin/guarantee/{id}/in-review:
+    post:
+      tags: [Admin]
+      summary: Mark a guarantee ticket in-review (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated. } }
+  /admin/guarantee/{id}/review:
+    post:
+      tags: [Admin]
+      summary: Approve/reject a guarantee ticket (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [APPROVED, REJECTED] }, adminNote: { type: string }, scheduledVisitAt: { type: string, format: date-time } } } } } }
+      responses: { '200': { description: Finalised; customer notified. } }
+  /admin/support:
+    get:
+      tags: [Admin]
+      summary: Support inbox (SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: status, schema: { type: string } }]
+      responses: { '200': { description: Tickets. } }
+  /admin/support/{id}:
+    get:
+      tags: [Admin]
+      summary: A support ticket + thread (SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Ticket. } }
+  /admin/support/{id}/messages:
+    post:
+      tags: [Admin]
+      summary: Admin reply (SUPPORT; notifies customer)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string } } } } } }
+      responses: { '201': { description: Replied. } }
+  /admin/support/{id}/status:
+    post:
+      tags: [Admin]
+      summary: Set support ticket status (SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [OPEN, IN_PROGRESS, CLOSED] } } } } } }
+      responses: { '200': { description: Updated. } }
+
+  # ---- Admin: broadcast / finance / admins (RBAC) ----
+  /admin/broadcasts:
+    get:
+      tags: [Admin]
+      summary: Past broadcasts (OPS)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Broadcasts. } }
+    post:
+      tags: [Admin]
+      summary: Send a broadcast notification to a segment (OPS)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [titleAr, bodyAr, segment], properties: { titleAr: { type: string }, bodyAr: { type: string }, segment: { type: string, enum: [ALL, CUSTOMERS, TECHNICIANS] } } } } } }
+      responses: { '201': { description: Sent; fanned out to recipients. } }
+  /admin/reports/financial:
+    get:
+      tags: [Admin]
+      summary: Financial revenue time-series (FINANCE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: from, required: true, schema: { type: string, format: date-time } }
+        - { in: query, name: to, required: true, schema: { type: string, format: date-time } }
+        - { in: query, name: granularity, schema: { type: string, enum: [day, month] } }
+      responses:
+        '200':
+          description: Series + totals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/FinancialReport' }
+  /admin/reports/financial.csv:
+    get:
+      tags: [Admin]
+      summary: Financial report as CSV (FINANCE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: from, required: true, schema: { type: string, format: date-time } }
+        - { in: query, name: to, required: true, schema: { type: string, format: date-time } }
+        - { in: query, name: granularity, schema: { type: string, enum: [day, month] } }
+      responses: { '200': { description: CSV attachment. } }
+  /admin/withdrawals:
+    get:
+      tags: [Admin]
+      summary: Technician withdrawal requests (FINANCE)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: status, schema: { type: string } }]
+      responses: { '200': { description: Withdrawals. } }
+  /admin/withdrawals/{id}/process:
+    post:
+      tags: [Admin]
+      summary: Mark a withdrawal PAID/REJECTED (FINANCE)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [PAID, REJECTED] } } } } } }
+      responses: { '200': { description: Updated. } }
+  /admin/admins:
+    get:
+      tags: [Admin]
+      summary: List admin users (SUPER_ADMIN)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Admins.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AdminUser' } }
+    post:
+      tags: [Admin]
+      summary: Create an admin user (SUPER_ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, password, name, role], properties: { email: { type: string, format: email }, password: { type: string, minLength: 12 }, name: { type: string }, role: { type: string, enum: [SUPER_ADMIN, OPS, FINANCE, SUPPORT] } } } } } }
+      responses: { '201': { description: Created. } }
+  /admin/admins/{id}/role:
+    post:
+      tags: [Admin]
+      summary: Change an admin's role (SUPER_ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [role], properties: { role: { type: string, enum: [SUPER_ADMIN, OPS, FINANCE, SUPPORT] } } } } } }
+      responses: { '200': { description: Updated. } }
+  /admin/admins/{id}/active:
+    post:
+      tags: [Admin]
+      summary: Enable/disable an admin (SUPER_ADMIN; cannot disable self)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [isActive], properties: { isActive: { type: boolean } } } } } }
+      responses: { '200': { description: Updated. } }
+
+  /webhooks/psp:
+    post:
+      tags: [Webhooks]
+      summary: Inbound PSP webhook (signed; raw body)
+      description: >
+        Verified by HMAC `X-PSP-Signature` over the raw body, then deduped by
+        (provider, eventId). Handles capture/refund/dispute/chargeback/auth-expiry.
+      parameters:
+        - in: header
+          name: X-PSP-Signature
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, type, providerRef]
+              properties:
+                eventId: { type: string }
+                type: { type: string, example: payment.dispute.opened }
+                providerRef: { type: string }
+                amountJod: { type: number }
+                reason: { type: string }
+                disputeWon: { type: boolean }
+      responses:
+        '200': { description: Accepted (or duplicate). }
+        '400': { $ref: '#/components/schemas/Error' }
+
+  /metrics:
+    get:
+      tags: [Ops]
+      summary: Prometheus metrics
+      description: >
+        Guarded by `METRICS_TOKEN` (Bearer) when set; returns 404 in production
+        if unset. HTTP/outbox/payment/payout/webhook series + default process metrics.
+      responses:
+        '200': { description: Prometheus text exposition. }
+        '401': { $ref: '#/components/schemas/Error' }
 
 # ---------------------------------------------------------------------------
 # Realtime

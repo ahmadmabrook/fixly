@@ -108,6 +108,22 @@ export function Th({ children }: { children: ReactNode }) {
   );
 }
 
+export function Pagination({ page, total, limit, onPage }: { page: number; total: number; limit: number; onPage: (p: number) => void }) {
+  if (total <= limit) return null;
+  const onLast = (page + 1) * limit >= total;
+  const btn = (disabled: boolean): React.CSSProperties => ({
+    fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none',
+    cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
+  });
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9' }}>
+      <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} style={btn(page === 0)}>السابق</button>
+      <span style={{ fontSize: 13, color: '#64748B' }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
+      <button onClick={() => onPage(page + 1)} disabled={onLast} style={btn(onLast)}>التالي</button>
+    </div>
+  );
+}
+
 export function Td({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <td

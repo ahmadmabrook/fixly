@@ -42,7 +42,7 @@ async function tryRefresh(): Promise<boolean> {
     try {
       const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
       if (!res.ok) return false;
-      const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string } } };
+      const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string; role?: 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT' } } };
       const access = body.data?.accessToken;
       if (!access) return false;
       const admin = body.data?.admin ?? useAuth.getState().admin ?? { id: '', name: '', email: '' };
@@ -138,8 +138,25 @@ async function listWithMeta<T>(
   };
 }
 
+/** Fetch a file (with auth + refresh) and trigger a browser download. Used for
+ *  CSV exports where a plain <a href> can't send the Authorization header. */
+async function download(path: string, filename: string): Promise<void> {
+  const res = await rawRequest(path);
+  if (!res.ok) throw errorFrom(res, await res.json().catch(() => null));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  download,
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',
@@ -160,7 +177,11 @@ export interface AdminStats {
   completedBookings: number;
   totalTechnicians: number;
   verifiedTechnicians: number;
+  activeTechnicians: number;
   totalRevenueJod: number;
+  todayRevenueJod: number;
+  avgRating: number;
+  openGuarantees: number;
   pendingPayouts: number;
 }
 
@@ -177,9 +198,80 @@ export interface BookingItem {
 export interface TechnicianItem {
   id: string;
   isVerified: boolean;
+  status?: string;
+  hourlyRateJod?: string | number | null;
   user: { id: string; name: string; phone?: string };
   rating?: string | number | null;
   totalReviews?: number;
+}
+
+export interface TechnicianDetail extends TechnicianItem {
+  bio?: string | null;
+  vehicle?: string | null;
+  idDocUrl?: string | null;
+  certificateUrl?: string | null;
+  selfieUrl?: string | null;
+  rejectionReason?: string | null;
+  services: Array<{ id: string; nameAr: string; nameEn?: string }>;
+  recentReviews: Array<{ id: string; rating: number; comment: string | null; reviewer: { name: string | null } }>;
+}
+
+export interface GuaranteeAdminItem {
+  id: string;
+  status: string;
+  description: string | null;
+  mediaUrls: string[];
+  adminNote: string | null;
+  scheduledVisitAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+  booking?: { customer?: { name: string } | null; service?: { nameAr: string } | null } | null;
+}
+
+export interface SupportAdminMessage { id: string; senderRole: string; body: string; createdAt: string }
+export interface SupportAdminItem {
+  id: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: { name: string | null; phone: string } | null;
+  _count?: { messages: number };
+  messages?: SupportAdminMessage[];
+}
+
+export interface BroadcastItem {
+  id: string;
+  titleAr: string;
+  bodyAr: string;
+  segment: string;
+  recipientCount: number;
+  createdAt: string;
+  sentBy?: { name: string } | null;
+}
+
+export interface FinancialReport {
+  series: Array<{ period: string; bookings: number; grossJod: number; platformFeeJod: number; technicianNetJod: number }>;
+  totals: { bookings: number; grossJod: number; platformFeeJod: number; technicianNetJod: number };
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  role: 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface WithdrawalItem {
+  id: string;
+  amountJod: string | number;
+  status: string;
+  iban: string | null;
+  bankName: string | null;
+  createdAt: string;
+  technician?: { user?: { name: string; phone: string } } | null;
 }
 
 export interface PayoutItem {
@@ -195,5 +287,14 @@ export interface CustomerItem {
   id: string;
   name: string;
   phone?: string;
+  isActive?: boolean;
   createdAt: string;
+}
+
+export interface CustomerBookingItem {
+  id: string;
+  status: string;
+  totalJod: string | number;
+  createdAt: string;
+  service?: { nameAr: string } | null;
 }

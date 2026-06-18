@@ -17,6 +17,16 @@ import { authRouter } from './routes/auth';
 import { servicesRouter } from './routes/services';
 import { bookingsRouter } from './routes/bookings';
 import { adminRouter } from './routes/admin';
+import { promoRouter } from './routes/promo';
+import { techniciansRouter } from './routes/technicians';
+import { technicianRouter } from './routes/technician';
+import { addressesRouter } from './routes/addresses';
+import { paymentMethodsRouter } from './routes/paymentMethods';
+import { notificationsRouter } from './routes/notifications';
+import { devicesRouter } from './routes/devices';
+import { guaranteeRouter } from './routes/guarantee';
+import { supportRouter } from './routes/support';
+import { reviewsPublicRouter } from './routes/reviewsPublic';
 import { createWebhookRouter } from './routes/webhooks';
 import { PaymentService } from '../../application/payment/PaymentService';
 import { PaymentProviderFactory } from '../../infrastructure/providers/PaymentProviderFactory';
@@ -118,7 +128,17 @@ export function createApp(): { app: Express; httpServer: http.Server } {
 
   app.use('/api/v1/auth', ...(limited ? [authLimiter] : []), authRouter);
   app.use('/api/v1/services', servicesRouter);
+  app.use('/api/v1/reviews', reviewsPublicRouter);
   app.use('/api/v1/bookings', bookingsRouter);
+  app.use('/api/v1/technicians', techniciansRouter);
+  app.use('/api/v1/technician', technicianRouter);
+  app.use('/api/v1/promo', promoRouter);
+  app.use('/api/v1/addresses', addressesRouter);
+  app.use('/api/v1/payment-methods', paymentMethodsRouter);
+  app.use('/api/v1/notifications', notificationsRouter);
+  app.use('/api/v1/devices', devicesRouter);
+  app.use('/api/v1/guarantee', guaranteeRouter);
+  app.use('/api/v1/support', supportRouter);
   app.use('/api/v1/admin', adminRouter);
 
   app.use(notFoundHandler);

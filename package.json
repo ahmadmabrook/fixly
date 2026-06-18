@@ -2,6 +2,7 @@
   "name": "fixly",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "workspaces": [
     "backend",
     "web",
@@ -13,6 +14,8 @@
     "dev:admin": "pnpm --filter admin dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "lint": "eslint backend/src web/src admin/src",
+    "validate:openapi": "node -e \"require('js-yaml').load(require('fs').readFileSync('docs/openapi.yaml','utf8'));console.log('openapi.yaml OK')\"",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "db:migrate": "pnpm --filter backend prisma:migrate",
@@ -24,7 +27,12 @@
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {
-    "@types/compression": "^1.8.1"
+    "@eslint/js": "^9.39.4",
+    "@types/compression": "^1.8.1",
+    "eslint": "9",
+    "globals": "^17.6.0",
+    "js-yaml": "^4.2.0",
+    "typescript-eslint": "^8.61.1"
   },
   "pnpm": {
     "overrides": {

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { body, query, param } from 'express-validator';
-import { Prisma, BookingStatus, PayoutStatus } from '@prisma/client';
+import { Prisma, BookingStatus, PayoutStatus, TechnicianStatus } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
-import { authenticate, requireRole } from '../middleware/auth';
+import { authenticate, requireRole, requireAdminRole } from '../middleware/auth';
 import { authLimiter, rateLimitEnabled } from '../middleware/rateLimit';
 import { AdminService } from '../../../application/admin/AdminService';
+import { adminOpsRouter } from './adminOps';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { UnauthorizedError } from '../../../shared/errors';
 import { ADMIN_REFRESH_COOKIE, setAdminRefreshCookie, clearAdminRefreshCookie } from '../cookies';
@@ -27,6 +28,7 @@ const requireActiveAdmin = asyncHandler(async (req, _res, next) => {
 // Derived from the Prisma enums so they can never drift from the schema.
 const BOOKING_STATUSES = Object.values(BookingStatus);
 const PAYOUT_STATUSES = Object.values(PayoutStatus);
+const TECHNICIAN_STATUSES = Object.values(TechnicianStatus);
 
 export const adminRouter: Router = Router();
 
@@ -97,24 +99,28 @@ adminRouter.get(
   }),
 );
 
-// GET /technicians?limit=&offset=
+// GET /technicians?status=&limit=&offset=
 adminRouter.get(
   '/technicians',
   validate([
     query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
+    query('status').optional().isIn(TECHNICIAN_STATUSES),
   ]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
-    const { items, total } = await adminService.listTechnicians(limit, offset);
+    const status = req.query.status as TechnicianStatus | undefined;
+    const { items, total } = await adminService.listTechnicians(status, limit, offset);
     res.json({ data: items, meta: { total, limit, offset } });
   }),
 );
 
-// POST /technicians/:id/verify
+// POST /technicians/:id/verify — approving a technician grants job access +
+// payout eligibility, so it is OPS-scoped just like reject/suspend.
 adminRouter.post(
   '/technicians/:id/verify',
+  requireAdminRole('OPS'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
     const profile = await adminService.verifyTechnician(req.params.id, req.user!.userId, req.ip);
@@ -193,3 +199,8 @@ adminRouter.post(
     res.json({ data: payment });
   }),
 );
+
+// Extended admin routes (guarantee, support, broadcast, finance, moderation,
+// withdrawals, admin-user mgmt). Mounted here, AFTER the guard above, so the
+// authenticate + requireActiveAdmin chain runs exactly once per request.
+adminRouter.use(adminOpsRouter);

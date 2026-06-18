@@ -208,25 +208,25 @@ describe('AdminService.verifyTechnician (idempotency)', () => {
     mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
       fn({
         technicianProfile: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', isVerified: true, user: { id: 'u1' } }),
+          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1' } }),
           update,
         },
         adminAuditLog: { create: audit },
       }),
     );
     const result = await service.verifyTechnician('tp1', 'admin1', '1.2.3.4');
-    expect(result).toEqual({ id: 'tp1', isVerified: true, user: { id: 'u1' } });
+    expect(result).toEqual({ id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1' } });
     expect(update).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
   });
 
-  it('updates + audits on the first call (PENDING → VERIFIED)', async () => {
-    const update = jest.fn().mockResolvedValue({ id: 'tp1', isVerified: true, user: { id: 'u1' } });
+  it('updates + audits on the first call (PENDING → APPROVED)', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1' } });
     const audit = jest.fn().mockResolvedValue({});
     mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
       fn({
         technicianProfile: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', isVerified: false, user: { id: 'u1' } }),
+          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', isVerified: false, status: 'PENDING', user: { id: 'u1' } }),
           update,
         },
         adminAuditLog: { create: audit },
@@ -234,7 +234,8 @@ describe('AdminService.verifyTechnician (idempotency)', () => {
     );
     await service.verifyTechnician('tp1', 'admin1', '1.2.3.4');
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'tp1' }, data: { isVerified: true },
+      where: { id: 'tp1' },
+      data: expect.objectContaining({ isVerified: true, status: 'APPROVED' }),
     }));
     expect(audit).toHaveBeenCalled();
   });
@@ -309,3 +310,4 @@ describe('AdminService.login (failed-login logging)', () => {
     );
   });
 });
+

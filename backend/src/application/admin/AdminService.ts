@@ -2,9 +2,10 @@ import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { Prisma, BookingStatus, PayoutStatus } from '@prisma/client';
+import { Prisma, BookingStatus, PayoutStatus, TechnicianStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { hashToken } from '../auth/AuthService';
+import { audit } from './adminAudit';
 import { UnauthorizedError, NotFoundError, ConflictError } from '../../shared/errors';
 import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
@@ -38,22 +39,8 @@ export class AdminService {
    */
   async refundBookingPayment(bookingId: string, amountJod: number | string, actorId: string, ip?: string) {
     const payment = await this.paymentService.refundBooking(bookingId, amountJod);
-    await this.audit(prisma, actorId, 'payment.refund', { type: 'Booking', id: bookingId }, { amountJod: String(amountJod) }, ip);
+    await audit(prisma, actorId, 'payment.refund', { type: 'Booking', id: bookingId }, { amountJod: String(amountJod) }, ip);
     return payment;
-  }
-
-  /** Append an immutable audit record. Pass the tx client to keep it atomic with the mutation. */
-  private async audit(
-    client: DbClient,
-    actorId: string,
-    action: string,
-    target?: { type: string; id: string },
-    metadata?: Prisma.InputJsonValue,
-    ip?: string,
-  ) {
-    await client.adminAuditLog.create({
-      data: { actorId, action, targetType: target?.type, targetId: target?.id, metadata, ip },
-    });
   }
 
   async login(email: string, password: string, ip?: string) {
@@ -78,13 +65,13 @@ export class AdminService {
       throw new UnauthorizedError('Invalid credentials');
     }
 
-    await this.audit(prisma, admin.id, 'admin.login', undefined, undefined, ip);
+    await audit(prisma, admin.id, 'admin.login', undefined, undefined, ip);
 
-    const { accessToken, refreshToken } = await this.issueAdminTokens(admin.id);
+    const { accessToken, refreshToken } = await this.issueAdminTokens(admin.id, admin.role);
     return {
       accessToken,
       refreshToken,
-      admin: { id: admin.id, name: admin.name, email: admin.email },
+      admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role },
     };
   }
 
@@ -114,8 +101,8 @@ export class AdminService {
       if (!record.admin.isActive) throw new UnauthorizedError('Account is disabled');
 
       await tx.adminRefreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
-      const tokens = await this.issueAdminTokens(record.adminId, tx);
-      return { ...tokens, admin: { id: record.admin.id, name: record.admin.name, email: record.admin.email } };
+      const tokens = await this.issueAdminTokens(record.adminId, record.admin.role, tx);
+      return { ...tokens, admin: { id: record.admin.id, name: record.admin.name, email: record.admin.email, role: record.admin.role } };
     });
   }
 
@@ -128,9 +115,9 @@ export class AdminService {
     });
   }
 
-  private async issueAdminTokens(adminId: string, tx: DbClient = prisma) {
+  private async issueAdminTokens(adminId: string, adminRole: string, tx: DbClient = prisma) {
     const accessToken = jwt.sign(
-      { userId: adminId, role: 'ADMIN', typ: 'admin' },
+      { userId: adminId, role: 'ADMIN', adminRole, typ: 'admin' },
       env().JWT_SECRET,
       {
         algorithm: 'HS256',
@@ -147,13 +134,20 @@ export class AdminService {
   }
 
   async getStats() {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const [
       totalBookings,
       pendingBookings,
       completedBookings,
       totalTechnicians,
       verifiedTechnicians,
+      activeTechnicians,
       revenueResult,
+      todayRevenueResult,
+      ratingResult,
+      openGuarantees,
       pendingPayouts,
     ] = await Promise.all([
       prisma.booking.count(),
@@ -161,10 +155,14 @@ export class AdminService {
       prisma.booking.count({ where: { status: 'COMPLETED' } }),
       prisma.technicianProfile.count(),
       prisma.technicianProfile.count({ where: { isVerified: true } }),
+      prisma.technicianProfile.count({ where: { isAvailable: true, status: 'APPROVED' } }),
+      prisma.booking.aggregate({ _sum: { totalJod: true }, where: { status: 'COMPLETED' } }),
       prisma.booking.aggregate({
         _sum: { totalJod: true },
-        where: { status: 'COMPLETED' },
+        where: { status: 'COMPLETED', completedAt: { gte: startOfToday } },
       }),
+      prisma.technicianProfile.aggregate({ _avg: { rating: true }, where: { totalReviews: { gt: 0 } } }),
+      prisma.guaranteeTicket.count({ where: { status: { in: ['OPEN', 'IN_REVIEW'] } } }),
       prisma.payout.count({ where: { status: 'PENDING' } }),
     ]);
 
@@ -174,7 +172,11 @@ export class AdminService {
       completedBookings,
       totalTechnicians,
       verifiedTechnicians,
+      activeTechnicians,
       totalRevenueJod: Number(revenueResult._sum.totalJod ?? 0),
+      todayRevenueJod: Number(todayRevenueResult._sum.totalJod ?? 0),
+      avgRating: Number(ratingResult._avg.rating ?? 0),
+      openGuarantees,
       pendingPayouts,
     };
   }
@@ -205,41 +207,60 @@ export class AdminService {
     return { items, total };
   }
 
-  async listTechnicians(limit = 50, offset = 0) {
+  async listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0) {
+    const where = status ? { status } : {};
     const [items, total] = await prisma.$transaction([
       prisma.technicianProfile.findMany({
+        where,
         skip: offset,
         take: limit,
         orderBy: { createdAt: 'desc' },
         select: {
-          id: true, isVerified: true, isAvailable: true, rating: true, totalReviews: true, createdAt: true,
+          id: true, status: true, isVerified: true, isAvailable: true, rating: true, totalReviews: true,
+          hourlyRateJod: true, createdAt: true,
           user: { select: { id: true, name: true, phone: true } },
         },
       }),
-      prisma.technicianProfile.count(),
+      prisma.technicianProfile.count({ where }),
     ]);
     return { items, total };
   }
 
+  /** Full technician detail for the admin drawer — documents, services, recent
+   *  reviews. Reading exposes PII (phone, document URLs), so the access is audited. */
+  async getTechnicianDetail(id: string, actorId: string, ip?: string) {
+    const profile = await prisma.technicianProfile.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, name: true, phone: true, createdAt: true } },
+        services: { select: { id: true, nameAr: true, nameEn: true } },
+      },
+    });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    const reviews = await prisma.review.findMany({
+      where: { revieweeId: profile.userId },
+      include: { reviewer: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    await audit(prisma, actorId, 'technician.view_detail', { type: 'TechnicianProfile', id }, undefined, ip);
+    return { ...profile, recentReviews: reviews };
+  }
+
+  /** Approve a pending technician (sets status + back-compat isVerified flag). */
   async verifyTechnician(id: string, actorId: string, ip?: string) {
     try {
       return await prisma.$transaction(async (tx) => {
-        // Idempotent: a re-verify on an already-verified tech is a no-op (no
-        // duplicate audit row, no spurious update write). The first call
-        // wins; subsequent calls just return the current state.
-        const existing = await tx.technicianProfile.findUnique({
-          where: { id },
-          include: { user: true },
-        });
+        const existing = await tx.technicianProfile.findUnique({ where: { id }, include: { user: true } });
         if (!existing) throw new NotFoundError('TechnicianProfile');
-        if (existing.isVerified) return existing;
+        if (existing.isVerified && existing.status === 'APPROVED') return existing;
 
         const profile = await tx.technicianProfile.update({
           where: { id },
-          data: { isVerified: true },
+          data: { isVerified: true, status: 'APPROVED', approvedAt: new Date(), rejectionReason: null },
           include: { user: true },
         });
-        await this.audit(tx, actorId, 'technician.verify', { type: 'TechnicianProfile', id }, undefined, ip);
+        await audit(tx, actorId, 'technician.approve', { type: 'TechnicianProfile', id }, undefined, ip);
         return profile;
       });
     } catch (err) {
@@ -248,6 +269,66 @@ export class AdminService {
       }
       throw err;
     }
+  }
+
+  /** Reject a technician application with a reason. */
+  async rejectTechnician(id: string, reason: string, actorId: string, ip?: string) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.technicianProfile.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundError('TechnicianProfile');
+      const profile = await tx.technicianProfile.update({
+        where: { id },
+        data: { status: 'REJECTED', isVerified: false, isAvailable: false, rejectionReason: reason },
+        include: { user: true },
+      });
+      await audit(tx, actorId, 'technician.reject', { type: 'TechnicianProfile', id }, { reason }, ip);
+      return profile;
+    });
+  }
+
+  /** Suspend (block) an approved technician — they go offline and can't take jobs. */
+  async suspendTechnician(id: string, reason: string, actorId: string, ip?: string) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.technicianProfile.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundError('TechnicianProfile');
+      const profile = await tx.technicianProfile.update({
+        where: { id },
+        data: { status: 'SUSPENDED', isVerified: false, isAvailable: false, rejectionReason: reason },
+        include: { user: true },
+      });
+      await audit(tx, actorId, 'technician.suspend', { type: 'TechnicianProfile', id }, { reason }, ip);
+      return profile;
+    });
+  }
+
+  async listCustomerBookings(customerId: string, limit = 50, offset = 0) {
+    const where = { customerId };
+    const [items, total] = await prisma.$transaction([
+      prisma.booking.findMany({
+        where,
+        skip: offset,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true, totalJod: true, createdAt: true, service: { select: { nameAr: true } } },
+      }),
+      prisma.booking.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  /** Block or unblock a customer account (isActive toggle). */
+  async setCustomerBlocked(id: string, blocked: boolean, actorId: string, ip?: string) {
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({ where: { id, role: 'CUSTOMER' } });
+      if (!user) throw new NotFoundError('Customer');
+      const updated = await tx.user.update({
+        where: { id },
+        data: { isActive: !blocked },
+        select: { id: true, name: true, phone: true, isActive: true },
+      });
+      await audit(tx, actorId, blocked ? 'customer.block' : 'customer.unblock', { type: 'User', id }, undefined, ip);
+      return updated;
+    });
   }
 
   async listCustomers(limit = 50, offset = 0) {
@@ -320,7 +401,7 @@ export class AdminService {
     let providerRef: string;
     try {
       ({ providerRef } = await this.payoutProvider.disburse(id, Number(payout.amountJod)));
-    } catch (err) {
+    } catch {
       // Provider rejected outright → no money moved → safe to mark FAILED.
       await prisma.payout.updateMany({ where: { id, status: 'PROCESSING' }, data: { status: 'FAILED' } });
       throw new ConflictError('Payout disbursement failed');
@@ -355,7 +436,7 @@ export class AdminService {
         data: { payoutId: id, type: 'PAYOUT', direction: 'DEBIT', currency: env().CURRENCY, amountJod, description: `Payout ${id} (${providerRef})` },
       });
       if (actorId) {
-        await this.audit(tx, actorId, 'payout.process', { type: 'Payout', id }, { amountJod, providerRef }, ip);
+        await audit(tx, actorId, 'payout.process', { type: 'Payout', id }, { amountJod, providerRef }, ip);
       }
       return true;
     });
@@ -408,4 +489,5 @@ export class AdminService {
     payoutStuckGauge.set(stuck.length - resolved);
     return resolved;
   }
+
 }

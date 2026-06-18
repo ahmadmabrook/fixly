@@ -6,6 +6,7 @@ import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { UnauthorizedError, NotFoundError, ValidationError } from '../../shared/errors';
 import { env } from '../../shared/env';
+import { logger } from '../../shared/logger';
 import type { IOtpProvider } from '../../domain/providers/IOtpProvider';
 
 const REFRESH_EXPIRES_DAYS = 30;
@@ -114,6 +115,32 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User');
     return user;
+  }
+
+  /** Update the caller's editable profile fields (name, avatar). */
+  async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundError('User');
+    return prisma.user.update({
+      where: { id: userId },
+      data: { name: data.name ?? undefined, avatarUrl: data.avatarUrl ?? undefined },
+    });
+  }
+
+  /**
+   * Account deletion (customer-initiated). Soft-delete: deactivate the account
+   * and revoke all refresh tokens so every session dies immediately. A hard
+   * delete is intentionally avoided — booking/payment history must be retained
+   * for financial/audit integrity (and FKs would block it anyway).
+   */
+  async deleteAccount(userId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { isActive: false } }),
+      prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    // Audit-shaped record of this sensitive self-action (no user-audit table; the
+    // user id is fingerprinted so the log can correlate without storing raw PII).
+    logger.info({ event: 'account.delete', userIdFp: createHash('sha256').update(userId).digest('hex').slice(0, 12) }, 'Account soft-deleted (self-initiated)');
   }
 
   /** Revoke the presented refresh token (logout). Idempotent + silent: an

@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
 import { useBookingSocket } from '../lib/socket';
+import { api, ApiError, PromoQuote } from '../lib/api';
 import { Card, ServiceIcon, PriceBadge, InlineRow, MapMock, ConfirmDialog, StatusBadge, notify } from '../components/shared';
 
 interface BookingPageProps {
@@ -29,6 +30,9 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const [lng, setLng] = useState<string>(String(DEFAULT_LNG));
   const [confirming, setConfirming] = useState(false);
   const [pay, setPay] = useState(0);
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState<PromoQuote | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
   const { mutate: createBooking, isPending } = useCreateBooking();
   const [createdId, setCreatedId] = useState<string | null>(null);
   const liveStatus = useBookingSocket(createdId);
@@ -51,6 +55,21 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
       notify(`حالة الطلب: ${labels[liveStatus] ?? liveStatus}`, 'info');
     }
   }, [liveStatus]);
+
+  const applyPromo = useCallback(async () => {
+    if (!svc || !promoInput.trim()) return;
+    setPromoChecking(true);
+    try {
+      const quote = await api.post<PromoQuote>('/promo/validate', { code: promoInput.trim(), serviceId: svc.id });
+      setPromo(quote);
+      notify('تم تطبيق رمز الخصم', 'success');
+    } catch (e) {
+      setPromo(null);
+      notify(e instanceof ApiError ? e.message : 'رمز الخصم غير صالح', 'error');
+    } finally {
+      setPromoChecking(false);
+    }
+  }, [svc, promoInput]);
 
   const submit = useCallback(() => {
     if (!svc) return;
@@ -76,6 +95,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         addressLat: latNum,
         addressLng: lngNum,
         scheduledAt: when === 'now' ? null : new Date(Date.now() + 86_400_000).toISOString(),
+        promoCode: promo ? promoInput.trim() : null,
       },
       {
         onSuccess: (booking) => {
@@ -86,7 +106,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         onError: (e) => notify(e instanceof Error ? e.message : 'حدث خطأ', 'error'),
       },
     );
-  }, [svc, lat, lng, address, when, createBooking, onDone]);
+  }, [svc, lat, lng, address, when, promo, promoInput, createBooking, onDone]);
 
   if (isLoading) {
     return <CenteredMessage tone="muted">جارٍ التحميل...</CenteredMessage>;
@@ -214,10 +234,37 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
             </div>
           )}
           <div className="my-4 h-px bg-slate-100" />
+          {/* Promo / discount code */}
+          <label htmlFor="promo" className="block" style={{ fontSize: 12, color: '#475569' }}>رمز الخصم</label>
+          <div className="mt-1 flex gap-2">
+            <input
+              id="promo"
+              value={promoInput}
+              onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromo(null); }}
+              placeholder="أدخل رمز الخصم"
+              className="flex-1 h-11 rounded-xl border border-slate-200 px-3 outline-none"
+              style={{ fontSize: 14 }}
+              aria-label="رمز الخصم"
+            />
+            <button
+              onClick={() => void applyPromo()}
+              disabled={promoChecking || !promoInput.trim()}
+              className="px-4 h-11 rounded-xl disabled:opacity-50"
+              style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 700, fontSize: 13 }}
+            >
+              {promoChecking ? '...' : 'تطبيق'}
+            </button>
+          </div>
+          {promo && (
+            <p className="mt-2" style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>
+              تم تطبيق {promo.code} ✓
+            </p>
+          )}
+          <div className="my-4 h-px bg-slate-100" />
           <InlineRow label="سعر الخدمة" value={`${price} دينار`} />
-          <InlineRow label="الخصم" value="0 دينار" />
+          <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />
           <div className="my-2 h-px bg-slate-100" />
-          <InlineRow strong label="الإجمالي" value={`${price} دينار`} />
+          <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : price} دينار`} />
           <p className="mt-3 p-3 rounded-lg" style={{ background: '#E8F1FE', color: '#0E4FA8', fontSize: 12 }}>
             سيتم حجز المبلغ الآن ويُخصم بعد إتمام الخدمة.
           </p>
@@ -235,7 +282,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
       {confirming && (
         <ConfirmDialog
           title="تأكيد الحجز"
-          body={`سيتم حجز ${price} دينار عبر ${PAY_METHODS[pay]} وخصمه بعد إتمام الخدمة.`}
+          body={`سيتم حجز ${promo ? Number(promo.finalJod) : price} دينار عبر ${PAY_METHODS[pay]} وخصمه بعد إتمام الخدمة.`}
           confirmLabel={isPending ? '...' : 'تأكيد والدفع'}
           onConfirm={submit}
           onCancel={() => setConfirming(false)}

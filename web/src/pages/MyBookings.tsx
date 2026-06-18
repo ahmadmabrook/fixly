@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useBookings } from '../hooks/useBookings';
 import { useAuth } from '../lib/store';
 import { useBookingSocket } from '../lib/socket';
@@ -34,10 +35,11 @@ export default function MyBookings() {
 }
 
 function BookingRow({ item }: { item: { id: string; status: string; scheduledAt: string | null; totalJod: string | number; service?: { nameAr: string; nameEn: string } | null } }) {
+  const navigate = useNavigate();
   const live = useBookingSocket(item.id);
   const status = live ?? item.status;
   return (
-    <Card className="p-5" data-testid={`booking-row-${item.id}`}>
+    <Card className="p-5 cursor-pointer" data-testid={`booking-row-${item.id}`} onClick={() => navigate(`/bookings/${item.id}`)}>
       <div className="flex items-center gap-4">
         <ServiceIcon nameAr={item.service?.nameAr ?? ''} size={20} />
         <div className="flex-1">

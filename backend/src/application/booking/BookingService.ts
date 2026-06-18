@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
+import { PromoService } from '../promo/PromoService';
 
 const COMPLETABLE_STATUSES: BookingStatus[] = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
@@ -21,15 +22,29 @@ interface CreateBookingInput {
   addressLat: number;
   addressLng: number;
   scheduledAt?: string;
+  /** Optional promo/discount code applied to the fixed service price. */
+  promoCode?: string;
 }
 
 const LOCK_TTL_SECONDS = 30;
 
 export class BookingService {
+  constructor(private readonly promoService: PromoService = new PromoService()) {}
+
   async createBooking(input: CreateBookingInput) {
+    // Account standing (blocked/deleted) is enforced once by `requireActiveUser`
+    // on the bookings router (POST) — no duplicate isActive lookup here.
     const service = await prisma.service.findUnique({ where: { id: input.serviceId } });
     if (!service) throw new NotFoundError('Service');
     if (!service.isActive) throw new ValidationError('Service is not available');
+
+    // Resolve any promo BEFORE opening the transaction so an invalid code fails
+    // fast with its specific reason; redemption is recorded inside the tx.
+    const quote = input.promoCode
+      ? await this.promoService.quote(input.promoCode, input.customerId, service.priceJod)
+      : null;
+    const discountJod = quote ? quote.discountJod : new Prisma.Decimal(0);
+    const totalJod = quote ? quote.finalJod : service.priceJod;
 
     return prisma.$transaction(async (tx) => {
       const booking = await tx.booking.create({
@@ -40,10 +55,16 @@ export class BookingService {
           addressLat: input.addressLat,
           addressLng: input.addressLng,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
-          totalJod: service.priceJod,
+          discountJod,
+          promoCodeId: quote?.promoCodeId,
+          totalJod,
           status: 'PENDING',
         },
       });
+
+      if (quote) {
+        await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, discountJod);
+      }
 
       await tx.outboxEvent.create({
         data: {
@@ -58,10 +79,19 @@ export class BookingService {
   }
 
   async listForUser(userId: string, role: string, limit = 50, offset = 0) {
-    // Customers see their own bookings; technicians see ones assigned to them
-    // (single query via relation filter — no separate profile lookup).
-    const where: Prisma.BookingWhereInput =
-      role === 'CUSTOMER' ? { customerId: userId } : { technician: { userId } };
+    // Customers see their own bookings; technicians see ones assigned to them.
+    // For technicians, resolve the profile id once and filter by the indexed
+    // `technicianId` column (the `{ technician: { userId } }` relation filter
+    // can't use @@index([technicianId, status]) and forces a join subquery —
+    // costly on the 15s tech-dashboard poll).
+    let where: Prisma.BookingWhereInput;
+    if (role === 'CUSTOMER') {
+      where = { customerId: userId };
+    } else {
+      const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+      if (!profile) return { items: [], total: 0 };
+      where = { technicianId: profile.id };
+    }
 
     const [items, total] = await prisma.$transaction([
       prisma.booking.findMany({
@@ -242,5 +272,83 @@ export class BookingService {
 
       return updated;
     });
+  }
+
+  /**
+   * Move a scheduled booking to a new time. Only the owning customer may do it,
+   * only before the job starts, and only to a future time.
+   */
+  async reschedule(bookingId: string, userId: string, scheduledAt: string) {
+    const when = new Date(scheduledAt);
+    if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+      throw new ValidationError('scheduledAt must be a future time');
+    }
+    // Re-read + optimistic-version guard inside a tx (mirrors cancel/advanceStatus)
+    // so a reschedule racing an accept/cancel can't lost-update a booking that
+    // has already moved on.
+    return prisma.$transaction(async (tx) => {
+      const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!fresh) throw new NotFoundError('Booking');
+      if (fresh.customerId !== userId) throw new ForbiddenError();
+      if (!['PENDING', 'CONFIRMED'].includes(fresh.status)) {
+        throw new ConflictError('Only a not-yet-started booking can be rescheduled');
+      }
+      return tx.booking.update({
+        where: { id: bookingId, version: fresh.version },
+        data: { scheduledAt: when, rescheduledAt: new Date(), version: { increment: 1 } },
+      });
+    });
+  }
+
+  /** Technician proposes extra work mid-job (itemised). Customer must approve
+   *  before it's added to the total. Only the assigned tech, only IN_PROGRESS. */
+  async proposeAdditionalWork(bookingId: string, technicianUserId: string, description: string, amountJod: number | string) {
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { technician: { select: { userId: true } } } });
+    if (!booking) throw new NotFoundError('Booking');
+    if (!booking.technician || booking.technician.userId !== technicianUserId) throw new ForbiddenError();
+    if (booking.status !== 'IN_PROGRESS') throw new ConflictError('Additional work can only be added while the job is in progress');
+    const amount = new Prisma.Decimal(amountJod);
+    if (amount.lessThanOrEqualTo(0) || amount.decimalPlaces() > 3) throw new ValidationError('Invalid amount');
+    return prisma.additionalWorkItem.create({
+      data: { bookingId, description: description.trim(), amountJod: amount, status: 'PROPOSED' },
+    });
+  }
+
+  /** Customer approves/declines a proposed additional-work item. Approval adds
+   *  the amount to the booking total atomically. */
+  async respondAdditionalWork(bookingId: string, itemId: string, customerId: string, approve: boolean) {
+    return prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new NotFoundError('Booking');
+      if (booking.customerId !== customerId) throw new ForbiddenError();
+      const item = await tx.additionalWorkItem.findUnique({ where: { id: itemId } });
+      if (!item || item.bookingId !== bookingId) throw new NotFoundError('AdditionalWorkItem');
+      if (item.status !== 'PROPOSED') throw new ConflictError('Item already responded to');
+
+      const updated = await tx.additionalWorkItem.update({
+        where: { id: itemId },
+        data: { status: approve ? 'APPROVED' : 'DECLINED' },
+      });
+      if (approve) {
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { totalJod: { increment: item.amountJod } },
+        });
+        // Top up the authorization hold so completion captures the FULL new total
+        // (otherwise capture is capped at the original pre-auth and the extra work
+        // is never charged / never paid out). With a real PSP this is an
+        // incremental-authorization call; the mock provider just widens the hold.
+        const payment = await tx.payment.findUnique({ where: { bookingId } });
+        if (payment && payment.status === 'PRE_AUTHORIZED') {
+          await tx.payment.update({ where: { id: payment.id }, data: { amountJod: { increment: item.amountJod } } });
+        }
+      }
+      return updated;
+    });
+  }
+
+  async listAdditionalWork(bookingId: string, userId: string) {
+    await this.getById(bookingId, userId); // authorize as a party
+    return prisma.additionalWorkItem.findMany({ where: { bookingId }, orderBy: { createdAt: 'asc' } });
   }
 }

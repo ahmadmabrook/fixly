@@ -127,11 +127,17 @@ export function Avatar({ name, size = 40, verified = false }: { name: string; si
   );
 }
 
-export function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
+export function Card({
+  children,
+  className = '',
+  style,
+  ...rest
+}: { children: ReactNode; className?: string; style?: React.CSSProperties } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={`bg-white rounded-2xl ${className}`}
       style={{ boxShadow: '0 2px 8px rgba(15, 23, 42, 0.06)', ...style }}
+      {...rest}
     >
       {children}
     </div>

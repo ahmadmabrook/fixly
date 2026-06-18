@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, PayoutItem } from '../lib/api';
-import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify } from '../components/shared';
+import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 
 const STATUSES = ['', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
 const STATUS_LABELS: Record<string, string> = { '': 'الكل', PENDING: 'معلّق', PROCESSING: 'قيد المعالجة', COMPLETED: 'مكتمل', FAILED: 'فشل' };
@@ -121,25 +121,7 @@ export default function Payouts() {
           </TableWrapper>
         )}
 
-        {total > limit && (
-          <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9' }}>
-            <button
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.4 : 1 }}
-            >
-              السابق
-            </button>
-            <span style={{ fontSize: 13, color: '#64748B' }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={(page + 1) * limit >= total}
-              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: (page + 1) * limit >= total ? 'not-allowed' : 'pointer', opacity: (page + 1) * limit >= total ? 0.4 : 1 }}
-            >
-              التالي
-            </button>
-          </div>
-        )}
+        <Pagination page={page} total={total} limit={limit} onPage={setPage} />
       </Card>
 
       <ConfirmDialog

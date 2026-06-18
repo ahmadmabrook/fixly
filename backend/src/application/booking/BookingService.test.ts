@@ -53,6 +53,7 @@ describe('BookingService', () => {
       await expect(service.createBooking(input)).rejects.toBeInstanceOf(ValidationError);
     });
 
+
     it('writes booking + outbox event atomically in one transaction', async () => {
       mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });
       const tx = {

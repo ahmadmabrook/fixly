@@ -25,24 +25,22 @@ export default function Dashboard() {
         <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>نظرة عامة على المنصة</p>
       </div>
 
-      {/* KPIs */}
+      {/* Primary KPIs (spec: today's revenue, bookings, active techs, avg rating, open guarantees) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} />
-        <KpiCard label="حجوزات معلّقة"       value={stats.pendingBookings} />
-        <KpiCard label="حجوزات مكتملة"       value={stats.completedBookings} />
-        <KpiCard
-          label="الإيرادات الإجمالية"
-          value={`${Number(stats.totalRevenueJod).toFixed(2)} JD`}
-        />
+        <KpiCard label="إيرادات اليوم"       value={`${Number(stats.todayRevenueJod).toFixed(2)} JD`} />
+        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} />
+        <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} />
+        <KpiCard label="متوسط التقييم"       value={Number(stats.avgRating).toFixed(2)} />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard label="إجمالي الفنيين"      value={stats.totalTechnicians} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard label="الإيرادات الإجمالية" value={`${Number(stats.totalRevenueJod).toFixed(2)} JD`} />
         <KpiCard
           label="فنيون موثّقون"
           value={stats.verifiedTechnicians}
-          sub={`${stats.totalTechnicians > 0 ? Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100) : 0}% من الإجمالي`}
+          sub={`${stats.totalTechnicians > 0 ? Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100) : 0}% من ${stats.totalTechnicians}`}
         />
+        <KpiCard label="تذاكر ضمان مفتوحة"   value={stats.openGuarantees} />
         <KpiCard label="مدفوعات معلّقة"      value={stats.pendingPayouts} />
       </div>
 

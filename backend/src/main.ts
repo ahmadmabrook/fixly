@@ -27,7 +27,7 @@ async function main() {
   await redis.ping();
   logger.info('Redis connected');
 
-  const { app, httpServer } = createApp();
+  const { httpServer } = createApp();
   const io = createSocketServer(httpServer);
 
   const worker = buildOutboxWorker(io, env.OUTBOX_BATCH_SIZE, env.OUTBOX_MAX_BATCHES_PER_TICK);

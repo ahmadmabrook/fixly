@@ -14,14 +14,14 @@ datasource db {
 // ─────────────────────────────────────────────
 
 model User {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  phone       String   @unique
-  role        UserRole @default(CUSTOMER)
-  name        String?
-  avatarUrl   String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  phone     String   @unique
+  role      UserRole @default(CUSTOMER)
+  name      String?
+  avatarUrl String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   refreshTokens     RefreshToken[]
   deviceTokens      DeviceToken[]
@@ -31,6 +31,9 @@ model User {
   reviewsGiven      Review[]           @relation("ReviewsGiven")
   reviewsReceived   Review[]           @relation("ReviewsReceived")
   supportTickets    SupportTicket[]
+  addresses         Address[]
+  paymentMethods    PaymentMethod[]
+  promoRedemptions  PromoRedemption[]
 
   // Admin customer list filters by role.
   @@index([role])
@@ -46,13 +49,13 @@ enum UserRole {
 }
 
 model RefreshToken {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  userId    String   @db.Uuid
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String    @db.Uuid
   // SHA-256 of the opaque token; the raw value is returned to the client only.
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -74,28 +77,40 @@ model DeviceToken {
 }
 
 model AdminUser {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email        String   @unique
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email        String    @unique
   passwordHash String
   name         String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // RBAC role. Default is LEAST-privilege (SUPPORT) so a row inserted without an
+  // explicit role can never silently become super-admin (fail-closed). The
+  // bootstrap admin sets SUPER_ADMIN explicitly in the seed.
+  role         AdminRole @default(SUPPORT)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   auditLogs     AdminAuditLog[]
   refreshTokens AdminRefreshToken[]
+  broadcasts    Broadcast[]
 
   @@map("admin_users")
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  OPS
+  FINANCE
+  SUPPORT
+}
+
 model AdminRefreshToken {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  adminId   String   @db.Uuid
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  adminId   String    @db.Uuid
   // SHA-256 of the opaque token; the raw value goes out only via httpOnly cookie.
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
@@ -136,7 +151,8 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  bookings Booking[]
+  bookings    Booking[]
+  technicians TechnicianProfile[] @relation("TechnicianServices")
 
   // Public catalogue query: WHERE isActive ORDER BY category.
   @@index([isActive, category])
@@ -148,27 +164,50 @@ model Service {
 // ─────────────────────────────────────────────
 
 model TechnicianProfile {
-  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  userId           String   @unique @db.Uuid
-  bio              String?
-  isAvailable      Boolean  @default(false)
-  isVerified       Boolean  @default(false)
-  currentLat       Float?
-  currentLng       Float?
+  id                String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId            String           @unique @db.Uuid
+  bio               String?
+  // Onboarding lifecycle. isVerified is kept (== status APPROVED) for back-compat
+  // with existing queries/tests; new code should read `status`.
+  status            TechnicianStatus @default(PENDING)
+  rejectionReason   String?
+  approvedAt        DateTime?
+  isAvailable       Boolean          @default(false)
+  isVerified        Boolean          @default(false)
+  // Onboarding documents (uploaded to object storage; URLs only here).
+  idDocUrl          String?
+  certificateUrl    String?
+  selfieUrl         String?
+  vehicle           String?
+  hourlyRateJod     Decimal?         @db.Decimal(10, 3)
+  currentLat        Float?
+  currentLng        Float?
   locationUpdatedAt DateTime?
-  rating           Decimal  @default(0) @db.Decimal(3, 2)
-  totalReviews     Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // Earnings cash-out cooldown (spec: withdraw at most once / 24h).
+  lastWithdrawalAt  DateTime?
+  rating            Decimal          @default(0) @db.Decimal(3, 2)
+  totalReviews      Int              @default(0)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  techBookings    Booking[] @relation("TechnicianBookings")
-  payouts         Payout[]
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  techBookings Booking[]           @relation("TechnicianBookings")
+  payouts      Payout[]
+  withdrawals  WithdrawalRequest[]
+  services     Service[]           @relation("TechnicianServices")
 
   // getStats counts verified technicians; admin list orders by createdAt.
   @@index([isVerified])
+  @@index([status])
   @@index([createdAt])
   @@map("technician_profiles")
+}
+
+enum TechnicianStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
 }
 
 // ─────────────────────────────────────────────
@@ -185,28 +224,41 @@ model Booking {
   addressLat    Float
   addressLng    Float
   scheduledAt   DateTime?
+  rescheduledAt DateTime?
   startedAt     DateTime?
   completedAt   DateTime?
   cancelledAt   DateTime?
   cancelReason  String?
+  // Pricing: totalJod is the amount charged (service price − discount). discountJod
+  // records any promo applied so receipts/reports can show the breakdown.
+  discountJod   Decimal       @default(0) @db.Decimal(10, 3)
+  promoCodeId   String?       @db.Uuid
   totalJod      Decimal       @db.Decimal(10, 3)
   version       Int           @default(0)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  customer     User               @relation("CustomerBookings", fields: [customerId], references: [id])
-  technician   TechnicianProfile? @relation("TechnicianBookings", fields: [technicianId], references: [id])
-  service      Service            @relation(fields: [serviceId], references: [id])
-  payment      Payment?
-  outboxEvents OutboxEvent[]
-  reviews      Review[]
-  guarantee    GuaranteeTicket?
-  notifications Notification[]
+  customer        User                 @relation("CustomerBookings", fields: [customerId], references: [id])
+  technician      TechnicianProfile?   @relation("TechnicianBookings", fields: [technicianId], references: [id])
+  service         Service              @relation(fields: [serviceId], references: [id])
+  promoCode       PromoCode?           @relation(fields: [promoCodeId], references: [id])
+  payment         Payment?
+  outboxEvents    OutboxEvent[]
+  reviews         Review[]
+  guarantee       GuaranteeTicket?
+  notifications   Notification[]
+  additionalWork  AdditionalWorkItem[]
+  promoRedemption PromoRedemption?
 
   @@index([customerId])
   @@index([status])
   // Technician dashboard: "my active jobs" filters by technician + status.
   @@index([technicianId, status])
+  // Guarantee-eligible lookup: WHERE customerId AND status AND completedAt >= cutoff.
+  @@index([customerId, status, completedAt])
+  // "My bookings" lists (customer + technician) sort by createdAt desc.
+  @@index([customerId, createdAt])
+  @@index([technicianId, createdAt])
   @@map("bookings")
 }
 
@@ -246,11 +298,13 @@ model Payment {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  booking       Booking        @relation(fields: [bookingId], references: [id])
+  booking       Booking       @relation(fields: [bookingId], references: [id])
   ledgerEntries LedgerEntry[]
   payout        Payout?
   disputes      Dispute[]
 
+  // Financial report groups captured payments by capturedAt within a date range.
+  @@index([capturedAt])
   @@map("payments")
 }
 
@@ -266,19 +320,19 @@ enum PaymentStatus {
 }
 
 model LedgerEntry {
-  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   // Exactly one of paymentId / payoutId is set, depending on the entry type.
-  paymentId   String?     @db.Uuid
-  payoutId    String?     @db.Uuid
+  paymentId   String?          @db.Uuid
+  payoutId    String?          @db.Uuid
   type        LedgerType
   // Double-entry direction so SUM over a payment nets correctly
   // (CREDIT = money in to platform, DEBIT = money out). Nullable only for
   // pre-existing rows written before this column existed.
   direction   LedgerDirection?
-  currency    String      @default("JOD")
-  amountJod   Decimal     @db.Decimal(10, 3)
+  currency    String           @default("JOD")
+  amountJod   Decimal          @db.Decimal(10, 3)
   description String?
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime         @default(now())
 
   payment Payment? @relation(fields: [paymentId], references: [id])
   payout  Payout?  @relation(fields: [payoutId], references: [id])
@@ -321,6 +375,8 @@ model Payout {
   ledgerEntries LedgerEntry[]
 
   @@index([technicianId])
+  // Technician earnings: per-tech sums filtered by createdAt (today/month buckets).
+  @@index([technicianId, createdAt])
   // getStats counts PENDING; admin list filters status + orders by createdAt.
   @@index([status, createdAt])
   @@map("payouts")
@@ -374,17 +430,17 @@ model PspWebhookEvent {
 // ─────────────────────────────────────────────
 
 model OutboxEvent {
-  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  bookingId   String          @db.Uuid
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bookingId   String       @db.Uuid
   eventType   String
   payload     Json
-  status      OutboxStatus    @default(PENDING)
-  attempts    Int             @default(0)
+  status      OutboxStatus @default(PENDING)
+  attempts    Int          @default(0)
   lockedAt    DateTime?
   processedAt DateTime?
   failedAt    DateTime?
   errorMsg    String?
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime     @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
@@ -407,17 +463,17 @@ enum OutboxStatus {
 // ─────────────────────────────────────────────
 
 model Notification {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  userId    String   @db.Uuid
-  bookingId String?  @db.Uuid
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String    @db.Uuid
+  bookingId String?   @db.Uuid
   // Idempotency key (e.g. "<bookingId>:<eventType>") — makes outbox re-delivery
   // a no-op instead of creating a duplicate notification row.
-  dedupeKey String?  @unique
+  dedupeKey String?   @unique
   titleAr   String
   bodyAr    String
-  isRead    Boolean  @default(false)
+  isRead    Boolean   @default(false)
   sentAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   booking Booking? @relation(fields: [bookingId], references: [id])
@@ -433,19 +489,25 @@ model Notification {
 // ─────────────────────────────────────────────
 
 model Review {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  bookingId   String   @db.Uuid
-  reviewerId  String   @db.Uuid
-  revieweeId  String   @db.Uuid
-  rating      Int
-  comment     String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bookingId  String   @db.Uuid
+  reviewerId String   @db.Uuid
+  revieweeId String   @db.Uuid
+  rating     Int
+  comment    String?
+  // Optional before/after photos (object-storage URLs).
+  photos     String[] @default([])
+  createdAt  DateTime @default(now())
 
   booking  Booking @relation(fields: [bookingId], references: [id])
   reviewer User    @relation("ReviewsGiven", fields: [reviewerId], references: [id])
   reviewee User    @relation("ReviewsReceived", fields: [revieweeId], references: [id])
 
   @@unique([bookingId, reviewerId])
+  // Technician reviews list + rating aggregate recompute filter by revieweeId.
+  @@index([revieweeId, createdAt])
+  // Public landing "recent reviews" sorts the whole table by createdAt.
+  @@index([createdAt])
   @@map("reviews")
 }
 
@@ -454,16 +516,23 @@ model Review {
 // ─────────────────────────────────────────────
 
 model GuaranteeTicket {
-  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  bookingId   String          @unique @db.Uuid
-  status      GuaranteeStatus @default(OPEN)
-  description String?
-  expiresAt   DateTime
-  resolvedAt  DateTime?
-  createdAt   DateTime        @default(now())
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bookingId        String          @unique @db.Uuid
+  status           GuaranteeStatus @default(OPEN)
+  description      String?
+  // Customer-uploaded evidence (photo/video URLs in object storage).
+  mediaUrls        String[]        @default([])
+  // Admin review outcome + optional scheduled free re-visit.
+  adminNote        String?
+  scheduledVisitAt DateTime?
+  expiresAt        DateTime
+  resolvedAt       DateTime?
+  createdAt        DateTime        @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id])
 
+  // Admin SLA queue: WHERE status ORDER BY createdAt asc.
+  @@index([status, createdAt])
   @@map("guarantee_tickets")
 }
 
@@ -489,7 +558,10 @@ model SupportTicket {
   user     User             @relation(fields: [userId], references: [id])
   messages SupportMessage[]
 
-  @@index([userId])
+  // Customer list: WHERE userId ORDER BY updatedAt desc.
+  @@index([userId, updatedAt])
+  // Admin queue: WHERE status ORDER BY updatedAt desc.
+  @@index([status, updatedAt])
   @@map("support_tickets")
 }
 
@@ -500,14 +572,191 @@ enum SupportStatus {
 }
 
 model SupportMessage {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  ticketId  String   @db.Uuid
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  ticketId   String   @db.Uuid
   senderRole String
-  body      String
-  createdAt DateTime @default(now())
+  body       String
+  createdAt  DateTime @default(now())
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id])
 
   @@index([ticketId])
   @@map("support_messages")
+}
+
+// ─────────────────────────────────────────────
+// Customer addresses (saved locations)
+// ─────────────────────────────────────────────
+
+model Address {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  label     String
+  line      String
+  lat       Float
+  lng       Float
+  building  String?
+  apartment String?
+  notes     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ─────────────────────────────────────────────
+// Saved payment methods (card data is mocked by the PSP; only a token + display
+// metadata is stored here — never a PAN).
+// ─────────────────────────────────────────────
+
+model PaymentMethod {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String   @db.Uuid
+  brand       String
+  last4       String
+  expMonth    Int
+  expYear     Int
+  providerRef String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payment_methods")
+}
+
+// ─────────────────────────────────────────────
+// Promo / discount codes
+// ─────────────────────────────────────────────
+
+model PromoCode {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code           String    @unique
+  type           PromoType
+  // PERCENT → 0–100; FIXED → JOD amount off.
+  value          Decimal   @db.Decimal(10, 3)
+  minOrderJod    Decimal?  @db.Decimal(10, 3)
+  // Total redemptions allowed across all users (null = unlimited).
+  maxRedemptions Int?
+  // Redemptions allowed per individual user.
+  perUserLimit   Int       @default(1)
+  timesRedeemed  Int       @default(0)
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bookings    Booking[]
+  redemptions PromoRedemption[]
+
+  @@index([isActive])
+  @@map("promo_codes")
+}
+
+enum PromoType {
+  PERCENT
+  FIXED
+}
+
+model PromoRedemption {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  promoCodeId String   @db.Uuid
+  userId      String   @db.Uuid
+  // One redemption per booking (a booking can carry at most one promo).
+  bookingId   String   @unique @db.Uuid
+  amountJod   Decimal  @db.Decimal(10, 3)
+  createdAt   DateTime @default(now())
+
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  booking   Booking   @relation(fields: [bookingId], references: [id])
+
+  // Per-user redemption-cap check: COUNT WHERE promoCodeId AND userId.
+  @@index([promoCodeId, userId])
+  @@index([userId])
+  @@map("promo_redemptions")
+}
+
+// ─────────────────────────────────────────────
+// Technician-initiated balance withdrawals
+// ─────────────────────────────────────────────
+
+model WithdrawalRequest {
+  id           String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  technicianId String           @db.Uuid
+  amountJod    Decimal          @db.Decimal(10, 3)
+  status       WithdrawalStatus @default(REQUESTED)
+  iban         String?
+  bankName     String?
+  processedAt  DateTime?
+  createdAt    DateTime         @default(now())
+
+  technician TechnicianProfile @relation(fields: [technicianId], references: [id])
+
+  @@index([technicianId])
+  @@index([status, createdAt])
+  @@map("withdrawal_requests")
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  PROCESSING
+  PAID
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+// Admin broadcast notifications
+// ─────────────────────────────────────────────
+
+model Broadcast {
+  id             String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  titleAr        String
+  bodyAr         String
+  segment        BroadcastSegment
+  recipientCount Int              @default(0)
+  sentById       String           @db.Uuid
+  createdAt      DateTime         @default(now())
+
+  sentBy AdminUser @relation(fields: [sentById], references: [id])
+
+  @@index([createdAt])
+  @@map("broadcasts")
+}
+
+enum BroadcastSegment {
+  ALL
+  CUSTOMERS
+  TECHNICIANS
+}
+
+// ─────────────────────────────────────────────
+// Additional-work items (technician proposes extra work mid-job; customer approves)
+// ─────────────────────────────────────────────
+
+model AdditionalWorkItem {
+  id          String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bookingId   String               @db.Uuid
+  description String
+  amountJod   Decimal              @db.Decimal(10, 3)
+  status      AdditionalWorkStatus @default(PROPOSED)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("additional_work_items")
+}
+
+enum AdditionalWorkStatus {
+  PROPOSED
+  APPROVED
+  DECLINED
 }

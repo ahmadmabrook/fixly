@@ -154,4 +154,144 @@ export interface CreateBookingInput {
   addressLat: number;
   addressLng: number;
   scheduledAt: string | null;
+  promoCode?: string | null;
+}
+
+export interface PromoQuote {
+  code: string;
+  discountJod: string;
+  finalJod: string;
+  originalJod: string;
+}
+
+export interface Notification {
+  id: string;
+  titleAr: string;
+  bodyAr: string;
+  isRead: boolean;
+  bookingId: string | null;
+  createdAt: string;
+}
+
+export interface Address {
+  id: string;
+  label: string;
+  line: string;
+  lat: number;
+  lng: number;
+  building: string | null;
+  apartment: string | null;
+  notes: string | null;
+  isDefault: boolean;
+}
+
+export interface PaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+}
+
+export interface TechReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  photos: string[];
+  reviewerName: string | null;
+  createdAt: string;
+}
+
+export interface TechnicianCard {
+  id: string;
+  name: string | null;
+  avatarUrl: string | null;
+  rating: string | number;
+  totalReviews: number;
+  vehicle: string | null;
+  isVerified: boolean;
+}
+
+export interface GuaranteeTicketItem {
+  id: string;
+  status: string;
+  description: string | null;
+  mediaUrls: string[];
+  adminNote: string | null;
+  scheduledVisitAt: string | null;
+  expiresAt: string;
+  resolvedAt: string | null;
+  createdAt: string;
+  booking?: { id: string; service?: { nameAr: string } | null } | null;
+}
+
+export interface EligibleBooking {
+  id: string;
+  completedAt: string | null;
+  service?: { nameAr: string; nameEn: string } | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  senderRole: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportTicketItem {
+  id: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: SupportMessage[];
+}
+
+export interface AdditionalWorkItem {
+  id: string;
+  description: string;
+  amountJod: string | number;
+  status: string;
+  createdAt: string;
+}
+
+export interface TechnicianProfileMe {
+  id: string;
+  status: string;
+  isVerified: boolean;
+  isAvailable: boolean;
+  rejectionReason: string | null;
+  hourlyRateJod: string | number | null;
+  vehicle: string | null;
+  bio: string | null;
+  rating: string | number;
+  totalReviews: number;
+  services: Array<{ id: string; nameAr: string; nameEn?: string }>;
+}
+
+export interface TechEarnings {
+  todayJod: string;
+  monthJod: string;
+  totalJod: string;
+  balanceJod: string;
+  lastWithdrawalAt: string | null;
+}
+
+export interface Withdrawal {
+  id: string;
+  amountJod: string | number;
+  status: string;
+  iban: string | null;
+  bankName: string | null;
+  createdAt: string;
+}
+
+export interface NearbyJob {
+  id: string;
+  totalJod: string | number;
+  // Coarse distance only — the customer's exact address is withheld until the
+  // job is accepted (then GET /bookings/:id reveals it to the assigned tech).
+  distanceKm: number | null;
+  service?: { nameAr: string; nameEn: string; priceJod: string | number; durationMin: number } | null;
 }

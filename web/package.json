@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",

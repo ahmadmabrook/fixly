@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { AuthService } from '../../../application/auth/AuthService';
 import { OtpProviderFactory } from '../../../infrastructure/providers/OtpProviderFactory';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireActiveUser } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { USER_REFRESH_COOKIE, setUserRefreshCookie, clearUserRefreshCookie } from '../cookies';
@@ -59,5 +59,34 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = await authService.getMe(req.user!.userId);
     res.json({ data: user });
+  }),
+);
+
+authRouter.patch(
+  '/me',
+  authenticate,
+  requireActiveUser,
+  validate([
+    body('name').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 80 }),
+    body('avatarUrl').optional({ nullable: true }).isString().trim().isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+  ]),
+  asyncHandler(async (req, res) => {
+    const user = await authService.updateProfile(req.user!.userId, {
+      name: req.body.name ?? undefined,
+      avatarUrl: req.body.avatarUrl ?? undefined,
+    });
+    res.json({ data: user });
+  }),
+);
+
+// DELETE /auth/me — customer-initiated account deletion (soft-delete + revoke).
+authRouter.delete(
+  '/me',
+  authenticate,
+  requireActiveUser,
+  asyncHandler(async (req, res) => {
+    await authService.deleteAccount(req.user!.userId);
+    clearUserRefreshCookie(res);
+    res.json({ data: { ok: true } });
   }),
 );
