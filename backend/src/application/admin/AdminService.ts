@@ -197,6 +197,8 @@ export class AdminService {
           scheduledAt: true,
           totalJod: true,
           createdAt: true,
+          addressLat: true,
+          addressLng: true,
           customer: { select: { id: true, name: true, phone: true } },
           service: { select: { id: true, nameAr: true, nameEn: true, priceJod: true } },
           technician: { select: { id: true, rating: true, user: { select: { id: true, name: true } } } },

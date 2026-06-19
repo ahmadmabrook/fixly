@@ -190,6 +190,8 @@ export interface BookingItem {
   status: string;
   scheduledAt: string | null;
   totalJod: string | number;
+  addressLat?: number | null;
+  addressLng?: number | null;
   customer?: { id: string; name: string; phone?: string } | null;
   service?: { nameAr: string; nameEn: string } | null;
   technician?: { user?: { name: string } } | null;

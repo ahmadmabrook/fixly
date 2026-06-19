@@ -4,7 +4,8 @@ import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
 import { useBookingSocket } from '../lib/socket';
 import { api, ApiError, PromoQuote } from '../lib/api';
-import { Card, ServiceIcon, PriceBadge, InlineRow, MapMock, ConfirmDialog, StatusBadge, notify } from '../components/shared';
+import { Card, ServiceIcon, PriceBadge, InlineRow, ConfirmDialog, StatusBadge, notify } from '../components/shared';
+import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 
 interface BookingPageProps {
   serviceId: string;
@@ -18,16 +19,14 @@ const SCHEDULE_OPTIONS: ReadonlyArray<readonly ['now' | 'later', string, string]
   ['later', 'حجز لاحقاً', 'غداً'],
 ];
 
-// Amman, Jordan — used as a sensible default. Users can edit before submitting.
+// Amman, Jordan — sensible default until the user moves the pin.
 const DEFAULT_LAT = 31.9522;
 const DEFAULT_LNG = 35.9331;
 
 export default function BookingPage({ serviceId, onBack, onDone }: BookingPageProps) {
   const { data: svc, isLoading, isError, error } = useService(serviceId);
   const [when, setWhen] = useState<'now' | 'later'>('now');
-  const [address, setAddress] = useState('خلدا، شارع وصفي التل، عمارة 12، ط2');
-  const [lat, setLat] = useState<string>(String(DEFAULT_LAT));
-  const [lng, setLng] = useState<string>(String(DEFAULT_LNG));
+  const [addr, setAddr] = useState<AddressValue>({ address: 'خلدا، شارع وصفي التل', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
   const [confirming, setConfirming] = useState(false);
   const [pay, setPay] = useState(0);
   const [promoInput, setPromoInput] = useState('');
@@ -73,14 +72,9 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
 
   const submit = useCallback(() => {
     if (!svc) return;
-    const latNum = Number(lat);
-    const lngNum = Number(lng);
-    if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90) {
-      notify('خط العرض غير صالح', 'error');
-      return;
-    }
-    if (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
-      notify('خط الطول غير صالح', 'error');
+    const { lat: latNum, lng: lngNum, address } = addr;
+    if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90 || !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+      notify('حدّد موقعاً صالحاً على الخريطة', 'error');
       return;
     }
     if (address.trim().length === 0) {
@@ -106,7 +100,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         onError: (e) => notify(e instanceof Error ? e.message : 'حدث خطأ', 'error'),
       },
     );
-  }, [svc, lat, lng, address, when, promo, promoInput, createBooking, onDone]);
+  }, [svc, addr, when, promo, promoInput, createBooking, onDone]);
 
   if (isLoading) {
     return <CenteredMessage tone="muted">جارٍ التحميل...</CenteredMessage>;
@@ -149,52 +143,9 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
 
           <Card className="p-6">
             <h2 style={{ fontWeight: 700, fontSize: 16 }}>الموقع</h2>
-            <div className="mt-3 rounded-xl overflow-hidden">
-              <MapMock height={240} customerLabel="عنوانك" />
-            </div>
-            <label htmlFor="address" className="sr-only">العنوان</label>
-            <input
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="mt-3 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none"
-              style={{ fontSize: 14 }}
-              aria-label="العنوان"
-              placeholder="اكتب عنوانك بالتفصيل"
-            />
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="lat" className="block" style={{ fontSize: 12, color: '#475569' }}>خط العرض (Lat)</label>
-                <input
-                  id="lat"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.000001"
-                  min={-90}
-                  max={90}
-                  value={lat}
-                  onChange={(e) => setLat(e.target.value)}
-                  className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3 outline-none"
-                  style={{ fontSize: 14, direction: 'ltr' }}
-                  aria-label="خط العرض"
-                />
-              </div>
-              <div>
-                <label htmlFor="lng" className="block" style={{ fontSize: 12, color: '#475569' }}>خط الطول (Lng)</label>
-                <input
-                  id="lng"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.000001"
-                  min={-180}
-                  max={180}
-                  value={lng}
-                  onChange={(e) => setLng(e.target.value)}
-                  className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3 outline-none"
-                  style={{ fontSize: 14, direction: 'ltr' }}
-                  aria-label="خط الطول"
-                />
-              </div>
+            <p style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>اسحب الدبوس أو ابحث لتحديد عنوانك بدقة.</p>
+            <div className="mt-3">
+              <MapAddressPicker value={addr} onChange={setAddr} height={260} />
             </div>
           </Card>
 

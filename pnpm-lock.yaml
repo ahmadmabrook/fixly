@@ -38,6 +38,9 @@ importers:
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@18.3.1)
+      mapbox-gl:
+        specifier: ^3
+        version: 3.25.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -235,6 +238,9 @@ importers:
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@18.3.1)
+      mapbox-gl:
+        specifier: ^3
+        version: 3.25.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -2881,6 +2887,9 @@ packages:
 
   manage-path@2.0.0:
     resolution: {integrity: sha512-NJhyB+PJYTpxhxZJ3lecIGgh4kwIY2RAh44XvAz9UlqthlQwtPBf62uBVR8XaD8CRuSjQ6TnZH2lNJkbLPZM2A==}
+
+  mapbox-gl@3.25.0:
+    resolution: {integrity: sha512-I+9oSkJVFu51xIAAQcjKophFe6zVAGWROHsszeRhX9E1OXEizgPH+8BkF7GaxmmLd9FbADdEfvULF8NxEFcB5w==}
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -6732,6 +6741,8 @@ snapshots:
       tmpl: 1.0.5
 
   manage-path@2.0.0: {}
+
+  mapbox-gl@3.25.0: {}
 
   math-intrinsics@1.1.0: {}
 

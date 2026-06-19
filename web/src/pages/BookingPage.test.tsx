@@ -46,64 +46,16 @@ afterEach(() => {
 });
 
 describe('BookingPage', () => {
-  it('renders the editable lat/lng inputs prefilled with Amman defaults', async () => {
+  it('renders the address picker prefilled with the default Amman address', async () => {
     renderWithProviders('/services/elec/book');
     await waitFor(() => {
-      expect(screen.getByLabelText('خط العرض')).toHaveValue(31.9522);
-      expect(screen.getByLabelText('خط الطول')).toHaveValue(35.9331);
+      expect(screen.getByLabelText('العنوان')).toHaveValue('خلدا، شارع وصفي التل');
     });
+    // The map search box is present (manual lat/lng inputs are gone).
+    expect(screen.getByLabelText('ابحث عن عنوان')).toBeInTheDocument();
   });
 
-  it('rejects an invalid latitude on submit and never POSTs', async () => {
-    const user = userEvent.setup();
-    const postSpy = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && url.endsWith('/bookings')) {
-        postSpy(JSON.parse(init.body as string));
-        return { ok: true, status: 200, json: async () => ({ id: 'b-new', status: 'PENDING', scheduledAt: null, totalJod: '50', service: svc }) } as Response;
-      }
-      if (url.endsWith('/services')) {
-        return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
-      }
-      return { ok: true, status: 200, json: async () => ({}) } as Response;
-    }) as unknown as typeof fetch);
-    renderWithProviders('/services/elec/book');
-    await screen.findByLabelText('خط العرض');
-    const lat = screen.getByLabelText('خط العرض');
-    await user.clear(lat);
-    await user.type(lat, '999');
-    await user.click(screen.getByRole('button', { name: 'تأكيد الحجز' }));
-    await user.click(await screen.findByRole('button', { name: 'تأكيد والدفع' }));
-    // Give the microtask queue a chance to run the createBooking mutation.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(postSpy).not.toHaveBeenCalled();
-  });
-
-  it('rejects an invalid longitude on submit and never POSTs', async () => {
-    const user = userEvent.setup();
-    const postSpy = vi.fn();
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && url.endsWith('/bookings')) {
-        postSpy(JSON.parse(init.body as string));
-        return { ok: true, status: 200, json: async () => ({ id: 'b-new', status: 'PENDING', scheduledAt: null, totalJod: '50', service: svc }) } as Response;
-      }
-      if (url.endsWith('/services')) {
-        return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
-      }
-      return { ok: true, status: 200, json: async () => ({}) } as Response;
-    }) as unknown as typeof fetch);
-    renderWithProviders('/services/elec/book');
-    await screen.findByLabelText('خط الطول');
-    const lng = screen.getByLabelText('خط الطول');
-    await user.clear(lng);
-    await user.type(lng, '-200');
-    await user.click(screen.getByRole('button', { name: 'تأكيد الحجز' }));
-    await user.click(await screen.findByRole('button', { name: 'تأكيد والدفع' }));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(postSpy).not.toHaveBeenCalled();
-  });
-
-  it('submits the booking with the edited coordinates when valid', async () => {
+  it('submits the booking with the pin coordinates (default Amman) on confirm', async () => {
     const user = userEvent.setup();
     const postSpy = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -118,25 +70,17 @@ describe('BookingPage', () => {
     }) as unknown as typeof fetch);
 
     renderWithProviders('/services/elec/book');
-    await screen.findByLabelText('خط العرض');
-
-    const lat = screen.getByLabelText('خط العرض');
-    const lng = screen.getByLabelText('خط الطول');
-    await user.clear(lat);
-    await user.type(lat, '32.0');
-    await user.clear(lng);
-    await user.type(lng, '36.0');
+    await screen.findByLabelText('العنوان');
 
     await user.click(screen.getByRole('button', { name: 'تأكيد الحجز' }));
     await user.click(await screen.findByRole('button', { name: 'تأكيد والدفع' }));
 
-    await waitFor(() => {
-      expect(postSpy).toHaveBeenCalled();
-    });
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
     expect(postSpy.mock.calls[0][0]).toMatchObject({
       serviceId: 'elec',
-      addressLat: 32.0,
-      addressLng: 36.0,
+      addressLat: 31.9522,
+      addressLng: 35.9331,
+      addressLine: 'خلدا، شارع وصفي التل',
     });
   });
 });

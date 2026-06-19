@@ -4,7 +4,8 @@ import { ChevronLeft, Phone, MessageCircle, Star } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
-import { Card, StatusBadge, Stars, Avatar, MapMock, ConfirmDialog, notify } from '../components/shared';
+import { Card, StatusBadge, Stars, Avatar, ConfirmDialog, notify } from '../components/shared';
+import TrackingMap from '../components/TrackingMap';
 
 const STEPS: ReadonlyArray<readonly [string, string]> = [
   ['CONFIRMED', 'تم القبول'],
@@ -22,7 +23,7 @@ export default function TrackingPage() {
 
   const { data: booking, isLoading, refetch } = useQuery({
     queryKey: ['booking', id],
-    queryFn: () => api.get<Booking & { technicianId: string | null }>(`/bookings/${id}`),
+    queryFn: () => api.get<Booking & { technicianId: string | null; addressLat: number; addressLng: number }>(`/bookings/${id}`),
   });
   const liveStatus = useBookingSocket(id);
   const location = useBookingLocation(id);
@@ -59,10 +60,11 @@ export default function TrackingPage() {
       </button>
 
       <Card className="mt-4 overflow-hidden">
-        <MapMock height={300} customerLabel={location ? 'الفني' : 'موقعك'} />
-        {(status === 'EN_ROUTE' || status === 'ARRIVED') && (
-          <div className="absolute" />
-        )}
+        <TrackingMap
+          customer={{ lat: booking.addressLat, lng: booking.addressLng }}
+          tech={location ? { lat: location.lat, lng: location.lng } : null}
+          height={300}
+        />
       </Card>
 
       {/* ETA + status */}

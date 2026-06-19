@@ -4,6 +4,7 @@ import { User, MapPin, CreditCard, Bell, LifeBuoy, Trash2, Plus, Settings as Set
 import { api, logout as apiLogout, Address, PaymentMethod, Notification, SupportTicketItem } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { Card, ConfirmDialog, notify } from '../components/shared';
+import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 
 type Tab = 'profile' | 'addresses' | 'payment' | 'notifications' | 'support' | 'settings';
 const TABS: ReadonlyArray<readonly [Tab, string, typeof User]> = [
@@ -119,11 +120,13 @@ function AddressesTab() {
   const qc = useQueryClient();
   const { data: items } = useQuery({ queryKey: ['addresses'], queryFn: () => api.get<Address[]>('/addresses') });
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ label: '', line: '', lat: '31.95', lng: '35.93' });
+  const [label, setLabel] = useState('');
+  const [addr, setAddr] = useState<AddressValue>({ address: '', lat: 31.9539, lng: 35.9106 });
+  function reset() { setAdding(false); setLabel(''); setAddr({ address: '', lat: 31.9539, lng: 35.9106 }); }
   async function add() {
     try {
-      await api.post('/addresses', { label: form.label.trim(), line: form.line.trim(), lat: Number(form.lat), lng: Number(form.lng) });
-      notify('تم الحفظ', 'success'); setAdding(false); setForm({ label: '', line: '', lat: '31.95', lng: '35.93' });
+      await api.post('/addresses', { label: label.trim(), line: addr.address.trim(), lat: addr.lat, lng: addr.lng });
+      notify('تم الحفظ', 'success'); reset();
       void qc.invalidateQueries({ queryKey: ['addresses'] });
     } catch (e) { notify(e instanceof Error ? e.message : 'خطأ', 'error'); }
   }
@@ -144,16 +147,12 @@ function AddressesTab() {
         </Card>
       ))}
       {adding ? (
-        <Card className="p-4 space-y-2">
-          <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="التسمية (مثال: المنزل)" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
-          <input value={form.line} onChange={(e) => setForm({ ...form, line: e.target.value })} placeholder="العنوان بالتفصيل" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
-          <div className="grid grid-cols-2 gap-2">
-            <input value={form.lat} onChange={(e) => setForm({ ...form, lat: e.target.value })} placeholder="Lat" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-            <input value={form.lng} onChange={(e) => setForm({ ...form, lng: e.target.value })} placeholder="Lng" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-          </div>
+        <Card className="p-4 space-y-3">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="التسمية (مثال: المنزل)" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
+          <MapAddressPicker value={addr} onChange={setAddr} height={220} />
           <div className="flex gap-2">
-            <button onClick={() => void add()} disabled={!form.label.trim() || !form.line.trim()} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
-            <button onClick={() => setAdding(false)} className="px-4 h-11 rounded-xl" style={{ color: '#475569' }}>إلغاء</button>
+            <button onClick={() => void add()} disabled={!label.trim() || !addr.address.trim()} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
+            <button onClick={reset} className="px-4 h-11 rounded-xl" style={{ color: '#475569' }}>إلغاء</button>
           </div>
         </Card>
       ) : (

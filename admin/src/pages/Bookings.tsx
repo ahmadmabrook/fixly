@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, BookingItem } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination } from '../components/shared';
+import BookingsMap from '../components/BookingsMap';
 
 const STATUSES = ['', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABELS: Record<string, string> = {
@@ -64,6 +65,13 @@ export default function Bookings() {
           ))}
         </div>
       </div>
+
+      {/* Live map of the listed bookings (pins for those with coordinates). */}
+      {!isLoading && !isError && bookings.some((b) => b.addressLat != null) && (
+        <Card className="p-3">
+          <BookingsMap bookings={bookings} height={320} />
+        </Card>
+      )}
 
       <Card>
         {isLoading && <Spinner />}
