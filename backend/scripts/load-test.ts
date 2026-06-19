@@ -19,6 +19,16 @@ const DURATION = Number(process.env.DURATION ?? 15);
 const READ_CONNECTIONS = Number(process.env.READ_CONNECTIONS ?? 50);
 const WRITE_CONNECTIONS = Number(process.env.WRITE_CONNECTIONS ?? 25);
 
+// SLO thresholds. Defaults are tight floors the app clears on a dev laptop;
+// throughput is hardware-dependent, so CI (shared 2-core runners) overrides the
+// rps/p99 floors via env while the error-rate gate stays strict everywhere —
+// that's the real correctness signal, the rest is noise on shared hardware.
+const READ_MIN_RPS = Number(process.env.READ_MIN_RPS ?? 1500);
+const READ_MAX_P99 = Number(process.env.READ_MAX_P99 ?? 150);
+const WRITE_MIN_RPS = Number(process.env.WRITE_MIN_RPS ?? 300);
+const WRITE_MAX_P99 = Number(process.env.WRITE_MAX_P99 ?? 400);
+const MAX_ERROR_RATE = Number(process.env.MAX_ERROR_RATE ?? 0.001);
+
 interface Threshold {
   minRps: number;
   maxP99Ms: number;
@@ -96,17 +106,17 @@ async function main(): Promise<void> {
     }),
   });
 
-  // SLOs: conservative floors that the app clears comfortably on a laptop, so a
-  // real regression (not noise) is what trips them.
+  // SLOs: env-overridable floors (see the constants above). Defaults are the
+  // tight laptop floors; CI relaxes rps/p99 but keeps the error-rate gate.
   const readOk = evaluate('GET /services (read)', readResult, {
-    minRps: 1500,
-    maxP99Ms: 150,
-    maxErrorRate: 0.001,
+    minRps: READ_MIN_RPS,
+    maxP99Ms: READ_MAX_P99,
+    maxErrorRate: MAX_ERROR_RATE,
   });
   const writeOk = evaluate('POST /bookings (write: tx + outbox)', writeResult, {
-    minRps: 300,
-    maxP99Ms: 400,
-    maxErrorRate: 0.001,
+    minRps: WRITE_MIN_RPS,
+    maxP99Ms: WRITE_MAX_P99,
+    maxErrorRate: MAX_ERROR_RATE,
   });
 
   if (!readOk || !writeOk) {
