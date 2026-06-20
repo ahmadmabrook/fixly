@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import type { Server } from 'http';
-import { loadEnv } from './shared/env';
+import { loadEnv, env } from './shared/env';
 import { createApp } from './interface/http/app';
 import { createSocketServer } from './interface/socket/server';
 import { logger } from './shared/logger';
@@ -10,11 +10,16 @@ import { OutboxWorker } from './application/outbox/OutboxWorker';
 import { PaymentService } from './application/payment/PaymentService';
 import { NotificationService } from './application/notification/NotificationService';
 import { AdminService } from './application/admin/AdminService';
+import { BookingService } from './application/booking/BookingService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
-import { outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge } from './shared/metrics';
+import {
+  outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge,
+  bookingsAwaitingPaymentGauge, bookingsExpiredUnpaidTotal,
+} from './shared/metrics';
 
 const PENDING_GAUGE_INTERVAL_MS = 15_000;
 const PAYOUT_RECONCILE_INTERVAL_MS = 60_000;
+const CHECKOUT_RECONCILE_INTERVAL_MS = 60_000;
 
 async function main() {
   const env = loadEnv(); // fail-fast on missing/unsafe config
@@ -48,26 +53,45 @@ async function main() {
   }, PAYOUT_RECONCILE_INTERVAL_MS);
   reconcileTimer.unref();
 
+  // Cancel hosted-checkout bookings abandoned in AWAITING_PAYMENT past the TTL so the
+  // queue doesn't accumulate unpaid bookings (no money has moved — silent cleanup).
+  const bookingService = new BookingService();
+  const checkoutExpiryTimer = setInterval(() => {
+    void bookingService
+      .expireUnpaidBookings(env.CHECKOUT_TTL_MINUTES)
+      .then((n) => {
+        if (n > 0) {
+          bookingsExpiredUnpaidTotal.inc(n);
+          logger.warn({ count: n }, 'Cancelled unpaid bookings past the checkout TTL');
+        }
+      })
+      .catch((err) => logger.warn({ err }, 'Checkout-expiry cycle failed'));
+  }, CHECKOUT_RECONCILE_INTERVAL_MS);
+  checkoutExpiryTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
 
-  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer]);
+  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer]);
 }
 
 async function refreshPendingGauge(): Promise<void> {
   try {
     const expiryCutoff = new Date(Date.now() - loadEnv().AUTH_HOLD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-    const [pending, failed, stuckPreauth] = await Promise.all([
+    const [pending, failed, stuckPreauth, awaitingPayment] = await Promise.all([
       prisma.outboxEvent.count({ where: { status: 'PENDING' } }),
       // Terminal-FAILED money events = uncollected revenue / held customer funds.
       prisma.outboxEvent.count({ where: { status: 'FAILED' } }),
       // Holds past expiry that were never captured → capture at risk.
       prisma.payment.count({ where: { status: 'PRE_AUTHORIZED', preAuthorizedAt: { lt: expiryCutoff } } }),
+      // Bookings awaiting hosted-checkout authorization (visibility into the funnel).
+      prisma.booking.count({ where: { status: 'AWAITING_PAYMENT' } }),
     ]);
     outboxPendingGauge.set(pending);
     outboxFailedGauge.set(failed);
     paymentStuckPreauthGauge.set(stuckPreauth);
+    bookingsAwaitingPaymentGauge.set(awaitingPayment);
     if (failed > 0) logger.error({ failed }, 'Outbox has terminal-FAILED events — money action(s) need triage');
     if (stuckPreauth > 0) logger.error({ stuckPreauth }, 'Pre-authorizations past expiry without capture — funds at risk');
   } catch (err) {
@@ -81,7 +105,7 @@ function buildOutboxWorker(
   batchSize: number,
   maxBatchesPerTick: number,
 ): OutboxWorker {
-  const payment = new PaymentService(PaymentProviderFactory.create());
+  const payment = new PaymentService(PaymentProviderFactory.create(), env().PAYMENT_PROVIDER);
   const notification = new NotificationService(io);
   const bookingId = (p: unknown) => (p as { bookingId: string }).bookingId;
 

@@ -5,11 +5,17 @@ import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { BookingService, ADVANCEABLE_TO } from '../../../application/booking/BookingService';
 import { ReviewService } from '../../../application/review/ReviewService';
+import { PaymentService } from '../../../application/payment/PaymentService';
+import { PaymentProviderFactory } from '../../../infrastructure/providers/PaymentProviderFactory';
+import { ForbiddenError } from '../../../shared/errors';
+import { env } from '../../../shared/env';
+import { logger } from '../../../shared/logger';
 
 export const bookingsRouter: Router = Router();
 
 const bookingService = new BookingService();
 const reviewService = new ReviewService();
+const paymentService = new PaymentService(PaymentProviderFactory.create(), env().PAYMENT_PROVIDER);
 
 bookingsRouter.use(authenticate, requireActiveUser);
 
@@ -37,7 +43,46 @@ bookingsRouter.post(
       scheduledAt: req.body.scheduledAt ?? undefined,
       promoCode: req.body.promoCode ?? undefined,
     });
-    res.status(201).json({ data: booking });
+
+    // Hosted-checkout providers: open the payment session now so the client can mount
+    // the widget immediately. `checkout` is null in instant (mock) mode, or if opening
+    // the session fails (HyperPay unreachable) — the booking stays AWAITING_PAYMENT and
+    // the client can retry via POST /:id/checkout.
+    let checkout = null;
+    if (PaymentProviderFactory.requiresHostedCheckout()) {
+      try {
+        checkout = await paymentService.prepareCheckout(booking.id);
+      } catch (err) {
+        logger.error({ err, bookingId: booking.id }, 'createBooking: failed to open checkout session (client may retry)');
+      }
+    }
+    res.status(201).json({ data: { booking, checkout } });
+  }),
+);
+
+// (Re-)open a hosted-checkout session for a booking still awaiting payment. Used to
+// retry after a failed/abandoned attempt or when the initial create couldn't open one.
+bookingsRouter.post(
+  '/:id/checkout',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.getById(req.params.id, req.user!.userId);
+    if (booking.customerId !== req.user!.userId) throw new ForbiddenError('Only the customer can pay');
+    const checkout = await paymentService.prepareCheckout(req.params.id);
+    res.json({ data: checkout });
+  }),
+);
+
+// Resolve the outcome of a hosted-checkout session (called from the customer's return
+// page). Idempotent — reconciles the PSP result into our state and reports it.
+bookingsRouter.get(
+  '/:id/payment-status',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.getById(req.params.id, req.user!.userId);
+    if (booking.customerId !== req.user!.userId) throw new ForbiddenError('Only the customer can view payment status');
+    const state = await paymentService.finalizeCheckout(req.params.id);
+    res.json({ data: { state } });
   }),
 );
 

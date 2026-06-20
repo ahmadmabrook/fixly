@@ -29,8 +29,19 @@ interface Env {
   AUTH_HOLD_EXPIRY_DAYS: number;
   /** ISO-4217 currency for all money. Single-currency today; column-backed for later. */
   CURRENCY: string;
-  /** Shared secret to verify PSP webhook signatures. Required in prod for webhooks. */
+  /** Shared secret to verify mock PSP webhook signatures (HMAC). Required in prod for the mock. */
   PSP_WEBHOOK_SECRET: string;
+  // ── HyperPay (hosted checkout). Only consulted when PAYMENT_PROVIDER=hyperpay. ──
+  /** HyperPay/OPPWA merchant entity id (per channel). */
+  HYPERPAY_ENTITY_ID: string;
+  /** Bearer access token for HyperPay/OPPWA API calls. */
+  HYPERPAY_ACCESS_TOKEN: string;
+  /** OPPWA API base URL. Test: https://eu-test.oppwa.com · Live: https://eu-prod.oppwa.com */
+  HYPERPAY_BASE_URL: string;
+  /** Hex AES-256-GCM key for decrypting HyperPay webhook notifications. Required in prod. */
+  HYPERPAY_WEBHOOK_DECRYPT_KEY: string;
+  /** Minutes a booking may sit in AWAITING_PAYMENT before the reconciler cancels it. */
+  CHECKOUT_TTL_MINUTES: number;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -84,9 +95,30 @@ export function loadEnv(): Env {
     throw new Error('PLATFORM_COMMISSION_PCT must be a number between 0 and 100');
   }
 
+  // Mock provider's HMAC webhook secret. No prod requirement: the mock is already
+  // rejected in production above, and each real provider validates its own secret
+  // (HyperPay → HYPERPAY_WEBHOOK_DECRYPT_KEY below).
   const PSP_WEBHOOK_SECRET = process.env.PSP_WEBHOOK_SECRET ?? '';
-  if (isProd && PAYMENT_PROVIDER !== 'mock' && PSP_WEBHOOK_SECRET === '') {
-    throw new Error('PSP_WEBHOOK_SECRET is required in production to verify payment webhooks');
+
+  // HyperPay configuration. Required only when it is the selected provider so a
+  // mock/dev deploy needs none of it; a hyperpay deploy fails fast if incomplete.
+  const HYPERPAY_ENTITY_ID = process.env.HYPERPAY_ENTITY_ID ?? '';
+  const HYPERPAY_ACCESS_TOKEN = process.env.HYPERPAY_ACCESS_TOKEN ?? '';
+  const HYPERPAY_BASE_URL = process.env.HYPERPAY_BASE_URL ?? 'https://eu-test.oppwa.com';
+  const HYPERPAY_WEBHOOK_DECRYPT_KEY = process.env.HYPERPAY_WEBHOOK_DECRYPT_KEY ?? '';
+  if (PAYMENT_PROVIDER === 'hyperpay') {
+    if (HYPERPAY_ENTITY_ID === '') throw new Error('HYPERPAY_ENTITY_ID is required when PAYMENT_PROVIDER=hyperpay');
+    if (HYPERPAY_ACCESS_TOKEN === '') throw new Error('HYPERPAY_ACCESS_TOKEN is required when PAYMENT_PROVIDER=hyperpay');
+    // The decrypt key verifies inbound webhooks (the source of truth for async
+    // outcomes). Optional in non-prod so a sandbox without webhooks still boots.
+    if (isProd && HYPERPAY_WEBHOOK_DECRYPT_KEY === '') {
+      throw new Error('HYPERPAY_WEBHOOK_DECRYPT_KEY is required in production to verify HyperPay webhooks');
+    }
+  }
+
+  const CHECKOUT_TTL_MINUTES = parseInt(process.env.CHECKOUT_TTL_MINUTES ?? '30', 10);
+  if (!Number.isFinite(CHECKOUT_TTL_MINUTES) || CHECKOUT_TTL_MINUTES <= 0) {
+    throw new Error('CHECKOUT_TTL_MINUTES must be a positive integer');
   }
 
   cached = {
@@ -107,9 +139,23 @@ export function loadEnv(): Env {
     AUTH_HOLD_EXPIRY_DAYS: parseInt(process.env.AUTH_HOLD_EXPIRY_DAYS ?? '6', 10),
     CURRENCY: process.env.CURRENCY ?? 'JOD',
     PSP_WEBHOOK_SECRET,
+    HYPERPAY_ENTITY_ID,
+    HYPERPAY_ACCESS_TOKEN,
+    HYPERPAY_BASE_URL,
+    HYPERPAY_WEBHOOK_DECRYPT_KEY,
+    CHECKOUT_TTL_MINUTES,
   };
 
   return cached;
 }
 
 export const env = (): Env => cached ?? loadEnv();
+
+/**
+ * Whether the configured PSP authorizes via customer-driven hosted checkout (vs. instant
+ * server-side pre-auth). Lets the booking flow pick the initial status without importing
+ * any infrastructure (keeps the application→infrastructure dependency from inverting).
+ */
+export function paymentRequiresHostedCheckout(): boolean {
+  return env().PAYMENT_PROVIDER === 'hyperpay';
+}

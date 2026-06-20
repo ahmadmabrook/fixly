@@ -86,6 +86,20 @@ export const paymentStuckPreauthGauge = new client.Gauge({
   registers: [registry],
 });
 
+/** Bookings auto-cancelled because the customer never completed hosted checkout. */
+export const bookingsExpiredUnpaidTotal = new client.Counter({
+  name: 'bookings_expired_unpaid_total',
+  help: 'Bookings cancelled by the reconciler after the checkout TTL with no authorization',
+  registers: [registry],
+});
+
+/** Bookings currently sitting in AWAITING_PAYMENT (checkout opened, not yet authorized). */
+export const bookingsAwaitingPaymentGauge = new client.Gauge({
+  name: 'bookings_awaiting_payment',
+  help: 'Bookings awaiting hosted-checkout authorization',
+  registers: [registry],
+});
+
 /** PSP webhook events handled, labelled by type + result. */
 export const pspWebhookTotal = new client.Counter({
   name: 'psp_webhook_events_total',

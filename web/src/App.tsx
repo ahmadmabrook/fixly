@@ -14,6 +14,7 @@ import Landing from './pages/Landing';
 import Catalog from './pages/Catalog';
 import ServicePage from './pages/ServicePage';
 import BookingPage from './pages/BookingPage';
+import PaymentReturn from './pages/PaymentReturn';
 import MyBookings from './pages/MyBookings';
 import BookingDetail from './pages/BookingDetail';
 import TrackingPage from './pages/TrackingPage';
@@ -80,6 +81,10 @@ export default function App() {
             <Route
               path="/services/:id/book"
               element={<BookingRoute onRequireLogin={openLoginModal} />}
+            />
+            <Route
+              path="/payment/return"
+              element={authed ? <PaymentReturn /> : <Navigate to="/" replace />}
             />
             <Route
               path="/my-bookings"

@@ -2,15 +2,22 @@ import { BookingService } from './BookingService';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
+import { paymentRequiresHostedCheckout } from '../../shared/env';
 
 jest.mock('../../infrastructure/cache/redis', () => ({
   redis: { set: jest.fn(), del: jest.fn() },
 }));
 
+// Keep real env/loadEnv; only stub the payment-mode flag so we can exercise both branches.
+jest.mock('../../shared/env', () => ({
+  ...jest.requireActual('../../shared/env'),
+  paymentRequiresHostedCheckout: jest.fn(() => false),
+}));
+
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
     service: { findUnique: jest.fn() },
-    booking: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+    booking: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
     technicianProfile: { findUnique: jest.fn() },
     outboxEvent: { create: jest.fn() },
     $transaction: jest.fn(),
@@ -18,9 +25,10 @@ jest.mock('../../infrastructure/database/prisma', () => ({
 }));
 
 const mockedRedis = redis as jest.Mocked<typeof redis>;
+const mockedHosted = paymentRequiresHostedCheckout as jest.Mock;
 const mockedPrisma = prisma as unknown as {
   service: { findUnique: jest.Mock };
-  booking: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+  booking: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
   technicianProfile: { findUnique: jest.Mock };
   outboxEvent: { create: jest.Mock };
   $transaction: jest.Mock;
@@ -31,6 +39,7 @@ describe('BookingService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedHosted.mockReturnValue(false); // default to instant mode; hosted tests opt in
     service = new BookingService();
   });
 
@@ -69,6 +78,37 @@ describe('BookingService', () => {
         expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.created' }) }),
       );
       expect(result).toEqual({ id: 'b1' });
+    });
+
+    it('hosted checkout: starts AWAITING_PAYMENT and does NOT emit booking.created yet', async () => {
+      mockedHosted.mockReturnValue(true);
+      mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });
+      const tx = {
+        booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
+        outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
+
+      await service.createBooking(input);
+
+      expect(tx.booking.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'AWAITING_PAYMENT' }) }),
+      );
+      expect(tx.outboxEvent.create).not.toHaveBeenCalled(); // emitted only on authorization
+    });
+  });
+
+  describe('expireUnpaidBookings', () => {
+    it('cancels AWAITING_PAYMENT bookings older than the TTL in one set-based update', async () => {
+      mockedPrisma.booking.updateMany.mockResolvedValue({ count: 2 });
+      const cancelled = await service.expireUnpaidBookings(30);
+      expect(cancelled).toBe(2);
+      expect(mockedPrisma.booking.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'AWAITING_PAYMENT', createdAt: { lt: expect.any(Date) } }),
+          data: expect.objectContaining({ status: 'CANCELLED' }),
+        }),
+      );
     });
   });
 

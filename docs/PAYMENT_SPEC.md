@@ -1,7 +1,16 @@
 # PAYMENT_SPEC — Payment Integration via Outbox
 
+> ⚠️ **HISTORICAL BUILD ORDER — SUPERSEDED.** This was the original work order for the
+> outbox-driven pre-auth/capture seam. The payment system has since shipped and evolved well
+> beyond it: partial capture/refund, disputes/chargebacks, payouts + reconciliation, hold-expiry
+> handling, and **HyperPay hosted checkout (pay-to-book, `AWAITING_PAYMENT` → authorize →
+> `PENDING`)**. For the current behaviour read the code
+> (`backend/src/application/payment/PaymentService.ts`,
+> `backend/src/infrastructure/providers/HyperPayProvider.ts`) and the API contract
+> (`docs/openapi.yaml`). Treat the sections below as historical context only.
+
 **Owner:** `payment-dev`
-**Status:** ⛔ BLOCKED — do not write code until `outbox-dev` sends **"registry ready"**.
+**Status:** ✅ DONE (this doc is historical — see banner above).
 **Depends on:** `OUTBOX_SPEC.md` §4–§5 (the `OutboxEventHandler` interface + `OutboxHandlerRegistry`).
 
 > **Why blocked:** your payment handler implements `OutboxEventHandler` from

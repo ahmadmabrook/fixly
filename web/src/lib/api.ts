@@ -157,6 +157,25 @@ export interface CreateBookingInput {
   promoCode?: string | null;
 }
 
+/** A hosted-checkout session (HyperPay COPYandPAY widget) returned by the backend. */
+export interface CheckoutSession {
+  checkoutId: string;
+  scriptUrl: string;
+  brands: string[];
+}
+
+/**
+ * POST /bookings response. `checkout` is null in mock/dev mode (no hosted payment) or
+ * when the booking was created but opening the session failed (retry via POST
+ * /bookings/:id/checkout). When present, the client mounts the payment widget.
+ */
+export interface CreateBookingResult {
+  booking: Booking;
+  checkout: CheckoutSession | null;
+}
+
+export type CheckoutState = 'authorized' | 'pending' | 'rejected';
+
 export interface PromoQuote {
   code: string;
   discountJod: string;

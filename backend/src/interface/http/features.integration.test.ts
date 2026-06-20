@@ -39,6 +39,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Self-clean so re-runs stay deterministic (promo per-user limits etc.).
+  await prisma.paymentMethod.deleteMany({ where: { userId } });
   await prisma.promoRedemption.deleteMany({ where: { userId } });
   await prisma.supportMessage.deleteMany({ where: { ticket: { userId } } });
   await prisma.supportTicket.deleteMany({ where: { userId } });
@@ -97,6 +98,21 @@ describe('Payment methods (mock)', () => {
 
     const list = await request(app).get('/api/v1/payment-methods').set(auth()).expect(200);
     expect(list.body.data.length).toBe(1);
+  });
+
+  it('promotes a new default when the current default is deleted (F6)', async () => {
+    await prisma.paymentMethod.deleteMany({ where: { userId } }); // isolate from the card above
+    const a = await request(app).post('/api/v1/payment-methods').set(auth())
+      .send({ brand: 'visa', last4: '1111', expMonth: 5, expYear: 2030 }).expect(201);
+    await request(app).post('/api/v1/payment-methods').set(auth())
+      .send({ brand: 'mastercard', last4: '2222', expMonth: 6, expYear: 2031 }).expect(201);
+    expect(a.body.data.isDefault).toBe(true); // first card is the default
+
+    await request(app).delete(`/api/v1/payment-methods/${a.body.data.id}`).set(auth()).expect(204);
+
+    const list = await request(app).get('/api/v1/payment-methods').set(auth()).expect(200);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].isDefault).toBe(true); // remaining card promoted to default
   });
 });
 

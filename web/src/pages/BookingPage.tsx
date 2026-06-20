@@ -3,9 +3,10 @@ import { ChevronLeft } from 'lucide-react';
 import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
 import { useBookingSocket } from '../lib/socket';
-import { api, ApiError, PromoQuote } from '../lib/api';
+import { api, ApiError, PromoQuote, CheckoutSession } from '../lib/api';
 import { Card, ServiceIcon, PriceBadge, InlineRow, ConfirmDialog, StatusBadge, notify } from '../components/shared';
 import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
+import HyperPayWidget from '../components/HyperPayWidget';
 
 interface BookingPageProps {
   serviceId: string;
@@ -13,7 +14,6 @@ interface BookingPageProps {
   onDone: () => void;
 }
 
-const PAY_METHODS = ['Apple Pay', 'Google Pay', 'بطاقة'] as const;
 const SCHEDULE_OPTIONS: ReadonlyArray<readonly ['now' | 'later', string, string]> = [
   ['now', 'فوراً', 'خلال 30 دقيقة'],
   ['later', 'حجز لاحقاً', 'غداً'],
@@ -28,7 +28,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const [when, setWhen] = useState<'now' | 'later'>('now');
   const [addr, setAddr] = useState<AddressValue>({ address: 'خلدا، شارع وصفي التل', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
   const [confirming, setConfirming] = useState(false);
-  const [pay, setPay] = useState(0);
+  const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<PromoQuote | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
@@ -92,15 +92,38 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         promoCode: promo ? promoInput.trim() : null,
       },
       {
-        onSuccess: (booking) => {
+        onSuccess: ({ booking, checkout: session }) => {
           setCreatedId(booking.id);
-          notify('تم تأكيد الحجز بنجاح', 'success');
-          onDone();
+          if (session) {
+            // Hosted checkout: mount the payment widget; the booking stays
+            // AWAITING_PAYMENT until the customer authorizes on HyperPay.
+            setCheckout(session);
+          } else {
+            // Instant (mock) mode: the hold is placed server-side immediately.
+            notify('تم تأكيد الحجز بنجاح', 'success');
+            onDone();
+          }
         },
         onError: (e) => notify(e instanceof Error ? e.message : 'حدث خطأ', 'error'),
       },
     );
   }, [svc, addr, when, promo, promoInput, createBooking, onDone]);
+
+  // Once a checkout session is open, render only the payment step.
+  if (checkout && createdId) {
+    const returnUrl = `${window.location.origin}/payment/return?bookingId=${createdId}`;
+    return (
+      <main className="max-w-[640px] mx-auto px-6 py-10">
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A' }}>إتمام الدفع</h1>
+        <p style={{ fontSize: 13, color: '#64748B', margin: '6px 0 16px' }}>
+          أدخل بيانات بطاقتك لإتمام الحجز. سيتم حجز المبلغ ويُخصم بعد إتمام الخدمة.
+        </p>
+        <Card className="p-6">
+          <HyperPayWidget session={checkout} returnUrl={returnUrl} />
+        </Card>
+      </main>
+    );
+  }
 
   if (isLoading) {
     return <CenteredMessage tone="muted">جارٍ التحميل...</CenteredMessage>;
@@ -151,19 +174,11 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
 
           <Card className="p-6">
             <h2 style={{ fontWeight: 700, fontSize: 16 }}>الدفع</h2>
-            <div className="mt-3 grid grid-cols-3 gap-3" role="radiogroup" aria-label="اختر طريقة الدفع">
-              {PAY_METHODS.map((m, i) => (
-                <button
-                  key={m}
-                  role="radio"
-                  aria-checked={i === pay}
-                  onClick={() => setPay(i)}
-                  className="p-4 rounded-xl border-2 text-center"
-                  style={{ borderColor: i === pay ? '#1366D6' : '#E2E8F0', background: i === pay ? '#E8F1FE' : '#FFF', fontWeight: 700, fontSize: 14 }}
-                >
-                  {m}
-                </button>
-              ))}
+            <div
+              className="mt-3 p-4 rounded-xl border-2 text-center"
+              style={{ borderColor: '#1366D6', background: '#E8F1FE', fontWeight: 700, fontSize: 14, color: '#0E4FA8' }}
+            >
+              بطاقة ائتمان (Visa / Mastercard)
             </div>
           </Card>
         </div>
@@ -233,7 +248,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
       {confirming && (
         <ConfirmDialog
           title="تأكيد الحجز"
-          body={`سيتم حجز ${promo ? Number(promo.finalJod) : price} دينار عبر ${PAY_METHODS[pay]} وخصمه بعد إتمام الخدمة.`}
+          body={`سيتم حجز ${promo ? Number(promo.finalJod) : price} دينار عبر البطاقة وخصمه بعد إتمام الخدمة.`}
           confirmLabel={isPending ? '...' : 'تأكيد والدفع'}
           onConfirm={submit}
           onCancel={() => setConfirming(false)}

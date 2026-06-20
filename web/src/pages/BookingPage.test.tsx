@@ -61,7 +61,8 @@ describe('BookingPage', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'POST' && url.endsWith('/bookings')) {
         postSpy(JSON.parse(init.body as string));
-        return { ok: true, status: 200, json: async () => ({ id: 'b-new', status: 'PENDING', scheduledAt: null, totalJod: '50', service: svc }) } as Response;
+        // Instant (mock) mode: no hosted-checkout session.
+        return { ok: true, status: 200, json: async () => ({ data: { booking: { id: 'b-new', status: 'PENDING', scheduledAt: null, totalJod: '50', service: svc }, checkout: null } }) } as Response;
       }
       if (url.endsWith('/services')) {
         return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
@@ -82,5 +83,27 @@ describe('BookingPage', () => {
       addressLng: 35.9331,
       addressLine: 'خلدا، شارع وصفي التل',
     });
+  });
+
+  it('hosted checkout: mounts the payment widget when the backend returns a checkout session', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/bookings')) {
+        return { ok: true, status: 200, json: async () => ({ data: { booking: { id: 'b-pay', status: 'AWAITING_PAYMENT', scheduledAt: null, totalJod: '50', service: svc }, checkout: { checkoutId: 'co_1', scriptUrl: 'https://eu-test.oppwa.com/v1/paymentWidgets.js', brands: ['VISA', 'MASTER'] } } }) } as Response;
+      }
+      if (url.endsWith('/services')) {
+        return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch);
+
+    renderWithProviders('/services/elec/book');
+    await screen.findByLabelText('العنوان');
+    await user.click(screen.getByRole('button', { name: 'تأكيد الحجز' }));
+    await user.click(await screen.findByRole('button', { name: 'تأكيد والدفع' }));
+
+    // The payment step replaces the form: the checkout heading + HyperPay widget form appear.
+    expect(await screen.findByText('إتمام الدفع')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('form.paymentWidgets')).not.toBeNull());
   });
 });

@@ -37,3 +37,9 @@ export const globalLimiter = build('global', 60_000, 300);
 // Tighter cap on auth endpoints (credential stuffing / OTP abuse defence-in-depth;
 // AuthService also enforces per-phone OTP cooldown + attempt lockout).
 export const authLimiter = build('auth', 60_000, 20);
+
+// PSP webhooks are mounted before the global limiter (they need the raw body), so they
+// would otherwise be unmetered. The real PSP is a single source that may legitimately
+// burst, so the cap is generous — it only exists to bound a flood of forged/garbage
+// deliveries (which decodeWebhook already rejects before any DB work).
+export const webhookLimiter = build('webhook', 60_000, 600);

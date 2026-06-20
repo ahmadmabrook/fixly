@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
+import { paymentRequiresHostedCheckout } from '../../shared/env';
 import { PromoService } from '../promo/PromoService';
 
 const COMPLETABLE_STATUSES: BookingStatus[] = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
@@ -46,6 +47,12 @@ export class BookingService {
     const discountJod = quote ? quote.discountJod : new Prisma.Decimal(0);
     const totalJod = quote ? quote.finalJod : service.priceJod;
 
+    // Hosted-checkout (real PSP): the booking starts in AWAITING_PAYMENT and is NOT yet
+    // visible to technicians; it is promoted to PENDING (and booking.created is emitted)
+    // only once the customer authorizes payment. Instant (mock) providers authorize on
+    // booking.created, so the booking starts live at PENDING — unchanged behaviour.
+    const hosted = paymentRequiresHostedCheckout();
+
     return prisma.$transaction(async (tx) => {
       const booking = await tx.booking.create({
         data: {
@@ -58,7 +65,7 @@ export class BookingService {
           discountJod,
           promoCodeId: quote?.promoCodeId,
           totalJod,
-          status: 'PENDING',
+          status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
         },
       });
 
@@ -66,16 +73,38 @@ export class BookingService {
         await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, discountJod);
       }
 
-      await tx.outboxEvent.create({
-        data: {
-          bookingId: booking.id,
-          eventType: 'booking.created',
-          payload: { bookingId: booking.id, customerId: input.customerId },
-        },
-      });
+      if (!hosted) {
+        await tx.outboxEvent.create({
+          data: {
+            bookingId: booking.id,
+            eventType: 'booking.created',
+            payload: { bookingId: booking.id, customerId: input.customerId },
+          },
+        });
+      }
 
       return booking;
     });
+  }
+
+  /**
+   * Abandonment cleanup (hosted checkout): cancel bookings that have sat in
+   * AWAITING_PAYMENT past the checkout TTL without the customer authorizing payment.
+   * Transition-guarded so a booking that just got authorized (→ PENDING) in a race is
+   * never cancelled. No money has moved (an authorized hold would have promoted it), so
+   * this is a silent cleanup — no outbox/notification. Returns the number cancelled.
+   */
+  async expireUnpaidBookings(ttlMinutes: number): Promise<number> {
+    const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000);
+    // One set-based update. The `status: AWAITING_PAYMENT` predicate is itself the
+    // transition guard: a booking that just got authorized in a race is already PENDING,
+    // so it no longer matches and is never cancelled. No money has moved (an authorized
+    // hold would have promoted it) — silent cleanup, no outbox/notification.
+    const { count } = await prisma.booking.updateMany({
+      where: { status: 'AWAITING_PAYMENT', createdAt: { lt: cutoff } },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: 'Payment not completed in time' },
+    });
+    return count;
   }
 
   async listForUser(userId: string, role: string, limit = 50, offset = 0) {

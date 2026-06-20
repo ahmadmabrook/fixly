@@ -79,9 +79,18 @@ paymentMethodsRouter.delete(
   '/:id',
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    const existing = await prisma.paymentMethod.findFirst({ where: { id: req.params.id, userId: req.user!.userId } });
-    if (!existing) throw new NotFoundError('PaymentMethod');
-    await prisma.paymentMethod.delete({ where: { id: req.params.id } });
+    const userId = req.user!.userId;
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.paymentMethod.findFirst({ where: { id: req.params.id, userId } });
+      if (!existing) throw new NotFoundError('PaymentMethod');
+      await tx.paymentMethod.delete({ where: { id: req.params.id } });
+      // If we removed the default, promote the most-recently-added remaining card so the
+      // user always keeps a usable default for 1-tap checkout (F6).
+      if (existing.isDefault) {
+        const next = await tx.paymentMethod.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } });
+        if (next) await tx.paymentMethod.update({ where: { id: next.id }, data: { isDefault: true } });
+      }
+    });
     res.status(204).end();
   }),
 );

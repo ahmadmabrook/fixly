@@ -212,8 +212,11 @@ describe('bookings', () => {
       .send({ serviceId: SEED_SERVICE_ID, addressLine: 'خلدا', addressLat: 31.9522, addressLng: 35.9331 })
       .expect(201);
 
-    const bookingId = create.body.data.id;
-    expect(create.body.data.status).toBe('PENDING');
+    // POST /bookings now returns { booking, checkout }. In mock/instant mode the
+    // booking is live (PENDING) immediately and there is no hosted-checkout session.
+    const bookingId = create.body.data.booking.id;
+    expect(create.body.data.booking.status).toBe('PENDING');
+    expect(create.body.data.checkout).toBeNull();
 
     const list = await request(app)
       .get('/api/v1/bookings')

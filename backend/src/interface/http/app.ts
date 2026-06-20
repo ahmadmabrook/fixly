@@ -11,7 +11,7 @@ import { env } from '../../shared/env';
 import { registry, httpRequestDuration, httpRequestsTotal } from '../../shared/metrics';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFound';
-import { globalLimiter, authLimiter, rateLimitEnabled } from './middleware/rateLimit';
+import { globalLimiter, authLimiter, webhookLimiter, rateLimitEnabled } from './middleware/rateLimit';
 import { healthRouter, livenessRouter, readinessRouter } from './routes/health';
 import { authRouter } from './routes/auth';
 import { servicesRouter } from './routes/services';
@@ -62,7 +62,11 @@ export function createApp(): { app: Express; httpServer: http.Server } {
   // mounted before the JSON body parser (which would otherwise consume it).
   const paymentProvider = PaymentProviderFactory.create();
   const webhookPaymentService = new PaymentService(paymentProvider, env().PAYMENT_PROVIDER);
-  app.use('/api/v1/webhooks', createWebhookRouter(webhookPaymentService, paymentProvider, env().PAYMENT_PROVIDER));
+  app.use(
+    '/api/v1/webhooks',
+    ...(rateLimitEnabled() ? [webhookLimiter] : []),
+    createWebhookRouter(webhookPaymentService, paymentProvider, env().PAYMENT_PROVIDER),
+  );
 
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());

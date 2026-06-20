@@ -263,6 +263,11 @@ model Booking {
 }
 
 enum BookingStatus {
+  // Hosted-checkout (real PSP) only: booking exists but the customer has not yet
+  // authorized payment, so it is NOT visible to technicians. Promotes to PENDING
+  // on successful authorization, or is auto-cancelled by the reconciler after the
+  // checkout TTL. The instant (mock) provider skips this and starts at PENDING.
+  AWAITING_PAYMENT
   PENDING
   CONFIRMED
   EN_ROUTE
@@ -283,6 +288,15 @@ model Payment {
   status            PaymentStatus @default(PENDING)
   provider          String
   providerRef       String?
+  // Hosted-checkout session id (PSP), set when the session is prepared and used to
+  // correlate the async authorization result/webhook back to this row. Unique so a
+  // booking has at most one live checkout session.
+  checkoutId        String?       @unique
+  // Payment method used. v1 = card only; applepay/googlepay land later.
+  method            String?       @default("card")
+  // Tokenised card metadata only — NEVER a PAN. Populated from the checkout result.
+  cardBrand         String?
+  cardLast4         String?
   currency          String        @default("JOD")
   // Authorized (held) amount. Capture/refund amounts may be ≤ this (partial).
   amountJod         Decimal       @db.Decimal(10, 3)

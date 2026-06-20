@@ -9,8 +9,9 @@ import type { IPaymentProvider } from '../../../domain/providers/IPaymentProvide
 
 /**
  * Inbound PSP webhooks (the PSP is the source of truth for async outcomes:
- * disputes, chargebacks, hold expiry, settlement). Hardened:
- *   - raw body + HMAC signature verification (reject forgeries),
+ * authorization, disputes, chargebacks, hold expiry, settlement). Hardened:
+ *   - raw body + provider-specific verification (HMAC for the mock, AES-GCM
+ *     decryption for HyperPay) — forgeries/tampered payloads are rejected,
  *   - dedupe by (provider, eventId) so at-least-once delivery is safe,
  *   - the handler itself is idempotent, so a crash mid-handle simply replays.
  * Returns 2xx fast so the PSP doesn't hammer retries on transient handler errors
@@ -23,22 +24,15 @@ export function createWebhookRouter(payment: PaymentService, provider: IPaymentP
     '/psp',
     raw({ type: '*/*', limit: '1mb' }),
     asyncHandler(async (req, res) => {
-      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
-      const signature = req.header('x-psp-signature');
+      const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
 
-      if (!provider.verifyWebhook(rawBody, signature)) {
+      // Verify + parse in one step (provider-specific). null = invalid signature/
+      // decryption or unparseable body → reject without processing.
+      const event = provider.decodeWebhook(rawBody, req.headers as Record<string, string | undefined>);
+      if (!event) {
         pspWebhookTotal.inc({ type: 'unknown', result: 'invalid' });
-        logger.warn('PSP webhook rejected: invalid signature');
-        res.status(400).json({ error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' } });
-        return;
-      }
-
-      let event;
-      try {
-        event = provider.parseWebhook(rawBody);
-      } catch {
-        pspWebhookTotal.inc({ type: 'unknown', result: 'invalid' });
-        res.status(400).json({ error: { code: 'BAD_PAYLOAD', message: 'Unparseable webhook body' } });
+        logger.warn('PSP webhook rejected: failed verification/decryption');
+        res.status(400).json({ error: { code: 'INVALID_WEBHOOK', message: 'Invalid webhook signature or payload' } });
         return;
       }
 
@@ -57,7 +51,8 @@ export function createWebhookRouter(payment: PaymentService, provider: IPaymentP
       await payment.handleWebhookEvent(event);
       try {
         await prisma.pspWebhookEvent.create({
-          data: { provider: providerName, eventId: event.eventId, eventType: event.type, payload: JSON.parse(rawBody) },
+          // Store the normalised event (the raw body may be encrypted) for audit.
+          data: { provider: providerName, eventId: event.eventId, eventType: event.type, payload: event as unknown as Prisma.InputJsonValue },
         });
       } catch (err) {
         // A concurrent delivery recorded it first — fine, handler was idempotent.

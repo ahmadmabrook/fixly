@@ -88,10 +88,23 @@ components:
         id: { type: string, format: uuid }
         status:
           type: string
-          enum: [PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
+          enum: [AWAITING_PAYMENT, PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
         scheduledAt: { type: string, format: date-time, nullable: true }
         totalJod: { type: string, example: '50.00' }
         service: { $ref: '#/components/schemas/Service' }
+
+    CheckoutSession:
+      type: object
+      description: >
+        Hosted-checkout session for a real PSP (HyperPay COPYandPAY). The client loads
+        `scriptUrl?checkoutId=…` and renders a widget for the allowed card `brands`.
+      properties:
+        checkoutId: { type: string }
+        scriptUrl: { type: string, format: uri }
+        brands:
+          type: array
+          items: { type: string }
+          example: [VISA, MASTER]
 
     CreateBookingInput:
       type: object
@@ -426,10 +439,23 @@ paths:
             schema: { $ref: '#/components/schemas/CreateBookingInput' }
       responses:
         '201':
-          description: Booking created.
+          description: >
+            Booking created. `checkout` is a hosted-checkout session when a real PSP is
+            configured (the booking starts AWAITING_PAYMENT until the customer authorizes
+            on the widget); it is null in mock/instant mode (booking is live immediately).
           content:
             application/json:
-              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      booking: { $ref: '#/components/schemas/Booking' }
+                      checkout:
+                        oneOf:
+                          - $ref: '#/components/schemas/CheckoutSession'
+                          - type: 'null'
         '400': { $ref: '#/components/schemas/Error' }
         '401': { $ref: '#/components/schemas/Error' }
     get:
@@ -462,6 +488,54 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+        '403': { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/checkout:
+    post:
+      tags: [Bookings]
+      summary: (Re)open a hosted-checkout session (customer only)
+      description: >
+        Opens a payment session for a booking still AWAITING_PAYMENT. Used to retry after an
+        abandoned/failed attempt, or when the initial create could not open one.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Checkout session.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/CheckoutSession' } } }
+        '403': { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/payment-status:
+    get:
+      tags: [Bookings]
+      summary: Resolve a hosted-checkout outcome (customer only)
+      description: >
+        Finalizes the checkout idempotently (the webhook may have already resolved it) and
+        returns the current state. Called from the customer's return page after paying.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Resolved checkout state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      state: { type: string, enum: [authorized, pending, rejected] }
         '403': { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/schemas/Error' }
   /bookings/{id}/cancel:
