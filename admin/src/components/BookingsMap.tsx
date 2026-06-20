@@ -18,6 +18,12 @@ const STATUS_COLOR: Record<string, string> = {
   PENDING: '#64748B', COMPLETED: '#15803D', CANCELLED: '#B91C1C', DISPUTED: '#B91C1C',
 };
 
+/** Escape user-controlled text before it goes into Popup.setHTML (raw HTML sink).
+ *  Customer name is user-supplied → without this it's a stored-XSS vector. */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 /**
  * Read-only live map of bookings with valid coordinates. Re-renders markers when
  * the booking set changes and fits the viewport to them. mapbox-gl is
@@ -44,7 +50,7 @@ export default function BookingsMap({ bookings, height = 360 }: { bookings: MapB
       const lng = b.addressLng as number;
       const lat = b.addressLat as number;
       const popup = new mapboxgl.Popup({ offset: 16 }).setHTML(
-        `<div style="font-size:12px"><b>${b.service?.nameAr ?? ''}</b><br/>${b.customer?.name ?? ''}<br/>${b.status}</div>`,
+        `<div style="font-size:12px"><b>${esc(b.service?.nameAr ?? '')}</b><br/>${esc(b.customer?.name ?? '')}<br/>${esc(b.status)}</div>`,
       );
       const marker = new mapboxgl.Marker({ color: STATUS_COLOR[b.status] ?? '#64748B' })
         .setLngLat([lng, lat]).setPopup(popup).addTo(map);

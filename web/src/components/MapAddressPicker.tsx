@@ -80,16 +80,22 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
     };
   }, []);
 
-  // Debounced address autocomplete.
+  // Debounced address autocomplete (guarded against late resolves after unmount
+  // or a newer keystroke).
   useEffect(() => {
     if (!hasMapbox || query.trim().length < 2) {
       setSuggestions([]);
       return;
     }
+    let active = true;
     const t = setTimeout(async () => {
-      setSuggestions(await forwardGeocode(query));
+      const results = await forwardGeocode(query);
+      if (active) setSuggestions(results);
     }, 300);
-    return () => clearTimeout(t);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
   }, [query]);
 
   function useMyLocation() {
@@ -130,7 +136,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
         {suggestions.length > 0 && (
           <ul className="absolute z-10 mt-1 w-full bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden" role="listbox">
             {suggestions.map((s, i) => (
-              <li key={`${s.lng},${s.lat},${i}`}>
+              <li key={`${s.lng},${s.lat},${i}`} role="option" aria-selected={false}>
                 <button
                   type="button"
                   onClick={() => { setQuery(''); setSuggestions([]); void applyPoint(s.lng, s.lat, s.address); }}
