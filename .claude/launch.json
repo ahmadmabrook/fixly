@@ -3,21 +3,24 @@
   "configurations": [
     {
       "name": "backend",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "backend", "dev"],
-      "port": 4000
+      "runtimeExecutable": "/Users/ahmadmabrouk/Desktop/fixly/node_modules/.bin/tsx",
+      "runtimeArgs": ["watch", "/Users/ahmadmabrouk/Desktop/fixly/backend/src/main.ts"],
+      "port": 4000,
+      "cwd": "/Users/ahmadmabrouk/Desktop/fixly/backend"
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "web", "dev"],
-      "port": 3000
+      "port": 3000,
+      "cwd": "/Users/ahmadmabrouk/Desktop/fixly"
     },
     {
       "name": "admin",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "admin", "dev"],
-      "port": 3001
+      "port": 3001,
+      "cwd": "/Users/ahmadmabrouk/Desktop/fixly"
     }
   ]
 }
