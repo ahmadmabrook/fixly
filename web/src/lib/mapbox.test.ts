@@ -1,4 +1,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+
+// Mock the module so hasMapbox is always true in tests (the real value depends
+// on a build-time VITE_MAPBOX_TOKEN which isn't available in CI test runs).
+vi.mock('./mapbox', async () => {
+  const actual = await vi.importActual<typeof import('./mapbox')>('./mapbox');
+  return { ...actual, hasMapbox: true, MAPBOX_TOKEN: 'pk.test_token' };
+});
+
 import { forwardGeocode, reverseGeocode, hasMapbox } from './mapbox';
 
 afterEach(() => {
@@ -15,7 +23,7 @@ function stubFetch(impl: (url: string) => { ok?: boolean; json: () => unknown })
 
 describe('forwardGeocode', () => {
   it('maps features to {address,lng,lat} and biases to Jordan', async () => {
-    expect(hasMapbox).toBe(true); // token loaded from .env in test env
+    expect(hasMapbox).toBe(true);
     let calledUrl = '';
     stubFetch((url) => {
       calledUrl = url;

@@ -2,6 +2,7 @@
 // platform (Fly secrets), not a .env file — skip the import so the prod
 // image doesn't need dotenv installed.
 if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   try { require('dotenv/config'); } catch { /* optional */ }
 }
 import type { Server } from 'http';
