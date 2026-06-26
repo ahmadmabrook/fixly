@@ -1,12 +1,4 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-
-// Mock the module so hasMapbox is always true in tests (the real value depends
-// on a build-time VITE_MAPBOX_TOKEN which isn't available in CI test runs).
-vi.mock('./mapbox', async () => {
-  const actual = await vi.importActual<typeof import('./mapbox')>('./mapbox');
-  return { ...actual, hasMapbox: true, MAPBOX_TOKEN: 'pk.test_token' };
-});
-
 import { forwardGeocode, reverseGeocode, hasMapbox } from './mapbox';
 
 afterEach(() => {
