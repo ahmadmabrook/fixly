@@ -1,4 +1,9 @@
-import 'dotenv/config';
+// dotenv is a devDependency; in production/staging env vars come from the
+// platform (Fly secrets), not a .env file — skip the import so the prod
+// image doesn't need dotenv installed.
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging') {
+  try { require('dotenv/config'); } catch { /* optional */ }
+}
 import type { Server } from 'http';
 import { loadEnv, env } from './shared/env';
 import { createApp } from './interface/http/app';
