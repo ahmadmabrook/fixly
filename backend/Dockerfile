@@ -33,8 +33,11 @@ RUN ./node_modules/.bin/prisma generate
 # Compile TypeScript → dist/.
 RUN ./node_modules/.bin/tsc -p tsconfig.build.json
 
-# Prune devDependencies from the prod runtime tree (keeps the image small).
-RUN pnpm prune --prod --filter backend
+# Re-install prod-only deps (pnpm 9 removed `prune`). This gives a clean
+# node_modules with no devDependencies for the runtime image.
+WORKDIR /app
+RUN pnpm install --frozen-lockfile --filter backend... --prod
+WORKDIR /app/backend
 
 # ---------- runtime stage ----------
 FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runtime

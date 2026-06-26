@@ -1,0 +1,11 @@
+node_modules
+.git
+.github
+.claude
+graphify-out
+backend/dist
+backend/coverage
+web/dist
+admin/dist
+*.md
+!backend/prisma
