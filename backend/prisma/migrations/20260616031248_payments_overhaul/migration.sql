@@ -45,7 +45,7 @@ ADD COLUMN     "paymentId" UUID;
 
 -- CreateTable
 CREATE TABLE "disputes" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "paymentId" UUID NOT NULL,
     "providerRef" TEXT,
     "reason" TEXT,
@@ -59,7 +59,7 @@ CREATE TABLE "disputes" (
 
 -- CreateTable
 CREATE TABLE "psp_webhook_events" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "provider" TEXT NOT NULL,
     "eventId" TEXT NOT NULL,
     "eventType" TEXT NOT NULL,

@@ -45,7 +45,7 @@ ADD COLUMN     "vehicle" TEXT;
 
 -- CreateTable
 CREATE TABLE "addresses" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "label" TEXT NOT NULL,
     "line" TEXT NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE "addresses" (
 
 -- CreateTable
 CREATE TABLE "payment_methods" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "brand" TEXT NOT NULL,
     "last4" TEXT NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE "payment_methods" (
 
 -- CreateTable
 CREATE TABLE "promo_codes" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "code" TEXT NOT NULL,
     "type" "PromoType" NOT NULL,
     "value" DECIMAL(10,3) NOT NULL,
@@ -97,7 +97,7 @@ CREATE TABLE "promo_codes" (
 
 -- CreateTable
 CREATE TABLE "promo_redemptions" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "promoCodeId" UUID NOT NULL,
     "userId" UUID NOT NULL,
     "bookingId" UUID NOT NULL,
@@ -109,7 +109,7 @@ CREATE TABLE "promo_redemptions" (
 
 -- CreateTable
 CREATE TABLE "withdrawal_requests" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "technicianId" UUID NOT NULL,
     "amountJod" DECIMAL(10,3) NOT NULL,
     "status" "WithdrawalStatus" NOT NULL DEFAULT 'REQUESTED',
@@ -123,7 +123,7 @@ CREATE TABLE "withdrawal_requests" (
 
 -- CreateTable
 CREATE TABLE "broadcasts" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "titleAr" TEXT NOT NULL,
     "bodyAr" TEXT NOT NULL,
     "segment" "BroadcastSegment" NOT NULL,
@@ -136,7 +136,7 @@ CREATE TABLE "broadcasts" (
 
 -- CreateTable
 CREATE TABLE "additional_work_items" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bookingId" UUID NOT NULL,
     "description" TEXT NOT NULL,
     "amountJod" DECIMAL(10,3) NOT NULL,

@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [postgis, uuid_ossp(map: "uuid-ossp")]
+  extensions = [postgis]
 }
 
 // ─────────────────────────────────────────────
@@ -14,7 +14,7 @@ datasource db {
 // ─────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   phone     String   @unique
   role      UserRole @default(CUSTOMER)
   name      String?
@@ -49,7 +49,7 @@ enum UserRole {
 }
 
 model RefreshToken {
-  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @db.Uuid
   // SHA-256 of the opaque token; the raw value is returned to the client only.
   tokenHash String    @unique
@@ -64,7 +64,7 @@ model RefreshToken {
 }
 
 model DeviceToken {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   token     String   @unique
   platform  String
@@ -77,7 +77,7 @@ model DeviceToken {
 }
 
 model AdminUser {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String    @unique
   passwordHash String
   name         String
@@ -104,7 +104,7 @@ enum AdminRole {
 }
 
 model AdminRefreshToken {
-  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   adminId   String    @db.Uuid
   // SHA-256 of the opaque token; the raw value goes out only via httpOnly cookie.
   tokenHash String    @unique
@@ -120,7 +120,7 @@ model AdminRefreshToken {
 
 /// Immutable trail of privileged admin actions (who did what, when, from where).
 model AdminAuditLog {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   actorId    String   @db.Uuid
   action     String
   targetType String?
@@ -141,7 +141,7 @@ model AdminAuditLog {
 // ─────────────────────────────────────────────
 
 model Service {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nameAr      String
   nameEn      String
   category    String
@@ -164,7 +164,7 @@ model Service {
 // ─────────────────────────────────────────────
 
 model TechnicianProfile {
-  id                String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId            String           @unique @db.Uuid
   bio               String?
   // Onboarding lifecycle. isVerified is kept (== status APPROVED) for back-compat
@@ -215,7 +215,7 @@ enum TechnicianStatus {
 // ─────────────────────────────────────────────
 
 model Booking {
-  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId    String        @db.Uuid
   technicianId  String?       @db.Uuid
   serviceId     String        @db.Uuid
@@ -283,7 +283,7 @@ enum BookingStatus {
 // ─────────────────────────────────────────────
 
 model Payment {
-  id                String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bookingId         String        @unique @db.Uuid
   status            PaymentStatus @default(PENDING)
   provider          String
@@ -334,7 +334,7 @@ enum PaymentStatus {
 }
 
 model LedgerEntry {
-  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   // Exactly one of paymentId / payoutId is set, depending on the entry type.
   paymentId   String?          @db.Uuid
   payoutId    String?          @db.Uuid
@@ -373,7 +373,7 @@ enum LedgerDirection {
 }
 
 model Payout {
-  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   technicianId String       @db.Uuid
   // Source payment this payout was accrued from. Unique → at most one payout
   // per captured payment, making accrual idempotent.
@@ -405,7 +405,7 @@ enum PayoutStatus {
 
 /// A PSP-reported dispute / chargeback against a captured payment.
 model Dispute {
-  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   paymentId   String        @db.Uuid
   providerRef String?
   reason      String?
@@ -428,7 +428,7 @@ enum DisputeStatus {
 
 /// Idempotent store of inbound PSP webhook events (dedupe at-least-once delivery).
 model PspWebhookEvent {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   provider   String
   eventId    String
   eventType  String
@@ -444,7 +444,7 @@ model PspWebhookEvent {
 // ─────────────────────────────────────────────
 
 model OutboxEvent {
-  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bookingId   String       @db.Uuid
   eventType   String
   payload     Json
@@ -477,7 +477,7 @@ enum OutboxStatus {
 // ─────────────────────────────────────────────
 
 model Notification {
-  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @db.Uuid
   bookingId String?   @db.Uuid
   // Idempotency key (e.g. "<bookingId>:<eventType>") — makes outbox re-delivery
@@ -503,7 +503,7 @@ model Notification {
 // ─────────────────────────────────────────────
 
 model Review {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bookingId  String   @db.Uuid
   reviewerId String   @db.Uuid
   revieweeId String   @db.Uuid
@@ -530,7 +530,7 @@ model Review {
 // ─────────────────────────────────────────────
 
 model GuaranteeTicket {
-  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bookingId        String          @unique @db.Uuid
   status           GuaranteeStatus @default(OPEN)
   description      String?
@@ -562,7 +562,7 @@ enum GuaranteeStatus {
 // ─────────────────────────────────────────────
 
 model SupportTicket {
-  id        String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String        @db.Uuid
   subject   String
   status    SupportStatus @default(OPEN)
@@ -586,7 +586,7 @@ enum SupportStatus {
 }
 
 model SupportMessage {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ticketId   String   @db.Uuid
   senderRole String
   body       String
@@ -603,7 +603,7 @@ model SupportMessage {
 // ─────────────────────────────────────────────
 
 model Address {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @db.Uuid
   label     String
   line      String
@@ -628,7 +628,7 @@ model Address {
 // ─────────────────────────────────────────────
 
 model PaymentMethod {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String   @db.Uuid
   brand       String
   last4       String
@@ -649,7 +649,7 @@ model PaymentMethod {
 // ─────────────────────────────────────────────
 
 model PromoCode {
-  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   code           String    @unique
   type           PromoType
   // PERCENT → 0–100; FIXED → JOD amount off.
@@ -679,7 +679,7 @@ enum PromoType {
 }
 
 model PromoRedemption {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   promoCodeId String   @db.Uuid
   userId      String   @db.Uuid
   // One redemption per booking (a booking can carry at most one promo).
@@ -702,7 +702,7 @@ model PromoRedemption {
 // ─────────────────────────────────────────────
 
 model WithdrawalRequest {
-  id           String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   technicianId String           @db.Uuid
   amountJod    Decimal          @db.Decimal(10, 3)
   status       WithdrawalStatus @default(REQUESTED)
@@ -730,7 +730,7 @@ enum WithdrawalStatus {
 // ─────────────────────────────────────────────
 
 model Broadcast {
-  id             String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   titleAr        String
   bodyAr         String
   segment        BroadcastSegment
@@ -755,7 +755,7 @@ enum BroadcastSegment {
 // ─────────────────────────────────────────────
 
 model AdditionalWorkItem {
-  id          String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bookingId   String               @db.Uuid
   description String
   amountJod   Decimal              @db.Decimal(10, 3)

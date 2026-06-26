@@ -2,7 +2,6 @@
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- CreateExtension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('CUSTOMER', 'TECHNICIAN', 'ADMIN');
@@ -30,7 +29,7 @@ CREATE TYPE "SupportStatus" AS ENUM ('OPEN', 'IN_PROGRESS', 'CLOSED');
 
 -- CreateTable
 CREATE TABLE "users" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "phone" TEXT NOT NULL,
     "role" "UserRole" NOT NULL DEFAULT 'CUSTOMER',
     "name" TEXT,
@@ -44,7 +43,7 @@ CREATE TABLE "users" (
 
 -- CreateTable
 CREATE TABLE "refresh_tokens" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "tokenHash" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
@@ -56,7 +55,7 @@ CREATE TABLE "refresh_tokens" (
 
 -- CreateTable
 CREATE TABLE "device_tokens" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "token" TEXT NOT NULL,
     "platform" TEXT NOT NULL,
@@ -67,7 +66,7 @@ CREATE TABLE "device_tokens" (
 
 -- CreateTable
 CREATE TABLE "admin_users" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -80,7 +79,7 @@ CREATE TABLE "admin_users" (
 
 -- CreateTable
 CREATE TABLE "admin_audit_logs" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "actorId" UUID NOT NULL,
     "action" TEXT NOT NULL,
     "targetType" TEXT,
@@ -94,7 +93,7 @@ CREATE TABLE "admin_audit_logs" (
 
 -- CreateTable
 CREATE TABLE "services" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "nameAr" TEXT NOT NULL,
     "nameEn" TEXT NOT NULL,
     "category" TEXT NOT NULL,
@@ -109,7 +108,7 @@ CREATE TABLE "services" (
 
 -- CreateTable
 CREATE TABLE "technician_profiles" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "bio" TEXT,
     "isAvailable" BOOLEAN NOT NULL DEFAULT false,
@@ -127,7 +126,7 @@ CREATE TABLE "technician_profiles" (
 
 -- CreateTable
 CREATE TABLE "bookings" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "customerId" UUID NOT NULL,
     "technicianId" UUID,
     "serviceId" UUID NOT NULL,
@@ -150,7 +149,7 @@ CREATE TABLE "bookings" (
 
 -- CreateTable
 CREATE TABLE "payments" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bookingId" UUID NOT NULL,
     "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
     "provider" TEXT NOT NULL,
@@ -167,7 +166,7 @@ CREATE TABLE "payments" (
 
 -- CreateTable
 CREATE TABLE "ledger_entries" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "paymentId" UUID,
     "payoutId" UUID,
     "type" "LedgerType" NOT NULL,
@@ -180,7 +179,7 @@ CREATE TABLE "ledger_entries" (
 
 -- CreateTable
 CREATE TABLE "payouts" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "technicianId" UUID NOT NULL,
     "amountJod" DECIMAL(10,3) NOT NULL,
     "status" "PayoutStatus" NOT NULL DEFAULT 'PENDING',
@@ -192,7 +191,7 @@ CREATE TABLE "payouts" (
 
 -- CreateTable
 CREATE TABLE "outbox_events" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bookingId" UUID NOT NULL,
     "eventType" TEXT NOT NULL,
     "payload" JSONB NOT NULL,
@@ -209,7 +208,7 @@ CREATE TABLE "outbox_events" (
 
 -- CreateTable
 CREATE TABLE "notifications" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "bookingId" UUID,
     "titleAr" TEXT NOT NULL,
@@ -223,7 +222,7 @@ CREATE TABLE "notifications" (
 
 -- CreateTable
 CREATE TABLE "reviews" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bookingId" UUID NOT NULL,
     "reviewerId" UUID NOT NULL,
     "revieweeId" UUID NOT NULL,
@@ -236,7 +235,7 @@ CREATE TABLE "reviews" (
 
 -- CreateTable
 CREATE TABLE "guarantee_tickets" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "bookingId" UUID NOT NULL,
     "status" "GuaranteeStatus" NOT NULL DEFAULT 'OPEN',
     "description" TEXT,
@@ -249,7 +248,7 @@ CREATE TABLE "guarantee_tickets" (
 
 -- CreateTable
 CREATE TABLE "support_tickets" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "userId" UUID NOT NULL,
     "subject" TEXT NOT NULL,
     "status" "SupportStatus" NOT NULL DEFAULT 'OPEN',
@@ -261,7 +260,7 @@ CREATE TABLE "support_tickets" (
 
 -- CreateTable
 CREATE TABLE "support_messages" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "ticketId" UUID NOT NULL,
     "senderRole" TEXT NOT NULL,
     "body" TEXT NOT NULL,

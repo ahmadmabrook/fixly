@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "admin_refresh_tokens" (
-    "id" UUID NOT NULL DEFAULT uuid_generate_v4(),
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "adminId" UUID NOT NULL,
     "tokenHash" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
