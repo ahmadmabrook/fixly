@@ -1,0 +1,3 @@
+# SPA fallback — serve index.html for all non-asset, non-api routes (React Router).
+# /api/* is handled by the Pages Function in functions/api/[[path]].ts.
+/* /index.html 200
