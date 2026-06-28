@@ -53,9 +53,9 @@ COPY --from=build /app/backend/prisma ./prisma
 COPY --from=build /app/backend/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
-# Generate the Prisma client in the runtime stage (prisma is now a prod dep).
-# Both stages share the same base image so OpenSSL/libc bindings match.
-RUN ./node_modules/.bin/prisma generate --schema ./prisma/schema.prisma
+# Copy the generated Prisma client from the build stage instead of re-generating
+# (prisma CLI is a devDep, not available in the --prod runtime image).
+COPY --from=build /app/backend/node_modules/.prisma ./node_modules/.prisma
 
 ENV NODE_ENV=production
 ENV PORT=4000
