@@ -190,11 +190,12 @@ model TechnicianProfile {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  techBookings Booking[]           @relation("TechnicianBookings")
-  payouts      Payout[]
-  withdrawals  WithdrawalRequest[]
-  services     Service[]           @relation("TechnicianServices")
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  techBookings   Booking[]           @relation("TechnicianBookings")
+  payouts        Payout[]
+  withdrawals    WithdrawalRequest[]
+  services       Service[]           @relation("TechnicianServices")
+  dispatchOffers DispatchOffer[]
 
   // getStats counts verified technicians; admin list orders by createdAt.
   @@index([isVerified])
@@ -233,10 +234,14 @@ model Booking {
   // records any promo applied so receipts/reports can show the breakdown.
   discountJod   Decimal       @default(0) @db.Decimal(10, 3)
   promoCodeId   String?       @db.Uuid
-  totalJod      Decimal       @db.Decimal(10, 3)
-  version       Int           @default(0)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  totalJod          Decimal       @db.Decimal(10, 3)
+  version           Int           @default(0)
+  // Dispatch state: round counter, current radius, and when the round expires.
+  dispatchRound     Int           @default(0)
+  dispatchRadiusKm  Int?
+  dispatchExpiresAt DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   customer        User                 @relation("CustomerBookings", fields: [customerId], references: [id])
   technician      TechnicianProfile?   @relation("TechnicianBookings", fields: [technicianId], references: [id])
@@ -249,6 +254,7 @@ model Booking {
   notifications   Notification[]
   additionalWork  AdditionalWorkItem[]
   promoRedemption PromoRedemption?
+  offers          DispatchOffer[]
 
   @@index([customerId])
   @@index([status])
@@ -259,6 +265,8 @@ model Booking {
   // "My bookings" lists (customer + technician) sort by createdAt desc.
   @@index([customerId, createdAt])
   @@index([technicianId, createdAt])
+  // Dispatch sweep: PENDING bookings with an expired round.
+  @@index([status, dispatchExpiresAt])
   @@map("bookings")
 }
 
@@ -276,6 +284,37 @@ enum BookingStatus {
   COMPLETED
   CANCELLED
   DISPUTED
+}
+
+// ─────────────────────────────────────────────
+// Dispatch Offers (broadcast-and-accept)
+// ─────────────────────────────────────────────
+
+model DispatchOffer {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId    String              @db.Uuid
+  technicianId String              @db.Uuid
+  round        Int
+  radiusKm     Int
+  status       DispatchOfferStatus @default(OFFERED)
+  offeredAt    DateTime            @default(now())
+  respondedAt  DateTime?
+
+  booking    Booking           @relation(fields: [bookingId], references: [id])
+  technician TechnicianProfile @relation(fields: [technicianId], references: [id])
+
+  @@unique([bookingId, technicianId])
+  @@index([bookingId, status])
+  @@index([status])
+  @@map("dispatch_offers")
+}
+
+enum DispatchOfferStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  SUPERSEDED
 }
 
 // ─────────────────────────────────────────────

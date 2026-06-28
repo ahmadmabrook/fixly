@@ -42,6 +42,17 @@ interface Env {
   HYPERPAY_WEBHOOK_DECRYPT_KEY: string;
   /** Minutes a booking may sit in AWAITING_PAYMENT before the reconciler cancels it. */
   CHECKOUT_TTL_MINUTES: number;
+  // ── Dispatch (broadcast-and-accept). ──
+  /** ms a technician has to accept before the round expires. Default 5 min. */
+  DISPATCH_ACCEPT_TIMEOUT_MS: number;
+  /** Initial broadcast radius in km. */
+  DISPATCH_INITIAL_RADIUS_KM: number;
+  /** Radius increment per round in km. */
+  DISPATCH_RADIUS_STEP_KM: number;
+  /** Maximum broadcast radius in km (hard cap). */
+  DISPATCH_MAX_RADIUS_KM: number;
+  /** ms between dispatch sweep ticks (expire rounds + bootstrap). */
+  DISPATCH_SWEEP_INTERVAL_MS: number;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -121,6 +132,27 @@ export function loadEnv(): Env {
     throw new Error('CHECKOUT_TTL_MINUTES must be a positive integer');
   }
 
+  const DISPATCH_ACCEPT_TIMEOUT_MS = parseInt(process.env.DISPATCH_ACCEPT_TIMEOUT_MS ?? '300000', 10);
+  if (!Number.isFinite(DISPATCH_ACCEPT_TIMEOUT_MS) || DISPATCH_ACCEPT_TIMEOUT_MS <= 0) {
+    throw new Error('DISPATCH_ACCEPT_TIMEOUT_MS must be a positive integer');
+  }
+  const DISPATCH_INITIAL_RADIUS_KM = parseInt(process.env.DISPATCH_INITIAL_RADIUS_KM ?? '10', 10);
+  if (!Number.isFinite(DISPATCH_INITIAL_RADIUS_KM) || DISPATCH_INITIAL_RADIUS_KM <= 0) {
+    throw new Error('DISPATCH_INITIAL_RADIUS_KM must be a positive integer');
+  }
+  const DISPATCH_RADIUS_STEP_KM = parseInt(process.env.DISPATCH_RADIUS_STEP_KM ?? '5', 10);
+  if (!Number.isFinite(DISPATCH_RADIUS_STEP_KM) || DISPATCH_RADIUS_STEP_KM <= 0) {
+    throw new Error('DISPATCH_RADIUS_STEP_KM must be a positive integer');
+  }
+  const DISPATCH_MAX_RADIUS_KM = parseInt(process.env.DISPATCH_MAX_RADIUS_KM ?? '50', 10);
+  if (!Number.isFinite(DISPATCH_MAX_RADIUS_KM) || DISPATCH_MAX_RADIUS_KM <= 0) {
+    throw new Error('DISPATCH_MAX_RADIUS_KM must be a positive integer');
+  }
+  const DISPATCH_SWEEP_INTERVAL_MS = parseInt(process.env.DISPATCH_SWEEP_INTERVAL_MS ?? '15000', 10);
+  if (!Number.isFinite(DISPATCH_SWEEP_INTERVAL_MS) || DISPATCH_SWEEP_INTERVAL_MS <= 0) {
+    throw new Error('DISPATCH_SWEEP_INTERVAL_MS must be a positive integer');
+  }
+
   cached = {
     NODE_ENV,
     PORT: parseInt(process.env.PORT ?? '4000', 10),
@@ -144,6 +176,11 @@ export function loadEnv(): Env {
     HYPERPAY_BASE_URL,
     HYPERPAY_WEBHOOK_DECRYPT_KEY,
     CHECKOUT_TTL_MINUTES,
+    DISPATCH_ACCEPT_TIMEOUT_MS,
+    DISPATCH_INITIAL_RADIUS_KM,
+    DISPATCH_RADIUS_STEP_KM,
+    DISPATCH_MAX_RADIUS_KM,
+    DISPATCH_SWEEP_INTERVAL_MS,
   };
 
   return cached;

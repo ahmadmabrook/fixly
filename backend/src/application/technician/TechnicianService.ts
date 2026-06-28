@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { withdrawalsRequestedTotal } from '../../shared/metrics';
+import { haversineKm } from '../../shared/geo';
 
 const MIN_WITHDRAWAL_JOD = 20;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -15,17 +16,6 @@ interface OnboardingInput {
   idDocUrl?: string;
   certificateUrl?: string;
   selfieUrl?: string;
-}
-
-/** Great-circle distance (km) between two lat/lng points. */
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371;
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLng = ((bLng - aLng) * Math.PI) / 180;
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 export class TechnicianService {
@@ -96,47 +86,41 @@ export class TechnicianService {
     });
   }
 
-  /** Unassigned PENDING jobs for the services this APPROVED technician offers,
-   *  within range of their current location (nearest first). Returns COARSE data
-   *  only — the customer's exact address/coordinates are withheld until the job
-   *  is accepted (then GET /bookings/:id exposes them to the assigned tech). */
+  /** Jobs actively offered to this technician via dispatch. Only bookings with an
+   *  OFFERED DispatchOffer for this tech are returned (no longer a free-for-all).
+   *  Coarse data only — exact address withheld until assigned. */
   async nearbyJobs(userId: string, limit = 20) {
     const profile = await prisma.technicianProfile.findUnique({
       where: { userId },
       include: { services: { select: { id: true } } },
     });
     if (!profile) throw new NotFoundError('TechnicianProfile');
-    // Only an APPROVED technician may browse the job pool — otherwise any signed-in
-    // user could onboard with popular services and harvest customer addresses.
     if (profile.status !== 'APPROVED') throw new ForbiddenError('Technician is not approved');
-    const serviceIds = profile.services.map((s) => s.id);
-    if (serviceIds.length === 0) return [];
 
-    const candidates = await prisma.booking.findMany({
-      where: { status: 'PENDING', technicianId: null, serviceId: { in: serviceIds } },
+    // Only bookings with an active OFFERED dispatch offer for this tech.
+    const offers = await prisma.dispatchOffer.findMany({
+      where: { technicianId: profile.id, status: 'OFFERED' },
       select: {
-        id: true,
-        totalJod: true,
-        addressLat: true,
-        addressLng: true,
-        service: { select: { nameAr: true, nameEn: true, priceJod: true, durationMin: true } },
+        booking: {
+          select: {
+            id: true, totalJod: true, addressLat: true, addressLng: true,
+            service: { select: { nameAr: true, nameEn: true, priceJod: true, durationMin: true } },
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' },
       take: 100,
     });
 
-    return candidates
-      .map((b) => ({
-        id: b.id,
-        totalJod: b.totalJod,
-        service: b.service,
-        // Coarse distance only; raw lat/lng/addressLine are NOT returned.
+    return offers
+      .map((o) => ({
+        id: o.booking.id,
+        totalJod: o.booking.totalJod,
+        service: o.booking.service,
         distanceKm:
           profile.currentLat != null && profile.currentLng != null
-            ? Number(haversineKm(profile.currentLat, profile.currentLng, b.addressLat, b.addressLng).toFixed(1))
+            ? Number(haversineKm(profile.currentLat, profile.currentLng, o.booking.addressLat, o.booking.addressLng).toFixed(1))
             : null,
       }))
-      .filter((b) => b.distanceKm == null || b.distanceKm <= NEARBY_RADIUS_KM)
       .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
       .slice(0, limit);
   }

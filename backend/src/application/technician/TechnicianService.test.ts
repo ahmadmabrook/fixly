@@ -10,6 +10,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     payout: { aggregate: jest.fn() },
     withdrawalRequest: { aggregate: jest.fn(), create: jest.fn(), findMany: jest.fn() },
     booking: { findMany: jest.fn() },
+    dispatchOffer: { findMany: jest.fn() },
     user: { update: jest.fn() },
     $transaction: jest.fn(),
   },
@@ -21,6 +22,7 @@ const mockedPrisma = prisma as unknown as {
   payout: { aggregate: jest.Mock };
   withdrawalRequest: { aggregate: jest.Mock; create: jest.Mock; findMany: jest.Mock };
   booking: { findMany: jest.Mock };
+  dispatchOffer: { findMany: jest.Mock };
   user: { update: jest.Mock };
   $transaction: jest.Mock;
 };
@@ -61,16 +63,32 @@ describe('TechnicianService approval gates', () => {
     await expect(service.nearbyJobs('u1')).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it('nearbyJobs returns COARSE rows (no addressLine / raw coords)', async () => {
+  it('nearbyJobs returns ONLY bookings with an active OFFERED dispatch offer for this tech, as COARSE rows', async () => {
     mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1', status: 'APPROVED', currentLat: 31.95, currentLng: 35.93, services: [{ id: 's1' }] });
-    mockedPrisma.booking.findMany.mockResolvedValue([
-      { id: 'bk1', totalJod: D(50), addressLat: 31.96, addressLng: 35.94, service: { nameAr: 'كهرباء', nameEn: 'E', priceJod: D(50), durationMin: 45 } },
+    // Source reads dispatchOffer.findMany (status OFFERED, this tech) and projects the booking.
+    mockedPrisma.dispatchOffer.findMany.mockResolvedValue([
+      { booking: { id: 'bk1', totalJod: D(50), addressLat: 31.96, addressLng: 35.94, service: { nameAr: 'كهرباء', nameEn: 'E', priceJod: D(50), durationMin: 45 } } },
     ]);
+
     const jobs = await service.nearbyJobs('u1');
+
+    // The query is scoped to this technician's OFFERED offers, NOT a free-for-all booking scan.
+    expect(mockedPrisma.dispatchOffer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ technicianId: 'tp1', status: 'OFFERED' }) }),
+    );
+    expect(mockedPrisma.booking.findMany).not.toHaveBeenCalled();
     expect(jobs).toHaveLength(1);
+    expect(jobs[0].id).toBe('bk1');
+    // Coarse data only — raw address fields are never leaked.
     expect(jobs[0]).not.toHaveProperty('addressLine');
     expect(jobs[0]).not.toHaveProperty('addressLat');
     expect(typeof jobs[0].distanceKm).toBe('number');
+  });
+
+  it('nearbyJobs returns an empty list when the tech has no OFFERED offers', async () => {
+    mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1', status: 'APPROVED', currentLat: 31.95, currentLng: 35.93, services: [{ id: 's1' }] });
+    mockedPrisma.dispatchOffer.findMany.mockResolvedValue([]);
+    await expect(service.nearbyJobs('u1')).resolves.toEqual([]);
   });
 });
 

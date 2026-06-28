@@ -7,6 +7,7 @@ import { BookingService, ADVANCEABLE_TO } from '../../../application/booking/Boo
 import { ReviewService } from '../../../application/review/ReviewService';
 import { PaymentService } from '../../../application/payment/PaymentService';
 import { PaymentProviderFactory } from '../../../infrastructure/providers/PaymentProviderFactory';
+import { getDispatchService } from '../../../application/dispatch/DispatchService';
 import { ForbiddenError } from '../../../shared/errors';
 import { env } from '../../../shared/env';
 import { logger } from '../../../shared/logger';
@@ -108,6 +109,17 @@ bookingsRouter.post(
   asyncHandler(async (req, res) => {
     const booking = await bookingService.accept(req.params.id, req.user!.userId);
     res.json({ data: booking });
+  }),
+);
+
+// Technician rejects a dispatched offer. Triggers immediate re-broadcast if
+// no OFFERED offers remain for the booking.
+bookingsRouter.post(
+  '/:id/reject',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    await getDispatchService().reject(req.params.id, req.user!.userId);
+    res.json({ data: { bookingId: req.params.id, rejected: true } });
   }),
 );
 
