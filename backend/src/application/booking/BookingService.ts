@@ -4,6 +4,7 @@ import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
 import { paymentRequiresHostedCheckout } from '../../shared/env';
 import { PromoService } from '../promo/PromoService';
+import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/metrics';
 
 const COMPLETABLE_STATUSES: BookingStatus[] = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
@@ -174,9 +175,39 @@ export class BookingService {
           throw new ConflictError('Booking no longer available');
         }
 
+        // Require an active dispatch offer for this tech.
+        const offer = await tx.dispatchOffer.findUnique({
+          where: { bookingId_technicianId: { bookingId, technicianId: profile.id } },
+        });
+        if (!offer || offer.status !== 'OFFERED') {
+          throw new ConflictError('Booking no longer offered to you');
+        }
+
+        // Mark this offer ACCEPTED; supersede sibling OFFERED offers.
+        const now = new Date();
+        await tx.dispatchOffer.update({
+          where: { id: offer.id },
+          data: { status: 'ACCEPTED', respondedAt: now },
+        });
+        const superseded = await tx.dispatchOffer.updateMany({
+          where: { bookingId, status: 'OFFERED', id: { not: offer.id } },
+          data: { status: 'SUPERSEDED' },
+        });
+        if (superseded.count > 0) dispatchOffersTotal.inc({ result: 'superseded' }, superseded.count);
+        dispatchOffersTotal.inc({ result: 'accepted' });
+
+        // Record accept latency.
+        const latencySec = (now.getTime() - offer.offeredAt.getTime()) / 1000;
+        dispatchAcceptLatencySeconds.observe(latencySec);
+
         const updated = await tx.booking.update({
           where: { id: bookingId, version: booking.version },
-          data: { technicianId: profile.id, status: 'CONFIRMED', version: { increment: 1 } },
+          data: {
+            technicianId: profile.id,
+            status: 'CONFIRMED',
+            dispatchExpiresAt: null,
+            version: { increment: 1 },
+          },
         });
 
         await tx.outboxEvent.create({

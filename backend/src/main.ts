@@ -17,6 +17,7 @@ import { PaymentService } from './application/payment/PaymentService';
 import { NotificationService } from './application/notification/NotificationService';
 import { AdminService } from './application/admin/AdminService';
 import { BookingService } from './application/booking/BookingService';
+import { DispatchService, setDispatchService, getDispatchService } from './application/dispatch/DispatchService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
 import {
   outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge,
@@ -75,11 +76,20 @@ async function main() {
   }, CHECKOUT_RECONCILE_INTERVAL_MS);
   checkoutExpiryTimer.unref();
 
+  // Dispatch sweep: expire timed-out rounds + bootstrap un-dispatched bookings.
+  setDispatchService(new DispatchService(io));
+  const dispatchSweepTimer = setInterval(() => {
+    void getDispatchService()
+      .expireRounds()
+      .catch((err) => logger.warn({ err }, 'Dispatch sweep failed'));
+  }, env.DISPATCH_SWEEP_INTERVAL_MS);
+  dispatchSweepTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
 
-  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer]);
+  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer]);
 }
 
 async function refreshPendingGauge(): Promise<void> {

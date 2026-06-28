@@ -153,3 +153,35 @@ export const reviewsSubmittedTotal = new client.Counter({
   labelNames: ['direction'] as const, // customer_to_tech | tech_to_customer
   registers: [registry],
 });
+
+// ── Dispatch (broadcast-and-accept) ──────────────────────────────────────────
+
+/** Dispatch offers created, by outcome (offered → accepted/rejected/expired/superseded). */
+export const dispatchOffersTotal = new client.Counter({
+  name: 'dispatch_offers_total',
+  help: 'Dispatch offers sent to technicians',
+  labelNames: ['result'] as const, // offered | accepted | rejected | expired | superseded
+  registers: [registry],
+});
+
+/** Dispatch rounds opened (one per radius expansion). */
+export const dispatchRoundsTotal = new client.Counter({
+  name: 'dispatch_rounds_total',
+  help: 'Dispatch rounds opened (radius expansions)',
+  registers: [registry],
+});
+
+/** Bookings exhausted (no technician available at max radius). */
+export const dispatchExhaustedTotal = new client.Counter({
+  name: 'dispatch_exhausted_total',
+  help: 'Bookings cancelled because no technician accepted at max radius',
+  registers: [registry],
+});
+
+/** Time from offer to accept (seconds) — measures technician response speed. */
+export const dispatchAcceptLatencySeconds = new client.Histogram({
+  name: 'dispatch_accept_latency_seconds',
+  help: 'Seconds between offer and technician accept',
+  buckets: [5, 15, 30, 60, 120, 180, 300],
+  registers: [registry],
+});

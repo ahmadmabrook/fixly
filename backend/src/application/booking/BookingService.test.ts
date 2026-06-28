@@ -129,24 +129,74 @@ describe('BookingService', () => {
       expect(mockedRedis.del).toHaveBeenCalledWith('booking_lock:b1');
     });
 
-    it('assigns the technician (CONFIRMED), emits booking.confirmed, and releases the lock', async () => {
-      mockedRedis.set.mockResolvedValue('OK');
-      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
-      const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'CONFIRMED', technicianId: 'tp1' });
-      const create = jest.fn().mockResolvedValue({});
+    // Helper: a tx where dispatchOffer.findUnique returns `offer`; captures the
+    // booking.update / dispatchOffer.update(s) / outbox spies for assertions.
+    function acceptTx(fresh: Record<string, unknown>, offer: Record<string, unknown> | null) {
+      const bookingUpdate = jest.fn().mockResolvedValue({ id: 'b1', status: 'CONFIRMED', technicianId: 'tp1' });
+      const offerUpdate = jest.fn().mockResolvedValue({});
+      const offerUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const outboxCreate = jest.fn().mockResolvedValue({});
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
         fn({
-          booking: { findUnique: jest.fn().mockResolvedValue({ id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' }), update },
-          outboxEvent: { create },
+          booking: { findUnique: jest.fn().mockResolvedValue(fresh), update: bookingUpdate },
+          dispatchOffer: { findUnique: jest.fn().mockResolvedValue(offer), update: offerUpdate, updateMany: offerUpdateMany },
+          outboxEvent: { create: outboxCreate },
         }),
+      );
+      return { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate };
+    }
+
+    it('rejects with ConflictError when the tech has NO offer for this booking', async () => {
+      mockedRedis.set.mockResolvedValue('OK');
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const { bookingUpdate } = acceptTx({ id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' }, null);
+
+      await expect(service.accept('b1', 'tech-user')).rejects.toBeInstanceOf(ConflictError);
+      expect(bookingUpdate).not.toHaveBeenCalled();
+      expect(mockedRedis.del).toHaveBeenCalledWith('booking_lock:b1'); // lock still released
+    });
+
+    it('rejects with ConflictError when the offer is no longer OFFERED (e.g. SUPERSEDED/EXPIRED)', async () => {
+      mockedRedis.set.mockResolvedValue('OK');
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const { bookingUpdate } = acceptTx(
+        { id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' },
+        { id: 'o1', status: 'SUPERSEDED', offeredAt: new Date() },
+      );
+
+      await expect(service.accept('b1', 'tech-user')).rejects.toBeInstanceOf(ConflictError);
+      expect(bookingUpdate).not.toHaveBeenCalled();
+    });
+
+    it('accepts with an active OFFERED offer: marks it ACCEPTED, supersedes siblings, CONFIRMS booking, clears expiry, emits booking.confirmed', async () => {
+      mockedRedis.set.mockResolvedValue('OK');
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate } = acceptTx(
+        { id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' },
+        { id: 'o1', status: 'OFFERED', offeredAt: new Date(Date.now() - 30_000) },
       );
 
       const result = await service.accept('b1', 'tech-user');
 
-      expect(update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'b1', version: 2 }, data: expect.objectContaining({ technicianId: 'tp1', status: 'CONFIRMED' }) }),
+      // The winning offer is marked ACCEPTED.
+      expect(offerUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'o1' }, data: expect.objectContaining({ status: 'ACCEPTED' }) }),
       );
-      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.confirmed' }) }));
+      // Sibling OFFERED offers (not this one) are SUPERSEDED.
+      expect(offerUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ bookingId: 'b1', status: 'OFFERED', id: { not: 'o1' } }),
+          data: { status: 'SUPERSEDED' },
+        }),
+      );
+      // Booking → CONFIRMED, under the version guard, with dispatchExpiresAt cleared.
+      expect(bookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'b1', version: 2 },
+          data: expect.objectContaining({ technicianId: 'tp1', status: 'CONFIRMED', dispatchExpiresAt: null }),
+        }),
+      );
+      expect(outboxCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.confirmed' }) }));
       expect(result).toMatchObject({ status: 'CONFIRMED' });
       expect(mockedRedis.del).toHaveBeenCalledWith('booking_lock:b1');
     });
