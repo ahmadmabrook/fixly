@@ -63,11 +63,18 @@ export class NotificationService {
       throw err;
     }
 
+    const at = Date.now();
     this.io.to(`user:${customerId}`).emit('booking:status', {
       bookingId: payload.bookingId,
       status: copy.status,
       titleAr: copy.titleAr,
-      at: Date.now(),
+      at,
+    });
+    this.io.to(`user:${customerId}`).emit('notification:new', {
+      titleAr: copy.titleAr,
+      bodyAr: copy.bodyAr,
+      bookingId: payload.bookingId,
+      at,
     });
 
     logger.debug({ bookingId: payload.bookingId, eventType }, 'Notification dispatched');

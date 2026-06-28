@@ -7,12 +7,16 @@ interface LangState {
   setLang: (l: Lang) => void;
 }
 
-const stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null) as Lang | null;
+// EN translation is incomplete — force AR until it's ready. The toggle is
+// hidden (TopNav) but the infra (useT, useLang, dictionaries) stays so we
+// can re-enable when translation is complete.
+const _stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null) as Lang | null;
+void _stored; // keep lint happy — intentionally unused while EN is disabled
 
 /** App language + direction. Arabic/RTL is the default; English is the LTR
  *  mirror. Switching updates <html dir/lang> so layout flips globally. */
 export const useLang = create<LangState>((set) => ({
-  lang: stored ?? 'ar',
+  lang: 'ar',
   setLang(lang) {
     try {
       localStorage.setItem('lang', lang);

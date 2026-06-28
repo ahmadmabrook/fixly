@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wrench, Clock, Power, Star } from 'lucide-react';
 import { api, ApiError, TechnicianProfileMe, NearbyJob, TechEarnings, BookingListItem, Service } from '../../lib/api';
 import { useServices } from '../../hooks/useServices';
-import { Card, ServiceIcon, StatusBadge, Modal, notify } from '../../components/shared';
+import { useCountdown } from '../../hooks/useCountdown';
+import { Card, ServiceIcon, StatusBadge, Modal, notify, SkeletonList } from '../../components/shared';
 
 export default function TechPortal() {
   const { data: me, isLoading, error, refetch } = useQuery({
@@ -12,7 +13,7 @@ export default function TechPortal() {
     queryFn: () => api.get<TechnicianProfileMe>('/technician/me'),
   });
 
-  if (isLoading) return <Centered>جارٍ التحميل...</Centered>;
+  if (isLoading) return <main className="max-w-[600px] mx-auto px-6 py-16"><SkeletonList count={3} rowHeight={80} /></main>;
 
   const notFound = error instanceof ApiError && error.status === 404;
   if (notFound || !me) return <Onboarding onDone={() => void refetch()} />;
@@ -79,19 +80,43 @@ function NearbyJobs({ onAccepted }: { onAccepted: () => void }) {
     <div className="space-y-3">
       {(jobs ?? []).length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد طلبات قريبة حالياً.</p>}
       {(jobs ?? []).map((j) => (
-        <Card key={j.id} className="p-4">
-          <div className="flex items-center gap-3">
-            <ServiceIcon nameAr={j.service?.nameAr ?? ''} size={20} />
-            <div className="flex-1">
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{j.service?.nameAr}</div>
-              <div style={{ color: '#475569', fontSize: 12 }}>{j.distanceKm != null ? <>على بُعد <span style={{ fontFamily: 'Inter' }}>{j.distanceKm}</span> كم</> : 'قريب منك'}</div>
-            </div>
-            <span style={{ fontWeight: 700, color: '#0E4FA8' }}><span style={{ fontFamily: 'Inter' }}>{Number(j.totalJod)}</span> دينار</span>
-          </div>
-          <button onClick={() => void accept(j.id)} className="mt-3 w-full h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>قبول</button>
-        </Card>
+        <NearbyJobCard key={j.id} job={j} onAccept={() => void accept(j.id)} />
       ))}
     </div>
+  );
+}
+
+function NearbyJobCard({ job: j, onAccept }: { job: NearbyJob; onAccept: () => void }) {
+  const remaining = useCountdown(j.expiresAt ?? null);
+  const expired = remaining === 0;
+
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <Card key={j.id} className="p-4" style={expired ? { opacity: 0.5 } : undefined}>
+      <div className="flex items-center gap-3">
+        <ServiceIcon nameAr={j.service?.nameAr ?? ''} size={20} />
+        <div className="flex-1">
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{j.service?.nameAr}</div>
+          <div style={{ color: '#475569', fontSize: 12 }}>{j.distanceKm != null ? <>على بُعد <span style={{ fontFamily: 'Inter' }}>{j.distanceKm}</span> كم</> : 'قريب منك'}</div>
+        </div>
+        <span style={{ fontWeight: 700, color: '#0E4FA8' }}><span style={{ fontFamily: 'Inter' }}>{Number(j.totalJod)}</span> دينار</span>
+      </div>
+      {/* Countdown timer */}
+      {remaining != null && (
+        <div className="mt-2 flex items-center gap-1" style={{ fontSize: 13, fontWeight: 600, color: expired ? '#B91C1C' : '#B45309', fontFamily: 'Inter' }}>
+          <span aria-hidden="true">&#9201;</span>
+          {expired ? <span style={{ fontFamily: 'Tajawal' }}>انتهت المهلة</span> : formatTime(remaining)}
+        </div>
+      )}
+      <button onClick={onAccept} disabled={expired} className="mt-3 w-full h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+        {expired ? 'انتهت المهلة' : 'قبول'}
+      </button>
+    </Card>
   );
 }
 

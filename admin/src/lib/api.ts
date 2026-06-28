@@ -183,6 +183,7 @@ export interface AdminStats {
   avgRating: number;
   openGuarantees: number;
   pendingPayouts: number;
+  bookingsByService?: Array<{ serviceId: string; nameAr: string; count: number }>;
 }
 
 export interface BookingItem {

@@ -312,5 +312,9 @@ export interface NearbyJob {
   // Coarse distance only — the customer's exact address is withheld until the
   // job is accepted (then GET /bookings/:id reveals it to the assigned tech).
   distanceKm: number | null;
+  /** ISO timestamp when this offer expires (broadcast-and-accept model). */
+  expiresAt: string | null;
+  /** Dispatch round number (radius expands each round). */
+  round: number;
   service?: { nameAr: string; nameEn: string; priceJod: string | number; durationMin: number } | null;
 }

@@ -229,6 +229,17 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
               تم تطبيق {promo.code} ✓
             </p>
           )}
+          {/* Promo code nudge — clickable chip that fills the input */}
+          {!promo && !promoInput.trim() && (
+            <button
+              type="button"
+              onClick={() => { setPromoInput('WELCOME10'); }}
+              className="mt-2 px-3 py-1.5 rounded-full"
+              style={{ background: '#F1F5F9', color: '#475569', fontSize: 12, fontWeight: 600, border: '1px dashed #CBD5E1' }}
+            >
+              جرّب: WELCOME10 للحصول على خصم 10%
+            </button>
+          )}
           <div className="my-4 h-px bg-slate-100" />
           <InlineRow label="سعر الخدمة" value={`${price} دينار`} />
           <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />

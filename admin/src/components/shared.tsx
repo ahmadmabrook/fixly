@@ -1,4 +1,4 @@
-import { ReactNode, useId } from 'react';
+import { ReactNode, useId, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useDialog } from '../hooks/useDialog';
 
@@ -76,6 +76,73 @@ export function Spinner() {
         style={{ borderColor: '#1366D6', borderTopColor: 'transparent' }}
       />
     </div>
+  );
+}
+
+/* ── Shimmer skeleton ──────────────────────────────────────────────── */
+
+const SKELETON_KEYFRAMES_ID = 'skeleton-shimmer-kf';
+
+function ensureKeyframes(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(SKELETON_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = SKELETON_KEYFRAMES_ID;
+  style.textContent = `@keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`;
+  document.head.appendChild(style);
+}
+
+export function Skeleton({
+  width = '100%',
+  height = 20,
+  borderRadius = 8,
+  className = '',
+  style,
+}: {
+  width?: string | number;
+  height?: string | number;
+  borderRadius?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  useEffect(() => { ensureKeyframes(); }, []);
+  return (
+    <div
+      className={className}
+      style={{
+        width,
+        height,
+        borderRadius,
+        background: 'linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'skeleton-shimmer 1.5s ease-in-out infinite',
+        ...style,
+      }}
+    />
+  );
+}
+
+/** KPI-shaped skeleton row: 4 cards per row. */
+export function SkeletonKpiRow() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i} className="p-5 flex flex-col gap-2">
+          <Skeleton width={90} height={14} borderRadius={6} />
+          <Skeleton width={60} height={28} borderRadius={6} />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/** Chart-shaped skeleton block. */
+export function SkeletonChart() {
+  return (
+    <Card className="p-6">
+      <Skeleton width={160} height={18} borderRadius={6} style={{ marginBottom: 16 }} />
+      <Skeleton width="100%" height={260} borderRadius={12} />
+    </Card>
   );
 }
 

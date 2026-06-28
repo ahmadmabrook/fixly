@@ -166,6 +166,18 @@ export class AdminService {
       prisma.payout.count({ where: { status: 'PENDING' } }),
     ]);
 
+    const bookingsByService = await prisma.booking.groupBy({
+      by: ['serviceId'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 10,
+    });
+    const serviceNames = await prisma.service.findMany({
+      where: { id: { in: bookingsByService.map((b) => b.serviceId) } },
+      select: { id: true, nameAr: true },
+    });
+    const nameMap = new Map(serviceNames.map((s) => [s.id, s.nameAr]));
+
     return {
       totalBookings,
       pendingBookings,
@@ -178,6 +190,11 @@ export class AdminService {
       avgRating: Number(ratingResult._avg.rating ?? 0),
       openGuarantees,
       pendingPayouts,
+      bookingsByService: bookingsByService.map((b) => ({
+        serviceId: b.serviceId,
+        nameAr: nameMap.get(b.serviceId) ?? b.serviceId,
+        count: b._count.id,
+      })),
     };
   }
 

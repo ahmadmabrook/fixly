@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useServices } from '../hooks/useServices';
 import { useT } from '../lib/i18n';
-import { Card, ServiceIcon, PriceBadge } from '../components/shared';
+import { Card, ServiceIcon, PriceBadge, SkeletonList } from '../components/shared';
 
 export default function Catalog() {
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ export default function Catalog() {
         />
       </div>
 
-      {isLoading && <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>جارٍ التحميل...</p>}
+      {isLoading && <div className="mt-6"><SkeletonList count={5} rowHeight={80} /></div>}
 
       {isError && (
         <div className="mt-6 text-center">

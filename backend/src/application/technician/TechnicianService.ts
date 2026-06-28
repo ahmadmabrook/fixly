@@ -101,9 +101,10 @@ export class TechnicianService {
     const offers = await prisma.dispatchOffer.findMany({
       where: { technicianId: profile.id, status: 'OFFERED' },
       select: {
+        round: true,
         booking: {
           select: {
-            id: true, totalJod: true, addressLat: true, addressLng: true,
+            id: true, totalJod: true, addressLat: true, addressLng: true, dispatchExpiresAt: true,
             service: { select: { nameAr: true, nameEn: true, priceJod: true, durationMin: true } },
           },
         },
@@ -116,6 +117,8 @@ export class TechnicianService {
         id: o.booking.id,
         totalJod: o.booking.totalJod,
         service: o.booking.service,
+        round: o.round,
+        expiresAt: o.booking.dispatchExpiresAt?.toISOString() ?? null,
         distanceKm:
           profile.currentLat != null && profile.currentLng != null
             ? Number(haversineKm(profile.currentLat, profile.currentLng, o.booking.addressLat, o.booking.addressLng).toFixed(1))

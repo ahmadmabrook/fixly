@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useBookings } from '../hooks/useBookings';
 import { useAuth } from '../lib/store';
 import { useBookingSocket } from '../lib/socket';
-import { Card, ServiceIcon, PriceBadge, StatusBadge } from '../components/shared';
+import { Card, ServiceIcon, PriceBadge, StatusBadge, SkeletonList } from '../components/shared';
 
 export default function MyBookings() {
   const accessToken = useAuth((s) => s.accessToken);
@@ -20,7 +20,7 @@ export default function MyBookings() {
     <main className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 style={{ fontWeight: 800, fontSize: 32 }}>طلباتي</h1>
 
-      {isLoading && <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>جارٍ التحميل...</p>}
+      {isLoading && <div className="mt-6"><SkeletonList count={4} rowHeight={72} /></div>}
       {!isLoading && (!bookings || bookings.length === 0) && (
         <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>لا توجد طلبات بعد.</p>
       )}

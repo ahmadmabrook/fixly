@@ -38,3 +38,29 @@
 [dir="ltr"], .font-latin {
   font-family: var(--font-family-latin);
 }
+
+/* ---------------------------------------------------------------------------
+   Dark mode: user toggle (.dark class) OR system preference.
+   The .dark class takes priority so users can override the OS setting.
+   --------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-override) {
+    --color-bg-page: #0F172A;
+    --color-bg-card: #1E293B;
+    --color-text-primary: #F1F5F9;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #64748B;
+    --color-border: #334155;
+    --color-brand-primary-soft: #1E3A5F;
+  }
+}
+
+:root.dark {
+  --color-bg-page: #0F172A;
+  --color-bg-card: #1E293B;
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+  --color-border: #334155;
+  --color-brand-primary-soft: #1E3A5F;
+}

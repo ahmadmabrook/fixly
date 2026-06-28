@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Globe } from 'lucide-react';
+import { Menu, X, LogOut, Bell, Sun, Moon } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useT, useLang } from '../lib/i18n';
+import { useT } from '../lib/i18n';
+import { useTheme } from '../lib/store';
+import { useUnreadCount } from '../hooks/useUnreadCount';
 
 interface TopNavProps {
   authed: boolean;
@@ -36,8 +38,10 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
   const active = activeFor(location.pathname);
   const [menuOpen, setMenuOpen] = useState(false);
   const t = useT();
-  const { lang, setLang } = useLang();
-  const toggleLang = () => setLang(lang === 'ar' ? 'en' : 'ar');
+  const { pref, setPref } = useTheme();
+  const unread = useUnreadCount();
+  const isDark = pref === 'dark' || (pref === 'system' && typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const toggleDark = () => setPref(isDark ? 'light' : 'dark');
 
   const items = NAV_ITEMS.filter(([, , , authedOnly]) => authed || !authedOnly);
 
@@ -73,14 +77,38 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
           ))}
         </nav>
         <div className="flex-1" />
+        {/* Dark mode toggle */}
         <button
-          onClick={toggleLang}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg"
-          style={{ color: '#475569', fontSize: 13, fontWeight: 600 }}
-          aria-label="Toggle language"
+          onClick={toggleDark}
+          className="flex items-center justify-center w-9 h-9 rounded-lg"
+          style={{ color: '#475569' }}
+          aria-label={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}
         >
-          <Globe size={15} aria-hidden="true" /> {lang === 'ar' ? 'EN' : 'ع'}
+          {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
         </button>
+        {/* Notifications bell — visible when authed */}
+        {authed && (
+          <button
+            onClick={() => navigate('/account')}
+            className="relative flex items-center justify-center w-9 h-9 rounded-lg"
+            style={{ color: '#475569' }}
+            aria-label="الإشعارات"
+          >
+            <Bell size={18} aria-hidden="true" />
+            {unread > 0 && (
+              <span
+                className="absolute flex items-center justify-center rounded-full"
+                style={{
+                  top: 2, insetInlineEnd: 2, minWidth: 16, height: 16, padding: '0 4px',
+                  background: '#EF4444', color: '#FFF', fontSize: 10, fontWeight: 700, fontFamily: 'Inter',
+                  lineHeight: 1,
+                }}
+              >
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </button>
+        )}
         {authed ? (
           <button
             onClick={onLogout}

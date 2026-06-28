@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { User, MapPin, CreditCard, Bell, LifeBuoy, Trash2, Plus, Settings as SettingsIcon, LogOut } from 'lucide-react';
 import { api, logout as apiLogout, Address, PaymentMethod, Notification, SupportTicketItem } from '../lib/api';
-import { useLang } from '../lib/i18n';
-import { Card, ConfirmDialog, notify } from '../components/shared';
+import { Card, ConfirmDialog, notify, SkeletonList } from '../components/shared';
 import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 
 type Tab = 'profile' | 'addresses' | 'payment' | 'notifications' | 'support' | 'settings';
@@ -43,7 +42,6 @@ export default function Account() {
 
 function SettingsTab() {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { lang, setLang } = useLang();
   async function doDelete() {
     setConfirmDelete(false);
     try {
@@ -57,18 +55,6 @@ function SettingsTab() {
   }
   return (
     <div className="space-y-3">
-      <Card className="p-5">
-        <div className="flex items-center justify-between">
-          <span style={{ fontWeight: 600, fontSize: 14 }}>اللغة / Language</span>
-          <div className="flex gap-1 rounded-lg p-1" style={{ background: '#F1F5F9' }}>
-            {(['ar', 'en'] as const).map((l) => (
-              <button key={l} onClick={() => setLang(l)} className="px-3 h-8 rounded-md" style={{ background: lang === l ? '#FFF' : 'transparent', color: lang === l ? '#1366D6' : '#475569', fontWeight: 700, fontSize: 13, boxShadow: lang === l ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
-                {l === 'ar' ? 'العربية' : 'English'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </Card>
       <Card className="p-5 space-y-2">
         <a href="/terms" onClick={(e) => { e.preventDefault(); notify('الشروط والأحكام'); }} style={{ color: '#1366D6', fontSize: 14, fontWeight: 600 }}>الشروط والأحكام</a>
         <div className="h-px bg-slate-100" />
@@ -224,13 +210,15 @@ function PaymentTab() {
 
 function NotificationsTab() {
   const qc = useQueryClient();
-  const { data: items } = useQuery({ queryKey: ['notifications'], queryFn: () => api.get<Notification[]>('/notifications') });
+  const { data: items, isLoading } = useQuery({ queryKey: ['notifications'], queryFn: () => api.get<Notification[]>('/notifications') });
   async function readAll() {
     try {
       await api.post('/notifications/read-all', {});
       void qc.invalidateQueries({ queryKey: ['notifications'] });
+      void qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     } catch (e) { notify(e instanceof Error ? e.message : 'تعذّر تحديث الإشعارات', 'error'); }
   }
+  if (isLoading) return <SkeletonList count={4} rowHeight={64} />;
   return (
     <div className="space-y-3">
       {(items ?? []).length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد إشعارات.</p>}

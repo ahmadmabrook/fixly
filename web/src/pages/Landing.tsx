@@ -2,9 +2,10 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones } from 'lucide-react';
 import { useServices } from '../hooks/useServices';
-import { api } from '../lib/api';
+import { api, BookingListItem } from '../lib/api';
+import { useAuth } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge } from '../components/shared';
+import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid } from '../components/shared';
 
 interface PublicReview { id: string; rating: number; comment: string | null; reviewerName: string | null }
 
@@ -21,10 +22,26 @@ const STEPS = [
   { n: 3, tKey: 'step.3.t', bKey: 'step.3.b' },
 ];
 
+const ACTIVE_STATUSES = ['PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
+
 export default function Landing() {
   const navigate = useNavigate();
   const t = useT();
-  const { data: services } = useServices();
+  const accessToken = useAuth((s) => s.accessToken);
+  const { data: services, isLoading: servicesLoading } = useServices();
+
+  // Active booking banner — only runs when authed
+  const { data: activeBooking } = useQuery({
+    queryKey: ['active-booking'],
+    queryFn: async () => {
+      const bookings = await api.get<BookingListItem[]>('/bookings?limit=1');
+      const active = bookings.find((b) => ACTIVE_STATUSES.includes(b.status));
+      return active ?? null;
+    },
+    enabled: !!accessToken,
+    refetchInterval: 30_000,
+  });
+
   // Real, verified reviews from the API (no fabricated identities). Section is
   // hidden until at least one real review exists.
   const { data: reviews } = useQuery({
@@ -34,6 +51,27 @@ export default function Landing() {
 
   return (
     <div className="max-w-[1200px] mx-auto px-6">
+      {/* Active booking banner */}
+      {activeBooking && (
+        <div
+          className="mt-4 rounded-2xl p-4 flex items-center gap-4 flex-wrap"
+          style={{ background: '#1366D6', color: '#FFF' }}
+        >
+          <ServiceIcon nameAr={activeBooking.service?.nameAr ?? ''} size={18} />
+          <div className="flex-1 min-w-0">
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{activeBooking.service?.nameAr ?? 'طلب نشط'}</div>
+            <StatusBadge status={activeBooking.status} />
+          </div>
+          <button
+            onClick={() => navigate(`/bookings/${activeBooking.id}`)}
+            className="px-5 h-10 rounded-xl shrink-0"
+            style={{ background: '#FFF', color: '#1366D6', fontWeight: 700, fontSize: 14 }}
+          >
+            تتبّع
+          </button>
+        </div>
+      )}
+
       <section className="grid md:grid-cols-2 gap-8 items-center py-16">
         <div>
           <GuaranteePill />
@@ -96,8 +134,9 @@ export default function Landing() {
 
       <section className="pb-16">
         <h2 style={{ fontWeight: 800, fontSize: 32 }}>{t('sec.services')}</h2>
+        {servicesLoading && <div className="mt-6"><SkeletonGrid count={5} cardHeight={180} /></div>}
         <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
-          {(services ?? []).map((s) => (
+          {!servicesLoading && (services ?? []).map((s) => (
             <button
               key={s.id}
               onClick={() => navigate(`/services/${encodeURIComponent(s.id)}`)}

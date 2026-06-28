@@ -78,6 +78,18 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
   const [refundOpen, setRefundOpen] = useState(false);
   const [bookingId, setBookingId] = useState('');
   const [amount, setAmount] = useState('');
+
+  // Auto-fill bookingId from ticket messages if a UUID pattern is found.
+  // Users/customers often include their booking ID in the conversation.
+  const inferredBookingId = (() => {
+    if (!ticket?.messages?.length) return null;
+    const uuidRe = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
+    for (const m of ticket.messages) {
+      const match = m.body.match(uuidRe);
+      if (match) return match[0];
+    }
+    return null;
+  })();
   const [refundConfirm, setRefundConfirm] = useState(false);
   const amountNum = Number(amount);
   const refundValid = bookingId.trim().length > 0 && amount !== '' && amountNum > 0;
@@ -105,7 +117,7 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
           </div>
           <div className="mt-2 flex gap-2">
             <button onClick={() => setStatus.mutate('CLOSED')} className="px-3 h-8 rounded-lg" style={{ background: '#DCFCE7', color: '#15803D', fontSize: 12, fontWeight: 600 }}>إغلاق التذكرة</button>
-            <button onClick={() => setRefundOpen((o) => !o)} className="px-3 h-8 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 12, fontWeight: 600 }}>استرداد</button>
+            <button onClick={() => { setRefundOpen((o) => !o); if (!refundOpen && inferredBookingId && !bookingId) setBookingId(inferredBookingId); }} className="px-3 h-8 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 12, fontWeight: 600 }}>استرداد</button>
             <button onClick={onClose} className="px-3 h-8 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>رجوع</button>
           </div>
           {refundOpen && (
