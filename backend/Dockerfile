@@ -53,10 +53,10 @@ COPY --from=build /app/backend/prisma ./prisma
 COPY --from=build /app/backend/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
-# Copy the generated Prisma client from the build stage instead of re-generating
-# (prisma CLI is a devDep, not available in the --prod runtime image).
-# pnpm hoists .prisma to the workspace root, not backend/node_modules.
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# Re-generate Prisma client in the runtime stage so the query engine matches
+# the runtime's OpenSSL/libc. Pin to the project's prisma version to avoid
+# npx resolving to a newer major that rejects the schema.
+RUN npx prisma@5.22.0 generate --schema ./prisma/schema.prisma
 
 ENV NODE_ENV=production
 ENV PORT=4000
