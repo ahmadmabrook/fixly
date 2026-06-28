@@ -55,7 +55,7 @@ RUN chmod +x ./start.sh
 
 # Generate the Prisma client in the runtime stage (prisma is now a prod dep).
 # Both stages share the same base image so OpenSSL/libc bindings match.
-RUN npx prisma generate --schema ./prisma/schema.prisma
+RUN ./node_modules/.bin/prisma generate --schema ./prisma/schema.prisma
 
 ENV NODE_ENV=production
 ENV PORT=4000
