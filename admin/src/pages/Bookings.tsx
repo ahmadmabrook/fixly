@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, BookingItem } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination } from '../components/shared';
+import { fmtJod } from '../lib/format';
 import BookingsMap from '../components/BookingsMap';
 
 const STATUSES = ['', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
@@ -100,7 +101,7 @@ export default function Bookings() {
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(b.scheduledAt)}</span></Td>
                   <Td>
                     <span style={{ fontFamily: 'Inter', fontWeight: 700, color: '#0E4FA8' }}>
-                      {Number(b.totalJod).toFixed(2)} JD
+                      {fmtJod(b.totalJod)} JD
                     </span>
                   </Td>
                   <Td><StatusBadge status={b.status} /></Td>

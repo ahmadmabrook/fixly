@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, AdminStats } from '../lib/api';
 import { KpiCard, Spinner, Card } from '../components/shared';
+import { fmtJod } from '../lib/format';
 
 export default function Dashboard() {
   const { data: stats, isLoading, isError } = useQuery<AdminStats>({
@@ -27,14 +28,14 @@ export default function Dashboard() {
 
       {/* Primary KPIs (spec: today's revenue, bookings, active techs, avg rating, open guarantees) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="إيرادات اليوم"       value={`${Number(stats.todayRevenueJod).toFixed(2)} JD`} />
+        <KpiCard label="إيرادات اليوم"       value={`${fmtJod(stats.todayRevenueJod)} JD`} />
         <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} />
         <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} />
-        <KpiCard label="متوسط التقييم"       value={Number(stats.avgRating).toFixed(2)} />
+        <KpiCard label="متوسط التقييم"       value={fmtJod(stats.avgRating)} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="الإيرادات الإجمالية" value={`${Number(stats.totalRevenueJod).toFixed(2)} JD`} />
+        <KpiCard label="الإيرادات الإجمالية" value={`${fmtJod(stats.totalRevenueJod)} JD`} />
         <KpiCard
           label="فنيون موثّقون"
           value={stats.verifiedTechnicians}
@@ -51,7 +52,7 @@ export default function Dashboard() {
           {[
             { label: 'معدل إتمام الحجوزات', value: stats.totalBookings > 0 ? `${Math.round((stats.completedBookings / stats.totalBookings) * 100)}%` : 'لا بيانات' },
             { label: 'نسبة توثيق الفنيين',  value: stats.totalTechnicians > 0 ? `${Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100)}%` : 'لا بيانات' },
-            { label: 'متوسط قيمة الحجز',   value: stats.completedBookings > 0 ? `${(stats.totalRevenueJod / stats.completedBookings).toFixed(2)} JD` : 'لا بيانات' },
+            { label: 'متوسط قيمة الحجز',   value: stats.completedBookings > 0 ? `${fmtJod(stats.totalRevenueJod / stats.completedBookings)} JD` : 'لا بيانات' },
             { label: 'مدفوعات قيد الانتظار', value: stats.pendingPayouts },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #F1F5F9' }}>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, SupportAdminItem } from '../lib/api';
 import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { fmtJod } from '../lib/format';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_PROGRESS', 'قيد المعالجة'], ['CLOSED', 'مغلق'],
@@ -125,7 +126,7 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
       <ConfirmDialog
         open={refundConfirm}
         title="تأكيد إصدار مبلغ مسترد"
-        body={`سيتم استرداد ${refundValid ? amountNum.toFixed(2) : '—'} د للحجز ${bookingId.trim()}. حركة مالية لا يمكن التراجع عنها.`}
+        body={`سيتم استرداد ${refundValid ? fmtJod(amountNum) : '—'} د للحجز ${bookingId.trim()}. حركة مالية لا يمكن التراجع عنها.`}
         confirmLabel="استرداد"
         cancelLabel="إلغاء"
         confirmVariant="danger"

@@ -1,6 +1,6 @@
 import express, { Express } from 'express';
 import http from 'http';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -101,7 +101,12 @@ export function createApp(): { app: Express; httpServer: http.Server } {
     (req, res, next) => {
       const token = env().METRICS_TOKEN;
       if (token) {
-        if (req.headers.authorization !== `Bearer ${token}`) {
+        // Constant-time compare so a timing side-channel can't be used to recover
+        // the token byte-by-byte. timingSafeEqual throws on unequal length, so
+        // gate on length first (a length mismatch is already a non-match).
+        const expected = Buffer.from(`Bearer ${token}`);
+        const provided = Buffer.from(req.headers.authorization ?? '');
+        if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
           res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Metrics token required' } });
           return;
         }

@@ -271,21 +271,36 @@ describe('PaymentService', () => {
       expect(ledgerTypes).not.toContain('DISPUTE');
     });
 
-    it('payment.refunded → forward-only, transition-guarded reconcile to the PSP figure (F1/F2)', async () => {
+    it('payment.refunded → forward-only reconcile + REFUND ledger entry for the delta (F1/F2/C2)', async () => {
       mockedPrisma.payment.findFirst.mockResolvedValue({ id: 'pay-1', bookingId: 'bk-1', amountJod: new Prisma.Decimal(25), capturedAmountJod: new Prisma.Decimal(25), refundedAmountJod: new Prisma.Decimal(0), status: 'CAPTURED' });
       await service.handleWebhookEvent({ eventId: 'e8', type: 'payment.refunded', providerRef: 'ref_1', amountJod: 25 });
-      const call = mockedPrisma.payment.updateMany.mock.calls.at(-1)![0] as { where: { refundedAmountJod: { lt: unknown }; status: { in: string[] } }; data: { status: string } };
-      // Optimistic guard: only advances when our stored total is below the settled figure.
-      expect(call.where.refundedAmountJod).toEqual({ lt: expect.anything() });
+      const call = tx.payment.updateMany.mock.calls.at(-1)![0] as { where: { refundedAmountJod: unknown; status: { in: string[] } }; data: { status: string } };
+      // Exact-value optimistic guard on the amount we read (mirrors refundCaptured).
+      expect(call.where.refundedAmountJod).toEqual(new Prisma.Decimal(0));
       expect(call.where.status.in).toEqual(expect.arrayContaining(['CAPTURED', 'PARTIALLY_REFUNDED']));
       expect(call.data.status).toBe('REFUNDED'); // settled (25) >= captured (25)
+      // C2: a PSP-side refund must write a REFUND ledger entry for the delta (25 - 0),
+      // else sum(ledger) drifts from net cash for that payment.
+      expect(tx.ledgerEntry.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND', direction: 'DEBIT', amountJod: new Prisma.Decimal(25) }) }),
+      );
     });
 
-    it('payment.refunded with a partial settlement → PARTIALLY_REFUNDED', async () => {
+    it('payment.refunded with a partial settlement → PARTIALLY_REFUNDED + delta ledger', async () => {
       mockedPrisma.payment.findFirst.mockResolvedValue({ id: 'pay-1', bookingId: 'bk-1', amountJod: new Prisma.Decimal(25), capturedAmountJod: new Prisma.Decimal(25), refundedAmountJod: new Prisma.Decimal(0), status: 'CAPTURED' });
       await service.handleWebhookEvent({ eventId: 'e9', type: 'payment.refunded', providerRef: 'ref_1', amountJod: 10 });
-      const call = mockedPrisma.payment.updateMany.mock.calls.at(-1)![0] as { data: { status: string } };
+      const call = tx.payment.updateMany.mock.calls.at(-1)![0] as { data: { status: string } };
       expect(call.data.status).toBe('PARTIALLY_REFUNDED');
+      expect(tx.ledgerEntry.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND', amountJod: new Prisma.Decimal(10) }) }),
+      );
+    });
+
+    it('payment.refunded re-delivery (settled == stored) is a no-op — no double ledger', async () => {
+      mockedPrisma.payment.findFirst.mockResolvedValue({ id: 'pay-1', bookingId: 'bk-1', amountJod: new Prisma.Decimal(25), capturedAmountJod: new Prisma.Decimal(25), refundedAmountJod: new Prisma.Decimal(25), status: 'REFUNDED' });
+      await service.handleWebhookEvent({ eventId: 'e8', type: 'payment.refunded', providerRef: 'ref_1', amountJod: 25 });
+      expect(tx.payment.updateMany).not.toHaveBeenCalled();
+      expect(tx.ledgerEntry.create).not.toHaveBeenCalled();
     });
   });
 

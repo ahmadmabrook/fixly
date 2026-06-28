@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { api, FinancialReport } from '../lib/api';
 import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify } from '../components/shared';
+import { fmtJod } from '../lib/format';
 
 function isoDaysAgo(days: number): string {
   return new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
@@ -58,9 +59,9 @@ export default function Reports() {
 
       {data && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="إجمالي الإيراد" value={`${data.totals.grossJod.toFixed(2)} JD`} />
-          <KpiCard label="عمولة المنصة" value={`${data.totals.platformFeeJod.toFixed(2)} JD`} />
-          <KpiCard label="مستحقات الفنيين" value={`${data.totals.technicianNetJod.toFixed(2)} JD`} />
+          <KpiCard label="إجمالي الإيراد" value={`${fmtJod(data.totals.grossJod)} JD`} />
+          <KpiCard label="عمولة المنصة" value={`${fmtJod(data.totals.platformFeeJod)} JD`} />
+          <KpiCard label="مستحقات الفنيين" value={`${fmtJod(data.totals.technicianNetJod)} JD`} />
           <KpiCard label="عدد الحجوزات" value={data.totals.bookings} />
         </div>
       )}
@@ -79,9 +80,9 @@ export default function Reports() {
                 <tr key={r.period} className="hover:bg-slate-50">
                   <Td><span style={{ fontFamily: 'Inter' }}>{new Date(r.period).toISOString().slice(0, 10)}</span></Td>
                   <Td><span style={{ fontFamily: 'Inter' }}>{r.bookings}</span></Td>
-                  <Td><span style={{ fontFamily: 'Inter' }}>{r.grossJod.toFixed(2)}</span></Td>
-                  <Td><span style={{ fontFamily: 'Inter' }}>{r.platformFeeJod.toFixed(2)}</span></Td>
-                  <Td><span style={{ fontFamily: 'Inter' }}>{r.technicianNetJod.toFixed(2)}</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter' }}>{fmtJod(r.grossJod)}</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter' }}>{fmtJod(r.platformFeeJod)}</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter' }}>{fmtJod(r.technicianNetJod)}</span></Td>
                 </tr>
               ))}
             </tbody>

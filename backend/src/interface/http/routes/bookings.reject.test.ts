@@ -25,6 +25,13 @@ jest.mock('../middleware/auth', () => ({
     next();
   },
   requireActiveUser: (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireRole: (...roles: string[]) => (req: { user?: { role?: string } }, _res: unknown, next: (e?: unknown) => void) => {
+    if (!req.user || !roles.includes(req.user.role ?? '')) {
+      const { ForbiddenError } = jest.requireActual('../../../shared/errors');
+      return next(new ForbiddenError());
+    }
+    next();
+  },
 }));
 
 // The DispatchService singleton — reject() is the call under test.

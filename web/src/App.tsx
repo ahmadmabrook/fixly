@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   BrowserRouter, Routes, Route, Navigate, useNavigate, useParams,
 } from 'react-router-dom';
@@ -10,17 +10,34 @@ import { BookingSocketProvider } from './lib/socket-provider';
 import TopNav from './components/TopNav';
 import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
-import Landing from './pages/Landing';
-import Catalog from './pages/Catalog';
-import ServicePage from './pages/ServicePage';
-import BookingPage from './pages/BookingPage';
-import PaymentReturn from './pages/PaymentReturn';
-import MyBookings from './pages/MyBookings';
-import BookingDetail from './pages/BookingDetail';
-import TrackingPage from './pages/TrackingPage';
-import GuaranteePage from './pages/GuaranteePage';
-import Account from './pages/Account';
-import TechPortal from './pages/tech/TechPortal';
+import ErrorBoundary from './components/ErrorBoundary';
+
+/* ── Route-level code splitting ─────────────────────────────────────────────── */
+const Landing = lazy(() => import('./pages/Landing'));
+const Catalog = lazy(() => import('./pages/Catalog'));
+const ServicePage = lazy(() => import('./pages/ServicePage'));
+const BookingPage = lazy(() => import('./pages/BookingPage'));
+const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
+const MyBookings = lazy(() => import('./pages/MyBookings'));
+const BookingDetail = lazy(() => import('./pages/BookingDetail'));
+const TrackingPage = lazy(() => import('./pages/TrackingPage'));
+const GuaranteePage = lazy(() => import('./pages/GuaranteePage'));
+const Account = lazy(() => import('./pages/Account'));
+const TechPortal = lazy(() => import('./pages/tech/TechPortal'));
+
+/** Centered spinner shown while a lazy route chunk loads. */
+function RouteSpinner() {
+  return (
+    <div className="flex items-center justify-center" style={{ minHeight: 240 }}>
+      <div
+        className="animate-spin rounded-full"
+        style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#1366D6' }}
+        role="status"
+        aria-label="جارٍ التحميل"
+      />
+    </div>
+  );
+}
 
 type ModalState =
   | { open: false }
@@ -71,47 +88,51 @@ export default function App() {
         <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
           <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
 
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/services" element={<Catalog />} />
-            <Route
-              path="/services/:id"
-              element={<ServiceRoute onRequireLogin={openLoginModal} />}
-            />
-            <Route
-              path="/services/:id/book"
-              element={<BookingRoute onRequireLogin={openLoginModal} />}
-            />
-            <Route
-              path="/payment/return"
-              element={authed ? <PaymentReturn /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/my-bookings"
-              element={authed ? <MyBookings /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/bookings/:id"
-              element={authed ? <BookingDetail /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/bookings/:id/track"
-              element={authed ? <TrackingPage /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/guarantee"
-              element={authed ? <GuaranteePage /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/account"
-              element={authed ? <Account /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/tech"
-              element={authed ? <TechPortal /> : <Navigate to="/" replace />}
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <ErrorBoundary>
+            <Suspense fallback={<RouteSpinner />}>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/services" element={<Catalog />} />
+                <Route
+                  path="/services/:id"
+                  element={<ServiceRoute onRequireLogin={openLoginModal} />}
+                />
+                <Route
+                  path="/services/:id/book"
+                  element={<BookingRoute onRequireLogin={openLoginModal} />}
+                />
+                <Route
+                  path="/payment/return"
+                  element={authed ? <PaymentReturn /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/my-bookings"
+                  element={authed ? <MyBookings /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/bookings/:id"
+                  element={authed ? <BookingDetail /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/bookings/:id/track"
+                  element={authed ? <TrackingPage /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/guarantee"
+                  element={authed ? <GuaranteePage /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/account"
+                  element={authed ? <Account /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/tech"
+                  element={authed ? <TechPortal /> : <Navigate to="/" replace />}
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
 
           <Footer />
 

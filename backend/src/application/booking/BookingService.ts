@@ -385,6 +385,17 @@ export class BookingService {
       if (!item || item.bookingId !== bookingId) throw new NotFoundError('AdditionalWorkItem');
       if (item.status !== 'PROPOSED') throw new ConflictError('Item already responded to');
 
+      // Hosted checkout (real PSP) holds no reusable card token, so we cannot widen
+      // the authorization server-side. Approving extra work would inflate the DB hold
+      // (amountJod) past the actual PSP hold → capture-over-authorized at completion
+      // (capture fails / silently caps → service delivered, tech unpaid). Until an
+      // incremental-authorization call is wired (C1), refuse the approval in hosted
+      // mode rather than create a capture the PSP will reject. The mock/instant
+      // provider can widen its hold freely, so it is unaffected.
+      if (approve && paymentRequiresHostedCheckout()) {
+        throw new ConflictError('لا يمكن إضافة عمل إضافي على هذا الطلب حالياً. يرجى إنشاء طلب منفصل.');
+      }
+
       const updated = await tx.additionalWorkItem.update({
         where: { id: itemId },
         data: { status: approve ? 'APPROVED' : 'DECLINED' },
@@ -396,8 +407,8 @@ export class BookingService {
         });
         // Top up the authorization hold so completion captures the FULL new total
         // (otherwise capture is capped at the original pre-auth and the extra work
-        // is never charged / never paid out). With a real PSP this is an
-        // incremental-authorization call; the mock provider just widens the hold.
+        // is never charged / never paid out). Instant/mock providers widen the hold
+        // directly; hosted mode is rejected above until incremental-auth exists.
         const payment = await tx.payment.findUnique({ where: { bookingId } });
         if (payment && payment.status === 'PRE_AUTHORIZED') {
           await tx.payment.update({ where: { id: payment.id }, data: { amountJod: { increment: item.amountJod } } });

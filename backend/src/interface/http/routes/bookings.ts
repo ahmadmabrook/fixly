@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { authenticate, requireActiveUser } from '../middleware/auth';
+import { authenticate, requireActiveUser, requireRole } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { BookingService, ADVANCEABLE_TO } from '../../../application/booking/BookingService';
@@ -73,6 +73,7 @@ bookingsRouter.post(
 // retry after a failed/abandoned attempt or when the initial create couldn't open one.
 bookingsRouter.post(
   '/:id/checkout',
+  requireRole('CUSTOMER'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
     const booking = await bookingService.getById(req.params.id, req.user!.userId);
@@ -113,6 +114,7 @@ bookingsRouter.get(
 // race-safe BookingService.accept() that had no route before.
 bookingsRouter.post(
   '/:id/accept',
+  requireRole('TECHNICIAN'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
     const booking = await bookingService.accept(req.params.id, req.user!.userId);
@@ -124,6 +126,7 @@ bookingsRouter.post(
 // no OFFERED offers remain for the booking.
 bookingsRouter.post(
   '/:id/reject',
+  requireRole('TECHNICIAN'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
     await getDispatchService().reject(req.params.id, req.user!.userId);
@@ -143,6 +146,7 @@ bookingsRouter.get(
 // Technician advances an active booking: EN_ROUTE → ARRIVED → IN_PROGRESS.
 bookingsRouter.post(
   '/:id/status',
+  requireRole('TECHNICIAN'),
   validate([
     param('id').isUUID(),
     body('to').isIn(ADVANCEABLE_TO),
@@ -177,6 +181,7 @@ bookingsRouter.post(
 // Reschedule a scheduled (not-yet-started) booking to a new time.
 bookingsRouter.post(
   '/:id/reschedule',
+  requireRole('CUSTOMER'),
   validate([
     param('id').isUUID(),
     body('scheduledAt').isISO8601(),
@@ -190,6 +195,7 @@ bookingsRouter.post(
 // Technician proposes additional work; customer approves/declines.
 bookingsRouter.post(
   '/:id/additional-work',
+  requireRole('TECHNICIAN'),
   validate([
     param('id').isUUID(),
     body('description').isString().trim().isLength({ min: 1, max: 500 }),
@@ -207,6 +213,7 @@ bookingsRouter.post(
 
 bookingsRouter.post(
   '/:id/additional-work/:itemId/respond',
+  requireRole('CUSTOMER'),
   validate([
     param('id').isUUID(),
     param('itemId').isUUID(),

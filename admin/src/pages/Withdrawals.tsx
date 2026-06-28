@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, WithdrawalItem } from '../lib/api';
 import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, StatusBadge, ConfirmDialog, notify, Pagination } from '../components/shared';
-import { maskIban } from '../lib/format';
+import { maskIban, fmtJod } from '../lib/format';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['REQUESTED', 'مطلوب'], ['PROCESSING', 'قيد المعالجة'], ['PAID', 'مدفوع'], ['REJECTED', 'مرفوض'],
@@ -55,7 +55,7 @@ export default function Withdrawals() {
               {items.map((w) => (
                 <tr key={w.id} className="hover:bg-slate-50">
                   <Td>{w.technician?.user?.name ?? '—'}</Td>
-                  <Td><span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{Number(w.amountJod).toFixed(2)} د</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(w.amountJod)} د</span></Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 12, direction: 'ltr', display: 'inline-block' }} title="مخفي جزئياً لحماية البيانات">{maskIban(w.iban)}</span></Td>
                   <Td><StatusBadge status={w.status} /></Td>
                   <Td>
@@ -80,8 +80,8 @@ export default function Withdrawals() {
         body={
           confirm
             ? confirm.decision === 'PAID'
-              ? `سيتم تحويل ${Number(confirm.item.amountJod).toFixed(2)} د إلى ${confirm.item.technician?.user?.name ?? 'الفني'} (IBAN: ${maskIban(confirm.item.iban)}). لا يمكن التراجع عن هذا الإجراء.`
-              : `سيتم رفض طلب سحب بقيمة ${Number(confirm.item.amountJod).toFixed(2)} د لـ ${confirm.item.technician?.user?.name ?? 'الفني'}.`
+              ? `سيتم تحويل ${fmtJod(confirm.item.amountJod)} د إلى ${confirm.item.technician?.user?.name ?? 'الفني'} (IBAN: ${maskIban(confirm.item.iban)}). لا يمكن التراجع عن هذا الإجراء.`
+              : `سيتم رفض طلب سحب بقيمة ${fmtJod(confirm.item.amountJod)} د لـ ${confirm.item.technician?.user?.name ?? 'الفني'}.`
             : undefined
         }
         confirmLabel={confirm?.decision === 'PAID' ? 'دفع وتحويل' : 'رفض'}

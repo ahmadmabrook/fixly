@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useId } from 'react';
 import type { Map as MbMap, Marker as MbMarker } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Search, LocateFixed } from 'lucide-react';
@@ -25,6 +25,8 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listboxId = useId();
 
   // Refs so the init effect can read the latest props without re-initialising.
   const onChangeRef = useRef(onChange);
@@ -85,18 +87,58 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
   useEffect(() => {
     if (!hasMapbox || query.trim().length < 2) {
       setSuggestions([]);
+      setActiveIndex(-1);
       return;
     }
     let active = true;
     const t = setTimeout(async () => {
       const results = await forwardGeocode(query);
-      if (active) setSuggestions(results);
+      if (active) {
+        setSuggestions(results);
+        setActiveIndex(-1);
+      }
     }, 300);
     return () => {
       active = false;
       clearTimeout(t);
     };
   }, [query]);
+
+  /** Select a suggestion by index, clear the dropdown, and apply the point. */
+  function selectSuggestion(index: number) {
+    const s = suggestions[index];
+    if (!s) return;
+    setQuery('');
+    setSuggestions([]);
+    setActiveIndex(-1);
+    void applyPoint(s.lng, s.lat, s.address);
+  }
+
+  /** Keyboard navigation for the suggestion listbox (ArrowUp/Down/Enter/Escape). */
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (suggestions.length === 0) return;
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActiveIndex((prev) => (prev + 1) % suggestions.length);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+        break;
+      case 'Enter':
+        if (activeIndex >= 0) {
+          e.preventDefault();
+          selectSuggestion(activeIndex);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setSuggestions([]);
+        setActiveIndex(-1);
+        break;
+    }
+  }
 
   function useMyLocation() {
     if (!('geolocation' in navigator)) return;
@@ -117,8 +159,14 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               placeholder="ابحث عن عنوان..."
               aria-label="ابحث عن عنوان"
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls={listboxId}
+              aria-activedescendant={activeIndex >= 0 ? `${listboxId}-opt-${activeIndex}` : undefined}
+              aria-autocomplete="list"
               className="w-full h-11 rounded-xl border border-slate-200 outline-none"
               style={{ fontSize: 14, paddingInlineStart: 38, paddingInlineEnd: 12 }}
             />
@@ -134,14 +182,20 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
           </button>
         </div>
         {suggestions.length > 0 && (
-          <ul className="absolute z-10 mt-1 w-full bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden" role="listbox">
+          <ul id={listboxId} className="absolute z-10 mt-1 w-full bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden" role="listbox">
             {suggestions.map((s, i) => (
-              <li key={`${s.lng},${s.lat},${i}`} role="option" aria-selected={false}>
+              <li
+                key={`${s.lng},${s.lat},${i}`}
+                id={`${listboxId}-opt-${i}`}
+                role="option"
+                aria-selected={i === activeIndex}
+              >
                 <button
                   type="button"
-                  onClick={() => { setQuery(''); setSuggestions([]); void applyPoint(s.lng, s.lat, s.address); }}
+                  tabIndex={-1}
+                  onClick={() => selectSuggestion(i)}
                   className="w-full text-start px-3 py-2 hover:bg-slate-50"
-                  style={{ fontSize: 13 }}
+                  style={{ fontSize: 13, background: i === activeIndex ? '#F1F5F9' : undefined }}
                 >
                   {s.address}
                 </button>

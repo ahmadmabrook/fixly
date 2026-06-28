@@ -692,22 +692,36 @@ export class PaymentService {
       }
       case 'payment.refunded': {
         // Reconcile our refunded total to the PSP's authoritative figure (P-11 / F1).
-        // Move the total FORWARD only, under an optimistic guard on the value we read
-        // (`refundedAmountJod < settled`) so a concurrent app-side refund can neither be
-        // clobbered nor double-applied. A re-delivery (settled == stored) matches 0 rows.
+        // Move the total FORWARD only. A re-delivery or a refund that doesn't advance
+        // the total is a no-op (settled <= prior) — that keeps the ledger write below
+        // idempotent (no duplicate REFUND row on webhook redelivery).
         const settled = toDecimal(event.amountJod ?? 0);
         const captured = this.capturedAmount(payment);
-        await prisma.payment.updateMany({
-          where: {
-            id: payment.id,
-            refundedAmountJod: { lt: settled },
-            status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] },
-          },
-          data: {
-            refundedAmountJod: settled,
-            status: settled.greaterThanOrEqualTo(captured) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
-            refundedAt: new Date(),
-          },
+        const priorRefunded = toDecimal(payment.refundedAmountJod);
+        if (settled.lessThanOrEqualTo(priorRefunded)) break;
+        await prisma.$transaction(async (tx) => {
+          // Exact-value optimistic guard on the amount we read (mirrors refundCaptured):
+          // a concurrent app-side refund changes the value → count 0 → we skip, and that
+          // writer already wrote its own ledger entry. No clobber, no double-apply.
+          const r = await tx.payment.updateMany({
+            where: {
+              id: payment.id,
+              refundedAmountJod: priorRefunded,
+              status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] },
+            },
+            data: {
+              refundedAmountJod: settled,
+              status: settled.greaterThanOrEqualTo(captured) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+              refundedAt: new Date(),
+            },
+          });
+          // Write the REFUND ledger entry for the DELTA only when we actually moved the
+          // total — without this, a refund initiated entirely PSP-side (dashboard) would
+          // reconcile the amount but leave sum(ledger) != net cash, breaking the
+          // ledger==entries invariant for that payment.
+          if (r.count > 0) {
+            await this.ledger(tx, payment.id, 'REFUND', settled.minus(priorRefunded), 'Refund settled (PSP-side)');
+          }
         });
         break;
       }
