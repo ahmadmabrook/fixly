@@ -1,0 +1,448 @@
+//@version=6
+// =====================================================================
+//  MRT System — Macro Reflexive Trend (Indicator)
+//  Pine Script v6 | overlay companion to the MRT EA (US100 / XAUUSD)
+//
+//  Hierarchy mirrored from the strategy:
+//    Macro (manual score) -> Reflexivity (manual) -> HTF trend ->
+//    Setup (Donchian breakout OR EMA pullback) -> confirmed signal.
+//
+//  Non-repainting: every signal is evaluated on CLOSED bars only
+//  (barstate.isconfirmed) and HTF data is requested with
+//  lookahead = barmerge.lookahead_off.
+//
+//  This is a decision-support tool, NOT a profit guarantee. Macro and
+//  reflexivity are MANUAL inputs you must maintain each session.
+// =====================================================================
+indicator("MRT System — Macro Reflexive Trend", shorttitle="MRT", overlay=true, max_labels_count=300)
+
+// ---------------------------------------------------------------------
+// INPUTS
+// ---------------------------------------------------------------------
+grpMode   = "Strategy Mode"
+strategyMode = input.string("Manual Macro", "Mode", options=["Manual Macro", "Technical Only", "Backtest Diagnostic"], group=grpMode, tooltip="Manual Macro: gate by macro+reflexivity scores. Technical Only: HTF trend only (lower confidence).")
+
+grpMacro  = "Macro / Reflexivity (manual)"
+macroScore  = input.int(0, "Macro Score (-6..+6)", minval=-6, maxval=6, group=grpMacro, tooltip="+3 or more = long bias, -3 or less = short bias, between = no trade.")
+macroThresh = input.int(4, "Macro Threshold", minval=1, maxval=6, group=grpMacro)
+reflexScore = input.int(0, "Reflexivity Score (0..5)", minval=0, maxval=5, group=grpMacro)
+reflexMin   = input.int(2, "Min Reflexivity", minval=0, maxval=5, group=grpMacro)
+requireReflex = input.bool(true, "Require Reflexivity Confirmation", group=grpMacro)
+
+grpTrend  = "Trend Filter"
+htf        = input.timeframe("240", "Higher Timeframe (trend)", group=grpTrend, tooltip="Default 240 = H4.")
+emaFastLen = input.int(50, "EMA Fast", minval=1, group=grpTrend)
+emaSlowLen = input.int(200, "EMA Slow", minval=1, group=grpTrend)
+require200 = input.bool(true, "Require EMA Fast > EMA Slow on HTF", group=grpTrend)
+
+grpDon    = "Donchian Breakout"
+donFastLen = input.int(20, "Donchian Fast", minval=2, group=grpDon)
+donSlowLen = input.int(55, "Donchian Slow", minval=2, group=grpDon)
+useSlowDon = input.bool(false, "Use Slow Donchian for breakout", group=grpDon)
+breakBufATR = input.float(0.15, "Breakout Buffer (ATR)", minval=0.0, step=0.05, group=grpDon, tooltip="Close must clear the channel by this many ATR. Higher = fewer, cleaner breakouts.")
+
+grpSetup  = "Setup Selection (signal quality)"
+setupChoice  = input.string("Auto (by symbol)", "Setup Type", options=["Auto (by symbol)", "Breakout only", "Pullback only", "Both"], group=grpSetup, tooltip="Auto: US100=pullback, Gold/other=breakout. Picking ONE cuts signal count a lot.")
+cooldownBars = input.int(10, "Min Bars Between Signals", minval=0, group=grpSetup, tooltip="Blocks clustered repeat signals.")
+strongClose  = input.bool(true, "Require Strong Close (top/bottom third)", group=grpSetup)
+
+grpPull   = "Pullback"
+pullTolATR = input.float(0.5, "Pullback EMA Tolerance (ATR)", minval=0.0, step=0.1, group=grpPull)
+requireEmaReclaim = input.bool(true, "Pullback Must Reclaim EMA (close back across)", group=grpPull)
+
+grpQual   = "Signal Quality Filters (cleaner signals)"
+requireADX   = input.bool(true,  "Require Trend Strength (ADX)", group=grpQual, tooltip="Blocks signals in chop. The single biggest noise filter.")
+adxMin       = input.int(20,     "Min ADX", minval=0, maxval=60, group=grpQual)
+adxDiLen     = input.int(14,     "ADX DI Length", minval=1, group=grpQual)
+adxSmooth    = input.int(14,     "ADX Smoothing", minval=1, group=grpQual)
+requireSlope = input.bool(true,  "Require EMA Slope Agreement", group=grpQual, tooltip="EMA must be turning in the trade direction (no flat-trend whipsaws).")
+slopeLen     = input.int(3,      "EMA Slope Lookback", minval=1, group=grpQual)
+limitExt     = input.bool(true,  "Block Over-Extended Entries", group=grpQual, tooltip="No chasing: skip if price is too far from the EMA.")
+maxExtATR    = input.float(2.5,  "Max Distance from EMA (ATR)", minval=0.5, step=0.5, group=grpQual)
+
+grpSess   = "Session Filter (optional)"
+useSession = input.bool(false, "Enable Session Filter", group=grpSess, tooltip="Trade only inside chosen hours (chart exchange time). Skips dead liquidity.")
+sessStart  = input.int(7,  "Session Start Hour", minval=0, maxval=23, group=grpSess)
+sessEnd    = input.int(20, "Session End Hour",   minval=0, maxval=23, group=grpSess)
+
+grpRisk   = "Risk Visuals"
+atrLen     = input.int(14, "ATR Length", minval=1, group=grpRisk)
+atrStopMult= input.float(1.5, "ATR Stop Multiplier", minval=0.1, step=0.1, group=grpRisk)
+rrTarget   = input.float(2.0, "Reward:Risk Target (TP2)", minval=0.5, step=0.5, group=grpRisk)
+showLevels = input.bool(true, "Show SL/TP labels on signals", group=grpRisk)
+
+grpBT     = "Backtest (R-based, approximate)"
+enableBT     = input.bool(true,  "Enable Backtest Engine", group=grpBT, tooltip="Simulates each signal: SL=-1R, TP1=+1R (partial), TP2=+2R. Bar-by-bar, worst-case fills. Use the MT5 EA for rigorous, cost-accurate tests.")
+closeTP1Pct  = input.float(50.0, "Close % at TP1", minval=0.0, maxval=100.0, step=5.0, group=grpBT)
+costPerTradeR= input.float(0.05, "Cost per Trade (R)", minval=0.0, step=0.01, group=grpBT, tooltip="Spread+commission+slippage estimate subtracted from every trade's R (net result).")
+showBTPanel  = input.bool(true,  "Show Backtest Dashboard", group=grpBT)
+useDateRange = input.bool(false, "Limit Backtest Date Range", group=grpBT)
+startTime    = input.time(timestamp("2020-01-01 00:00"), "Start", group=grpBT)
+endTime      = input.time(timestamp("2030-01-01 00:00"), "End", group=grpBT)
+
+grpView   = "Display"
+showDon    = input.bool(true, "Show Donchian channel", group=grpView)
+showEMAs   = input.bool(true, "Show EMAs", group=grpView)
+showPivots = input.bool(true, "Show swing pivots", group=grpView)
+showBias   = input.bool(true, "Tint background by HTF bias", group=grpView)
+showTable  = input.bool(true, "Show info panel", group=grpView)
+pivLeft    = input.int(2, "Swing Left Bars", minval=1, group=grpView)
+pivRight   = input.int(2, "Swing Right Bars", minval=1, group=grpView)
+
+// ---------------------------------------------------------------------
+// SYMBOL CLASSIFICATION
+// ---------------------------------------------------------------------
+tkr     = str.upper(syminfo.ticker)
+isUS100 = str.contains(tkr, "US100") or str.contains(tkr, "NAS") or str.contains(tkr, "USTEC") or str.contains(tkr, "NDX")
+isXAU   = str.contains(tkr, "XAU") or str.contains(tkr, "GOLD")
+classTxt = isUS100 ? "US100" : isXAU ? "XAUUSD" : "OTHER"
+
+// ---------------------------------------------------------------------
+// INDICATORS (chart timeframe)
+// ---------------------------------------------------------------------
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+atr     = ta.atr(atrLen)
+
+donFastHigh = ta.highest(high, donFastLen)
+donFastLow  = ta.lowest(low, donFastLen)
+donSlowHigh = ta.highest(high, donSlowLen)
+donSlowLow  = ta.lowest(low, donSlowLen)
+
+// Trend strength (ADX) for the chop filter
+[_diP, _diM, adxVal] = ta.dmi(adxDiLen, adxSmooth)
+
+// ---------------------------------------------------------------------
+// HIGHER-TIMEFRAME TREND (non-repainting)
+// ---------------------------------------------------------------------
+htfClose   = request.security(syminfo.tickerid, htf, close,                lookahead=barmerge.lookahead_off)
+htfEmaFast = request.security(syminfo.tickerid, htf, ta.ema(close, emaFastLen), lookahead=barmerge.lookahead_off)
+htfEmaSlow = request.security(syminfo.tickerid, htf, ta.ema(close, emaSlowLen), lookahead=barmerge.lookahead_off)
+
+trendBull = htfClose > htfEmaFast and (not require200 or htfEmaFast > htfEmaSlow)
+trendBear = htfClose < htfEmaFast and (not require200 or htfEmaFast < htfEmaSlow)
+trendTxt  = trendBull ? "BULL" : trendBear ? "BEAR" : "FLAT"
+
+// ---------------------------------------------------------------------
+// MACRO / REFLEXIVITY GATES
+// ---------------------------------------------------------------------
+techMode  = strategyMode == "Technical Only"
+reflexOK  = techMode or not requireReflex or reflexScore >= reflexMin
+
+dirLongOK  = techMode ? trendBull : macroScore >=  macroThresh
+dirShortOK = techMode ? trendBear : macroScore <= -macroThresh
+
+allowedTxt = dirLongOK ? "LONG ONLY" : dirShortOK ? "SHORT ONLY" : "NO TRADE"
+
+// ---------------------------------------------------------------------
+// SETUP DETECTION (uses prior channel / prior bar => no repaint)
+// ---------------------------------------------------------------------
+brkUpLevel = useSlowDon ? donSlowHigh[1] : donFastHigh[1]
+brkDnLevel = useSlowDon ? donSlowLow[1]  : donFastLow[1]
+
+// Strong close = candle body pushing into the trade direction (top/bottom third)
+rng      = high - low
+strongUp = not strongClose or rng == 0 or (close - low) / rng >= 0.66
+strongDn = not strongClose or rng == 0 or (high - close) / rng >= 0.66
+
+// Breakout must clear the channel by a buffer (filters marginal pokes)
+breakoutUp = close > brkUpLevel + atr * breakBufATR
+breakoutDn = close < brkDnLevel - atr * breakBufATR
+
+nearEmaUp  = low  <= emaFast + atr * pullTolATR and low  >= emaFast - atr * pullTolATR
+nearEmaDn  = high >= emaFast - atr * pullTolATR and high <= emaFast + atr * pullTolATR
+reclaimUp  = not requireEmaReclaim or close > emaFast
+reclaimDn  = not requireEmaReclaim or close < emaFast
+pullbackUp = nearEmaUp and close > open and close > high[1] and reclaimUp
+pullbackDn = nearEmaDn and close < open and close < low[1]  and reclaimDn
+
+// Which setups are active (Auto: US100=pullback, Gold/other=breakout)
+useBreak = setupChoice == "Breakout only" or setupChoice == "Both" or (setupChoice == "Auto (by symbol)" and not isUS100)
+usePull  = setupChoice == "Pullback only" or setupChoice == "Both" or (setupChoice == "Auto (by symbol)" and isUS100)
+
+longSetup  = (useBreak and breakoutUp and strongUp) or (usePull and pullbackUp and strongUp)
+shortSetup = (useBreak and breakoutDn and strongDn) or (usePull and pullbackDn and strongDn)
+
+// --- Signal-quality filters (cleaner signals) ---
+adxOK   = not requireADX   or adxVal >= adxMin                       // trend strong enough (no chop)
+slopeUp = not requireSlope or emaFast > emaFast[slopeLen]            // EMA turning up
+slopeDn = not requireSlope or emaFast < emaFast[slopeLen]            // EMA turning down
+extOK   = not limitExt     or math.abs(close - emaFast) <= maxExtATR * atr  // not chasing
+sessOK  = not useSession   or (hour >= sessStart and hour < sessEnd) // inside session
+
+// Full gate: direction + HTF trend + reflexivity + setup + quality filters
+longRaw  = dirLongOK  and trendBull and reflexOK and longSetup  and adxOK and slopeUp and extOK and sessOK
+shortRaw = dirShortOK and trendBear and reflexOK and shortSetup and adxOK and slopeDn and extOK and sessOK
+
+// Fire only on a freshly confirmed bar (non-repaint, de-duplicated, with cooldown)
+var int lastLongBar  = -1000000
+var int lastShortBar = -1000000
+longFireRaw  = barstate.isconfirmed and longRaw  and not longRaw[1]
+shortFireRaw = barstate.isconfirmed and shortRaw and not shortRaw[1]
+longFire  = longFireRaw  and (bar_index - lastLongBar)  >= cooldownBars
+shortFire = shortFireRaw and (bar_index - lastShortBar) >= cooldownBars
+if longFire
+    lastLongBar := bar_index
+if shortFire
+    lastShortBar := bar_index
+
+setupTxt = longRaw ? (breakoutUp ? "BREAKOUT LONG" : "PULLBACK LONG") : shortRaw ? (breakoutDn ? "BREAKOUT SHORT" : "PULLBACK SHORT") : "—"
+
+// ---------------------------------------------------------------------
+// BACKTEST ENGINE  (approximate, R-based, single position)
+//   Model: SL = -1R, TP1 = +1R (close part, stop -> breakeven), TP2 = +2R
+//   Worst-case intrabar assumption: SL is checked before targets.
+// ---------------------------------------------------------------------
+inRange = not useDateRange or (time >= startTime and time <= endTime)
+p1      = math.min(math.max(closeTP1Pct / 100.0, 0.0), 1.0)
+
+// --- open trade state ---
+var bool  btIn       = false
+var int   btDir      = 0
+var float btEntry    = na
+var float btSLcur    = na
+var float btTP1      = na
+var float btTP2      = na
+var float btRisk     = na
+var float btRemain   = 0.0
+var float btTradeR   = 0.0
+var bool  btTp1Done  = false
+var int   btEntryBar = na
+
+// --- statistics ---
+var int   nTr    = 0
+var int   nWin   = 0
+var int   nLoss  = 0
+var int   nLong  = 0
+var int   nShort = 0
+var float btSumR = 0.0
+var float gWin   = 0.0
+var float gLoss  = 0.0
+var float rLong  = 0.0
+var float rShort = 0.0
+var float btCum  = 0.0
+var float btPeak = 0.0
+var float btMaxDD= 0.0
+var int   nTP1   = 0
+var int   nTP2   = 0
+var int   nSLfull= 0
+
+closing = false
+
+// 1) Manage an open trade on bars AFTER entry
+if enableBT and btIn and bar_index > btEntryBar
+    if btDir == 1
+        if low <= btSLcur
+            if not btTp1Done
+                nSLfull += 1
+            btTradeR += btRemain * ((btSLcur - btEntry) / btRisk)
+            btRemain := 0.0
+            closing  := true
+        else
+            if (not btTp1Done) and high >= btTP1
+                btTradeR += p1 * 1.0
+                btRemain := btRemain - p1
+                btTp1Done := true
+                btSLcur  := btEntry          // move stop to breakeven
+                nTP1 += 1
+            if btTp1Done and high >= btTP2 and not closing
+                btTradeR += btRemain * 2.0
+                btRemain := 0.0
+                closing  := true
+                nTP2 += 1
+    else
+        if high >= btSLcur
+            if not btTp1Done
+                nSLfull += 1
+            btTradeR += btRemain * ((btEntry - btSLcur) / btRisk)
+            btRemain := 0.0
+            closing  := true
+        else
+            if (not btTp1Done) and low <= btTP1
+                btTradeR += p1 * 1.0
+                btRemain := btRemain - p1
+                btTp1Done := true
+                btSLcur  := btEntry
+                nTP1 += 1
+            if btTp1Done and low <= btTP2 and not closing
+                btTradeR += btRemain * 2.0
+                btRemain := 0.0
+                closing  := true
+                nTP2 += 1
+
+// 1b) Remainder fully banked (e.g. Close% at TP1 = 100) -> finalize
+if enableBT and btIn and not closing and btRemain <= 0.0000001
+    closing := true
+
+// 2) Opposite signal -> close remainder at market
+if enableBT and btIn and not closing
+    oppFire = (btDir == 1 and shortFire) or (btDir == -1 and longFire)
+    if oppFire
+        rr = btDir == 1 ? (close - btEntry) / btRisk : (btEntry - close) / btRisk
+        btTradeR += btRemain * rr
+        btRemain := 0.0
+        closing  := true
+
+// 3) Finalize a closed trade into statistics
+if closing
+    finalR = btTradeR - costPerTradeR
+    nTr += 1
+    btSumR += finalR
+    btCum  += finalR
+    btPeak := math.max(btPeak, btCum)
+    btMaxDD := math.max(btMaxDD, btPeak - btCum)
+    if btDir == 1
+        nLong += 1
+        rLong += finalR
+    else
+        nShort += 1
+        rShort += finalR
+    if finalR > 0
+        nWin += 1
+        gWin += finalR
+    else
+        nLoss += 1
+        gLoss += -finalR
+    btIn := false
+    btTp1Done := false
+
+// 4) Open a new trade on a fresh signal (flat only)
+if enableBT and not btIn and inRange and atr > 0
+    if longFire
+        btIn := true
+        btDir := 1
+        btEntry := close
+        btRisk := atr * atrStopMult
+        btSLcur := btEntry - btRisk
+        btTP1 := btEntry + btRisk
+        btTP2 := btEntry + btRisk * rrTarget
+        btRemain := 1.0
+        btTradeR := 0.0
+        btTp1Done := false
+        btEntryBar := bar_index
+    else if shortFire
+        btIn := true
+        btDir := -1
+        btEntry := close
+        btRisk := atr * atrStopMult
+        btSLcur := btEntry + btRisk
+        btTP1 := btEntry - btRisk
+        btTP2 := btEntry - btRisk * rrTarget
+        btRemain := 1.0
+        btTradeR := 0.0
+        btTp1Done := false
+        btEntryBar := bar_index
+
+// ---------------------------------------------------------------------
+// PLOTS
+// ---------------------------------------------------------------------
+pHi = plot(showDon ? donFastHigh : na, "Donchian High", color=color.new(color.blue, 60), linewidth=1)
+pLo = plot(showDon ? donFastLow  : na, "Donchian Low",  color=color.new(color.blue, 60), linewidth=1)
+fill(pHi, pLo, color=color.new(color.blue, 95), title="Donchian Fill")
+
+plot(showEMAs ? emaFast : na, "EMA Fast", color=color.new(color.orange, 0), linewidth=2)
+plot(showEMAs ? emaSlow : na, "EMA Slow", color=color.new(color.purple, 0), linewidth=2)
+plot(showEMAs ? htfEmaFast : na, "HTF EMA Fast", color=color.new(color.teal, 0), linewidth=2)
+
+bgcolor(showBias ? (trendBull ? color.new(color.green, 92) : trendBear ? color.new(color.red, 92) : na) : na, title="HTF Bias")
+
+// Active trade levels (break the line between trades with linebr)
+plot(enableBT and btIn ? btEntry : na, "Active Entry", color=color.new(color.gray, 0), style=plot.style_linebr, linewidth=1)
+plot(enableBT and btIn ? btSLcur : na, "Active SL",    color=color.new(color.red, 0),  style=plot.style_linebr, linewidth=2)
+plot(enableBT and btIn ? btTP1   : na, "Active TP1",   color=color.new(color.aqua, 0), style=plot.style_linebr, linewidth=1)
+plot(enableBT and btIn ? btTP2   : na, "Active TP2",   color=color.new(color.lime, 0), style=plot.style_linebr, linewidth=2)
+
+// Swing pivots (display only)
+ph = ta.pivothigh(pivLeft, pivRight)
+pl = ta.pivotlow(pivLeft, pivRight)
+plotshape(showPivots and not na(ph), title="Swing High", style=shape.triangledown, location=location.abovebar, color=color.new(color.gray, 30), size=size.tiny, offset=-pivRight)
+plotshape(showPivots and not na(pl), title="Swing Low",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.gray, 30), size=size.tiny, offset=-pivRight)
+
+// Entry signals
+plotshape(longFire,  title="Long Signal",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.small, text="MRT▲", textcolor=color.new(color.green, 0))
+plotshape(shortFire, title="Short Signal", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   size=size.small, text="MRT▼", textcolor=color.new(color.red, 0))
+
+// ---------------------------------------------------------------------
+// SL / TP LABELS  (suggested levels, ATR-based, R:R target)
+// ---------------------------------------------------------------------
+if showLevels and longFire
+    ent  = close
+    slv  = close - atr * atrStopMult
+    tp1v = close + atr * atrStopMult
+    tp2v = close + atr * atrStopMult * rrTarget
+    txt = "LONG\nEntry " + str.tostring(ent, format.mintick) + "\nSL  " + str.tostring(slv, format.mintick) + "\nTP1 " + str.tostring(tp1v, format.mintick) + " (1R)" + "\nTP2 " + str.tostring(tp2v, format.mintick) + " (" + str.tostring(rrTarget, "#.0") + "R)"
+    label.new(bar_index, low, txt, style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+
+if showLevels and shortFire
+    ent  = close
+    slv  = close + atr * atrStopMult
+    tp1v = close - atr * atrStopMult
+    tp2v = close - atr * atrStopMult * rrTarget
+    txt = "SHORT\nEntry " + str.tostring(ent, format.mintick) + "\nSL  " + str.tostring(slv, format.mintick) + "\nTP1 " + str.tostring(tp1v, format.mintick) + " (1R)" + "\nTP2 " + str.tostring(tp2v, format.mintick) + " (" + str.tostring(rrTarget, "#.0") + "R)"
+    label.new(bar_index, high, txt, style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.small)
+
+// ---------------------------------------------------------------------
+// INFO PANEL
+// ---------------------------------------------------------------------
+var table panel = table.new(position.top_right, 2, 9, border_width=1, frame_width=1, frame_color=color.new(color.gray, 50))
+
+f_row(_r, _k, _v, _vcol) =>
+    table.cell(panel, 0, _r, _k, text_color=color.new(color.gray, 0), text_size=size.small, text_halign=text.align_left, bgcolor=color.new(color.black, 85))
+    table.cell(panel, 1, _r, _v, text_color=_vcol, text_size=size.small, text_halign=text.align_right, bgcolor=color.new(color.black, 85))
+
+if showTable and barstate.islast
+    dirCol   = dirLongOK ? color.new(color.green, 0) : dirShortOK ? color.new(color.red, 0) : color.new(color.gray, 0)
+    trendCol = trendBull ? color.new(color.green, 0) : trendBear ? color.new(color.red, 0) : color.new(color.gray, 0)
+    reflCol  = reflexOK ? color.new(color.green, 0) : color.new(color.orange, 0)
+    f_row(0, "MRT System", classTxt, color.new(color.white, 0))
+    f_row(1, "Mode", strategyMode, color.new(color.white, 0))
+    f_row(2, "Macro", str.tostring(macroScore), macroScore >= macroThresh ? color.new(color.green, 0) : macroScore <= -macroThresh ? color.new(color.red, 0) : color.new(color.gray, 0))
+    f_row(3, "Reflexivity", str.tostring(reflexScore) + (reflexOK ? " ok" : " low"), reflCol)
+    f_row(4, "HTF Trend", trendTxt, trendCol)
+    f_row(5, "Allowed", allowedTxt, dirCol)
+    f_row(6, "Setup", setupTxt, setupTxt == "—" ? color.new(color.gray, 0) : color.new(color.white, 0))
+    f_row(7, "ATR", str.tostring(atr, format.mintick), color.new(color.white, 0))
+    f_row(8, "Trend ADX", str.tostring(adxVal, "#.0") + (adxVal >= adxMin ? " ok" : " chop"), adxVal >= adxMin ? color.new(color.green, 0) : color.new(color.orange, 0))
+
+// ---------------------------------------------------------------------
+// BACKTEST DASHBOARD
+// ---------------------------------------------------------------------
+var table btp = table.new(position.bottom_right, 2, 16, border_width=1, frame_width=1, frame_color=color.new(color.gray, 50))
+
+bt_row(_r, _k, _v, _vcol) =>
+    table.cell(btp, 0, _r, _k, text_color=color.new(color.gray, 0), text_size=size.small, text_halign=text.align_left,  bgcolor=color.new(color.black, 85))
+    table.cell(btp, 1, _r, _v, text_color=_vcol, text_size=size.small, text_halign=text.align_right, bgcolor=color.new(color.black, 85))
+
+if enableBT and showBTPanel and barstate.islast
+    winRate = nTr > 0    ? nWin / nTr * 100.0 : 0.0
+    avgWin  = nWin > 0   ? gWin / nWin        : 0.0
+    avgLoss = nLoss > 0  ? gLoss / nLoss      : 0.0
+    expR    = nTr > 0    ? btSumR / nTr       : 0.0
+    pfTxt   = gLoss > 0  ? str.tostring(gWin / gLoss, "#.00") : (gWin > 0 ? "inf" : "—")
+    sampleOK = nTr >= 100
+    expCol  = expR > 0 ? color.new(color.green, 0) : color.new(color.red, 0)
+    pfCol   = (gLoss > 0 and gWin / gLoss >= 1.2) ? color.new(color.green, 0) : color.new(color.orange, 0)
+    white   = color.new(color.white, 0)
+
+    bt_row(0,  "MRT Backtest (R)", classTxt, white)
+    bt_row(1,  "Trades", str.tostring(nTr), white)
+    bt_row(2,  "Win Rate", str.tostring(winRate, "#.0") + "%", white)
+    bt_row(3,  "Expectancy", str.tostring(expR, "#.00") + " R", expCol)
+    bt_row(4,  "Profit Factor", pfTxt, pfCol)
+    bt_row(5,  "Total R", str.tostring(btSumR, "#.0"), btSumR > 0 ? color.new(color.green, 0) : color.new(color.red, 0))
+    bt_row(6,  "Avg Win", str.tostring(avgWin, "#.00") + " R", white)
+    bt_row(7,  "Avg Loss", "-" + str.tostring(avgLoss, "#.00") + " R", white)
+    bt_row(8,  "Max DD", str.tostring(btMaxDD, "#.0") + " R", color.new(color.orange, 0))
+    bt_row(9,  "Long", str.tostring(nLong) + " | " + str.tostring(rLong, "#.0") + "R", rLong >= 0 ? color.new(color.green, 0) : color.new(color.red, 0))
+    bt_row(10, "Short", str.tostring(nShort) + " | " + str.tostring(rShort, "#.0") + "R", rShort >= 0 ? color.new(color.green, 0) : color.new(color.red, 0))
+    bt_row(11, "Cost/trade", str.tostring(costPerTradeR, "#.00") + " R", color.new(color.gray, 0))
+    bt_row(12, "Hit TP1", str.tostring(nTP1) + " / " + str.tostring(nTr), color.new(color.aqua, 0))
+    bt_row(13, "Hit TP2", str.tostring(nTP2) + " / " + str.tostring(nTr), color.new(color.lime, 0))
+    bt_row(14, "Full SL (-1R)", str.tostring(nSLfull) + " / " + str.tostring(nTr), color.new(color.red, 0))
+    bt_row(15, "Sample ≥100?", sampleOK ? "YES" : "need " + str.tostring(100 - nTr), sampleOK ? color.new(color.green, 0) : color.new(color.orange, 0))
+
+// ---------------------------------------------------------------------
+// ALERTS
+// ---------------------------------------------------------------------
+alertcondition(longFire,  title="MRT Long Signal",  message="MRT LONG setup confirmed on {{ticker}} ({{interval}}) at {{close}}")
+alertcondition(shortFire, title="MRT Short Signal", message="MRT SHORT setup confirmed on {{ticker}} ({{interval}}) at {{close}}")
