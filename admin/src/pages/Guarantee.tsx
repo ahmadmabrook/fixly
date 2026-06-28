@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, GuaranteeAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_REVIEW', 'قيد المراجعة'], ['RESOLVED', 'موافق'], ['REJECTED', 'مرفوض'],
@@ -79,6 +79,8 @@ export default function Guarantee() {
 function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem; onClose: () => void; onDone: () => void }) {
   const [note, setNote] = useState('');
   const [visit, setVisit] = useState('');
+  // Pending confirmation for the customer-facing review decision.
+  const [confirmDecision, setConfirmDecision] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const review = useMutation({
     mutationFn: (decision: 'APPROVED' | 'REJECTED') =>
       api.post(`/guarantee/${ticket.id}/review`, { decision, adminNote: note.trim() || undefined, scheduledVisitAt: decision === 'APPROVED' && visit ? new Date(visit).toISOString() : undefined }),
@@ -105,12 +107,30 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
           <label className="block mt-4" style={{ fontSize: 13, color: '#64748B' }}>موعد زيارة مجانية (عند الموافقة)</label>
           <input type="datetime-local" value={visit} onChange={(e) => setVisit(e.target.value)} className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
           <div className="mt-6 flex gap-2">
-            <ActionBtn onClick={() => review.mutate('APPROVED')} disabled={review.isPending}>موافقة + زيارة</ActionBtn>
-            <button onClick={() => review.mutate('REJECTED')} disabled={review.isPending} className="px-4 rounded-lg" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>رفض</button>
+            <ActionBtn onClick={() => setConfirmDecision('APPROVED')} disabled={review.isPending} data-testid="approve-guarantee-btn">موافقة + زيارة</ActionBtn>
+            <button onClick={() => setConfirmDecision('REJECTED')} disabled={review.isPending} data-testid="reject-guarantee-btn" className="px-4 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>رفض</button>
             <button onClick={onClose} className="px-4 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDecision !== null}
+        title={confirmDecision === 'APPROVED' ? 'تأكيد الموافقة على الضمان' : 'تأكيد رفض الضمان'}
+        body={
+          confirmDecision === 'APPROVED'
+            ? `سيتم إبلاغ العميل بالموافقة${visit ? ' وجدولة زيارة مجانية' : ''}.`
+            : 'سيتم إبلاغ العميل برفض طلب الضمان. تأكد من إضافة ملاحظة توضيحية.'
+        }
+        confirmLabel={confirmDecision === 'APPROVED' ? 'موافقة' : 'رفض'}
+        cancelLabel="إلغاء"
+        confirmVariant={confirmDecision === 'REJECTED' ? 'danger' : 'primary'}
+        onConfirm={() => {
+          if (confirmDecision) review.mutate(confirmDecision);
+          setConfirmDecision(null);
+        }}
+        onCancel={() => setConfirmDecision(null)}
+      />
     </div>
   );
 }

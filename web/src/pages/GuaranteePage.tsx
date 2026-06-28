@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { api, EligibleBooking, GuaranteeTicketItem } from '../lib/api';
-import { Card, ServiceIcon, notify } from '../components/shared';
+import { Card, ServiceIcon, Modal, notify } from '../components/shared';
 
 const STATUS_LABEL: Record<string, { ar: string; color: string }> = {
   OPEN: { ar: 'مفتوح', color: '#1366D6' },
@@ -80,23 +80,21 @@ export default function GuaranteePage() {
       </div>
 
       {openFor && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={() => setOpenFor(null)}>
-          <div className="bg-white rounded-t-2xl md:rounded-2xl p-5 w-full md:max-w-md" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontWeight: 700, fontSize: 18 }}>فتح تذكرة ضمان</h3>
-            <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{openFor.service?.nameAr}</p>
-            <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="صف المشكلة التي واجهتها..."
-              rows={4}
-              className="mt-3 w-full rounded-xl border border-slate-200 p-3 outline-none"
-              style={{ fontSize: 14 }}
-            />
-            <button onClick={() => void submit()} disabled={!desc.trim()} className="mt-4 w-full h-12 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
-              إرسال (سيتم الرد خلال ساعتين)
-            </button>
-          </div>
-        </div>
+        <Modal title="فتح تذكرة ضمان" variant="sheet" maxWidth="md" onClose={() => setOpenFor(null)}>
+          <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{openFor.service?.nameAr}</p>
+          <textarea
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            placeholder="صف المشكلة التي واجهتها..."
+            aria-label="وصف مشكلة الضمان"
+            rows={4}
+            className="mt-3 w-full rounded-xl border border-slate-200 p-3 outline-none"
+            style={{ fontSize: 14 }}
+          />
+          <button onClick={() => void submit()} disabled={!desc.trim()} className="mt-4 w-full h-12 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+            إرسال (سيتم الرد خلال ساعتين)
+          </button>
+        </Modal>
       )}
     </main>
   );

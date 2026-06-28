@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Star, Navigation, ShieldCheck } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, AdditionalWorkItem } from '../lib/api';
-import { Card, ServiceIcon, StatusBadge, InlineRow, ConfirmDialog, notify } from '../components/shared';
+import { Card, ServiceIcon, StatusBadge, InlineRow, ConfirmDialog, Modal, notify } from '../components/shared';
 
 type FullBooking = Booking & {
   technicianId: string | null;
@@ -172,34 +172,32 @@ export default function BookingDetail() {
       </div>
 
       {showRate && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={() => setShowRate(false)}>
-          <div className="bg-white rounded-t-2xl md:rounded-2xl p-5 w-full md:max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontWeight: 700, fontSize: 18, textAlign: 'center' }}>قيّم تجربتك</h3>
-            <div className="mt-4 flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} onClick={() => setRating(n)} aria-label={`${n} نجوم`}>
-                  <Star size={36} fill={n <= rating ? '#F5A623' : 'none'} color="#F5A623" strokeWidth={n <= rating ? 0 : 2} />
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="أضف تعليقاً (اختياري)"
-              className="mt-4 w-full rounded-xl border border-slate-200 p-3 outline-none"
-              rows={3}
-              style={{ fontSize: 14 }}
-            />
-            <button
-              onClick={() => void submitReview()}
-              disabled={rating === 0}
-              className="mt-4 w-full h-12 rounded-xl disabled:opacity-50"
-              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
-            >
-              إرسال
-            </button>
+        <Modal title="قيّم تجربتك" variant="sheet" maxWidth="sm" onClose={() => setShowRate(false)}>
+          <div className="mt-4 flex justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button key={n} onClick={() => setRating(n)} aria-label={`${n} نجوم`} aria-pressed={n <= rating}>
+                <Star size={36} fill={n <= rating ? '#F5A623' : 'none'} color="#F5A623" strokeWidth={n <= rating ? 0 : 2} />
+              </button>
+            ))}
           </div>
-        </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="أضف تعليقاً (اختياري)"
+            aria-label="تعليق التقييم"
+            className="mt-4 w-full rounded-xl border border-slate-200 p-3 outline-none"
+            rows={3}
+            style={{ fontSize: 14 }}
+          />
+          <button
+            onClick={() => void submitReview()}
+            disabled={rating === 0}
+            className="mt-4 w-full h-12 rounded-xl disabled:opacity-50"
+            style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
+          >
+            إرسال
+          </button>
+        </Modal>
       )}
 
       {cancelling && (

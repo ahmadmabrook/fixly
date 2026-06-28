@@ -19,6 +19,9 @@ export const useAuth = create<AuthState>((set) => ({
   },
   logout() {
     localStorage.removeItem('role');
+    // Defensive: scrub any refresh token persisted by older app versions so a
+    // stale, JS-readable credential can't linger in the browser after logout.
+    localStorage.removeItem('refresh_token');
     set({ accessToken: null, role: null });
   },
 }));

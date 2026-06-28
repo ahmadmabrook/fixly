@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, SupportAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_PROGRESS', 'قيد المعالجة'], ['CLOSED', 'مغلق'],
@@ -77,6 +77,9 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
   const [refundOpen, setRefundOpen] = useState(false);
   const [bookingId, setBookingId] = useState('');
   const [amount, setAmount] = useState('');
+  const [refundConfirm, setRefundConfirm] = useState(false);
+  const amountNum = Number(amount);
+  const refundValid = bookingId.trim().length > 0 && amount !== '' && amountNum > 0;
   const refund = useMutation({
     mutationFn: () => api.post(`/bookings/${bookingId.trim()}/refund`, { amountJod: amount }),
     onSuccess: () => { notify('تم إصدار المبلغ المسترد', 'success'); setRefundOpen(false); setBookingId(''); setAmount(''); },
@@ -109,12 +112,29 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
               <input value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder="معرّف الحجز" className="w-full h-9 rounded-lg border border-slate-200 px-2 mb-2" style={{ fontSize: 12, direction: 'ltr' }} />
               <div className="flex gap-2">
                 <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} placeholder="المبلغ (دينار)" className="flex-1 h-9 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12, direction: 'ltr' }} />
-                <button onClick={() => refund.mutate()} disabled={!bookingId.trim() || !amount || refund.isPending} className="px-3 h-9 rounded-lg disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontSize: 12, fontWeight: 600 }}>تأكيد</button>
+                <button onClick={() => setRefundConfirm(true)} disabled={!refundValid || refund.isPending} data-testid="refund-confirm-btn" className="px-3 h-9 rounded-lg disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontSize: 12, fontWeight: 600 }}>تأكيد</button>
               </div>
+              {amount !== '' && amountNum <= 0 && (
+                <p style={{ color: '#B91C1C', fontSize: 11, marginTop: 4 }}>أدخل مبلغاً أكبر من صفر.</p>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={refundConfirm}
+        title="تأكيد إصدار مبلغ مسترد"
+        body={`سيتم استرداد ${refundValid ? amountNum.toFixed(2) : '—'} د للحجز ${bookingId.trim()}. حركة مالية لا يمكن التراجع عنها.`}
+        confirmLabel="استرداد"
+        cancelLabel="إلغاء"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (refundValid) refund.mutate();
+          setRefundConfirm(false);
+        }}
+        onCancel={() => setRefundConfirm(false)}
+      />
     </div>
   );
 }

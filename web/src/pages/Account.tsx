@@ -131,7 +131,10 @@ function AddressesTab() {
     } catch (e) { notify(e instanceof Error ? e.message : 'خطأ', 'error'); }
   }
   async function del(id: string) {
-    await api.delete(`/addresses/${id}`); void qc.invalidateQueries({ queryKey: ['addresses'] });
+    try {
+      await api.delete(`/addresses/${id}`);
+      void qc.invalidateQueries({ queryKey: ['addresses'] });
+    } catch (e) { notify(e instanceof Error ? e.message : 'تعذّر حذف العنوان', 'error'); }
   }
   return (
     <div className="space-y-3">
@@ -176,7 +179,12 @@ function PaymentTab() {
       void qc.invalidateQueries({ queryKey: ['payment-methods'] });
     } catch (e) { notify(e instanceof Error ? e.message : 'خطأ', 'error'); }
   }
-  async function del(id: string) { await api.delete(`/payment-methods/${id}`); void qc.invalidateQueries({ queryKey: ['payment-methods'] }); }
+  async function del(id: string) {
+    try {
+      await api.delete(`/payment-methods/${id}`);
+      void qc.invalidateQueries({ queryKey: ['payment-methods'] });
+    } catch (e) { notify(e instanceof Error ? e.message : 'تعذّر حذف البطاقة', 'error'); }
+  }
   return (
     <div className="space-y-3">
       <p style={{ color: '#475569', fontSize: 12 }}>دفع آمن 100% — لا يتم تخزين رقم البطاقة كاملاً. لا دفع نقدي.</p>
@@ -217,7 +225,12 @@ function PaymentTab() {
 function NotificationsTab() {
   const qc = useQueryClient();
   const { data: items } = useQuery({ queryKey: ['notifications'], queryFn: () => api.get<Notification[]>('/notifications') });
-  async function readAll() { await api.post('/notifications/read-all', {}); void qc.invalidateQueries({ queryKey: ['notifications'] }); }
+  async function readAll() {
+    try {
+      await api.post('/notifications/read-all', {});
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) { notify(e instanceof Error ? e.message : 'تعذّر تحديث الإشعارات', 'error'); }
+  }
   return (
     <div className="space-y-3">
       {(items ?? []).length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد إشعارات.</p>}
@@ -284,8 +297,11 @@ function SupportThread({ id, onBack }: { id: string; onBack: () => void }) {
   const [msg, setMsg] = useState('');
   async function send() {
     if (!msg.trim()) return;
-    await api.post(`/support/${id}/messages`, { body: msg.trim() }); setMsg('');
-    void qc.invalidateQueries({ queryKey: ['support', id] });
+    try {
+      await api.post(`/support/${id}/messages`, { body: msg.trim() });
+      setMsg('');
+      void qc.invalidateQueries({ queryKey: ['support', id] });
+    } catch (e) { notify(e instanceof Error ? e.message : 'تعذّر إرسال الرسالة', 'error'); }
   }
   return (
     <div>

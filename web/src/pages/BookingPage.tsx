@@ -23,6 +23,19 @@ const SCHEDULE_OPTIONS: ReadonlyArray<readonly ['now' | 'later', string, string]
 const DEFAULT_LAT = 31.9522;
 const DEFAULT_LNG = 35.9331;
 
+// Arabic labels for the live booking status enum (hoisted so it isn't rebuilt
+// on every render / status tick).
+const STATUS_LABELS_AR: Record<string, string> = {
+  PENDING: 'بانتظار الدفع',
+  CONFIRMED: 'تم القبول',
+  EN_ROUTE: 'الفني في الطريق',
+  ARRIVED: 'الفني وصل',
+  IN_PROGRESS: 'الخدمة جارية',
+  COMPLETED: 'مكتملة',
+  CANCELLED: 'ملغاة',
+  DISPUTED: 'نزاع',
+};
+
 export default function BookingPage({ serviceId, onBack, onDone }: BookingPageProps) {
   const { data: svc, isLoading, isError, error } = useService(serviceId);
   const [when, setWhen] = useState<'now' | 'later'>('now');
@@ -41,17 +54,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
     if (liveStatus) {
       // Translate the enum to its Arabic label so the user sees a coherent
       // Arabic sentence instead of "حالة الطلب: EN_ROUTE".
-      const labels: Record<string, string> = {
-        PENDING: 'بانتظار الدفع',
-        CONFIRMED: 'تم القبول',
-        EN_ROUTE: 'الفني في الطريق',
-        ARRIVED: 'الفني وصل',
-        IN_PROGRESS: 'الخدمة جارية',
-        COMPLETED: 'مكتملة',
-        CANCELLED: 'ملغاة',
-        DISPUTED: 'نزاع',
-      };
-      notify(`حالة الطلب: ${labels[liveStatus] ?? liveStatus}`, 'info');
+      notify(`حالة الطلب: ${STATUS_LABELS_AR[liveStatus] ?? liveStatus}`, 'info');
     }
   }, [liveStatus]);
 

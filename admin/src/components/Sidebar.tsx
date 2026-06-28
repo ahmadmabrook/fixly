@@ -22,7 +22,16 @@ export default function Sidebar() {
   const admin = useAuth((s) => s.admin);
   const navigate = useNavigate();
   const role = admin?.role;
-  const canSee = (roles?: AdminRole[]) => !roles || role === 'SUPER_ADMIN' || role === undefined || (role ? roles.includes(role) : false);
+  // Least privilege: items with no `roles` are visible to every admin; everything
+  // else requires SUPER_ADMIN or an explicit role match. An unknown role sees
+  // ONLY the unrestricted items (never the SUPER_ADMIN-only sections). The server
+  // is the source of truth for access; this only governs what the nav reveals.
+  const canSee = (roles?: AdminRole[]) => {
+    if (!roles) return true;            // unrestricted (e.g. dashboard)
+    if (role === 'SUPER_ADMIN') return true;
+    if (!role) return false;            // unknown role → least privilege
+    return roles.includes(role);
+  };
   const items = NAV.filter((n) => canSee(n.roles));
 
   async function handleLogout() {

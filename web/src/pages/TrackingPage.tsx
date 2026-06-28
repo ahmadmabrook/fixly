@@ -4,7 +4,7 @@ import { ChevronLeft, Phone, MessageCircle, Star } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
-import { Card, StatusBadge, Stars, Avatar, ConfirmDialog, notify } from '../components/shared';
+import { Card, StatusBadge, Stars, Avatar, ConfirmDialog, Modal, notify } from '../components/shared';
 import TrackingMap from '../components/TrackingMap';
 
 const STEPS: ReadonlyArray<readonly [string, string]> = [
@@ -153,31 +153,29 @@ function TechReviewsModal({ technicianId, onClose }: { technicianId: string; onC
     queryFn: () => api.get<{ summary: { rating: string | number; totalReviews: number }; items: Array<{ id: string; rating: number; comment: string | null; reviewerName: string | null; createdAt: string }> }>(`/technicians/${technicianId}/reviews`),
   });
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
-      <div className="bg-white rounded-t-2xl md:rounded-2xl p-5 w-full md:max-w-md max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ fontWeight: 700, fontSize: 18 }}>التقييمات الموثّقة</h3>
-        {data && (
-          <>
-            <div className="mt-2 flex items-center gap-2">
-              <Stars rating={Number(data.summary.rating)} size={18} />
-              <span style={{ color: '#475569', fontSize: 13 }}>({data.summary.totalReviews})</span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {data.items.length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
-              {data.items.map((r) => (
-                <div key={r.id} className="border-b border-slate-100 pb-3">
-                  <div className="flex items-center justify-between">
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>{r.reviewerName ?? 'عميل'}</span>
-                    <Stars rating={r.rating} />
-                  </div>
-                  {r.comment && <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
+    <Modal title="التقييمات الموثّقة" variant="sheet" maxWidth="md" onClose={onClose}>
+      {!data && <p className="mt-4" style={{ color: '#94A3B8', fontSize: 14 }}>جارٍ التحميل…</p>}
+      {data && (
+        <>
+          <div className="mt-2 flex items-center gap-2">
+            <Stars rating={Number(data.summary.rating)} size={18} />
+            <span style={{ color: '#475569', fontSize: 13 }}>({data.summary.totalReviews})</span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {data.items.length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
+            {data.items.map((r) => (
+              <div key={r.id} className="border-b border-slate-100 pb-3">
+                <div className="flex items-center justify-between">
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{r.reviewerName ?? 'عميل'}</span>
+                  <Stars rating={r.rating} />
                 </div>
-              ))}
-            </div>
-          </>
-        )}
-        <button onClick={onClose} className="mt-4 w-full h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إغلاق</button>
-      </div>
-    </div>
+                {r.comment && <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <button onClick={onClose} className="mt-4 w-full h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إغلاق</button>
+    </Modal>
   );
 }

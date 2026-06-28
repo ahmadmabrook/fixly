@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, CustomerItem, CustomerBookingItem } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, notify } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify } from '../components/shared';
 
 export default function Customers() {
   const [page, setPage] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Pending confirmation for a block/unblock action.
+  const [confirm, setConfirm] = useState<{ customer: CustomerItem; blocked: boolean } | null>(null);
   const limit = 50;
   const qc = useQueryClient();
 
@@ -63,7 +65,7 @@ export default function Customers() {
                     <Td>
                       <div className="flex gap-2">
                         <button onClick={() => setDetailId(c.id)} className="px-3 rounded-lg" style={{ border: '1px solid #CBD5E1', color: '#475569', fontSize: 12, fontWeight: 600 }}>الحجوزات</button>
-                        <button onClick={() => block.mutate({ id: c.id, blocked: !blocked })} className="px-3 rounded-lg" style={{ background: blocked ? '#DCFCE7' : '#FEE2E2', color: blocked ? '#15803D' : '#B91C1C', fontSize: 12, fontWeight: 600 }}>
+                        <button onClick={() => setConfirm({ customer: c, blocked: !blocked })} disabled={block.isPending} data-testid={`block-btn-${c.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: blocked ? '#DCFCE7' : '#FEE2E2', color: blocked ? '#15803D' : '#B91C1C', fontSize: 12, fontWeight: 600 }}>
                           {blocked ? 'إلغاء الحظر' : 'حظر'}
                         </button>
                       </div>
@@ -78,6 +80,26 @@ export default function Customers() {
       </Card>
 
       {detailId && <HistoryDrawer id={detailId} onClose={() => setDetailId(null)} />}
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.blocked ? 'تأكيد حظر العميل' : 'تأكيد إلغاء الحظر'}
+        body={
+          confirm
+            ? confirm.blocked
+              ? `سيتم منع ${confirm.customer.name} من استخدام المنصة وإنشاء حجوزات جديدة.`
+              : `سيُعاد تفعيل حساب ${confirm.customer.name} ويتمكن من استخدام المنصة.`
+            : undefined
+        }
+        confirmLabel={confirm?.blocked ? 'حظر' : 'إلغاء الحظر'}
+        cancelLabel="إلغاء"
+        confirmVariant={confirm?.blocked ? 'danger' : 'primary'}
+        onConfirm={() => {
+          if (confirm) block.mutate({ id: confirm.customer.id, blocked: confirm.blocked });
+          setConfirm(null);
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

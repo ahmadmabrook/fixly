@@ -97,16 +97,19 @@ export class DispatchService {
       });
 
       // Create OFFERED rows (skip duplicates via onConflict — idempotent).
-      if (techs.length > 0) {
-        await Promise.all(techs.map((t) =>
-          tx.dispatchOffer.create({
+      // Sequential, NOT Promise.all: Prisma forbids concurrent queries on a single
+      // interactive-transaction client (races can surface as "Transaction already
+      // closed" under load). The per-row P2002 swallow keeps it idempotent.
+      for (const t of techs) {
+        try {
+          await tx.dispatchOffer.create({
             data: { bookingId, technicianId: t.id, round, radiusKm, status: 'OFFERED' },
-          }).catch((err) => {
-            // Swallow unique-violation (tech already offered in earlier round).
-            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return;
-            throw err;
-          }),
-        ));
+          });
+        } catch (err) {
+          // Swallow unique-violation (tech already offered in earlier round).
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') continue;
+          throw err;
+        }
       }
     });
 

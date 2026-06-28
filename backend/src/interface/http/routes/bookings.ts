@@ -31,7 +31,15 @@ bookingsRouter.post(
     body('addressLine').isString().trim().isLength({ min: 1, max: 500 }),
     body('addressLat').isFloat({ min: -90, max: 90 }),
     body('addressLng').isFloat({ min: -180, max: 180 }),
-    body('scheduledAt').optional({ nullable: true }).isISO8601(),
+    // A scheduled booking must be in the future — mirrors reschedule()'s guard so
+    // a client can't create a booking dated in the past (data anomaly / abuse).
+    body('scheduledAt')
+      .optional({ nullable: true })
+      .isISO8601()
+      .custom((v) => {
+        if (new Date(v).getTime() <= Date.now()) throw new Error('scheduledAt must be a future time');
+        return true;
+      }),
     body('promoCode').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 40 }),
   ]),
   asyncHandler(async (req, res) => {

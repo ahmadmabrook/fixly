@@ -2,16 +2,21 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, AdminUserItem } from '../lib/api';
 import { useAuth } from '../lib/store';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify } from '../components/shared';
 
 const ROLES: ReadonlyArray<readonly [string, string]> = [
   ['SUPER_ADMIN', 'مدير عام'], ['OPS', 'عمليات'], ['FINANCE', 'مالية'], ['SUPPORT', 'دعم'],
 ];
 
+const roleLabel = (role: string) => ROLES.find(([k]) => k === role)?.[1] ?? role;
+
 export default function Admins() {
   const qc = useQueryClient();
   const me = useAuth((s) => s.admin);
   const [form, setForm] = useState({ email: '', password: '', name: '', role: 'OPS' });
+  // Pending confirmation for an authorization-changing action.
+  const [activeConfirm, setActiveConfirm] = useState<{ admin: AdminUserItem; next: boolean } | null>(null);
+  const [roleConfirm, setRoleConfirm] = useState<{ admin: AdminUserItem; next: string } | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['admin-admins'], queryFn: () => api.get<AdminUserItem[]>('/admins') });
 
@@ -67,14 +72,14 @@ export default function Admins() {
                     <Td>{a.name}{isSelf && <span style={{ color: '#94A3B8', fontSize: 11 }}> (أنت)</span>}</Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13, direction: 'ltr', display: 'inline-block' }}>{a.email}</span></Td>
                     <Td>
-                      <select value={a.role} onChange={(e) => setRole.mutate({ id: a.id, role: e.target.value })} disabled={isSelf} className="h-8 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12 }}>
+                      <select value={a.role} onChange={(e) => { if (e.target.value !== a.role) setRoleConfirm({ admin: a, next: e.target.value }); }} disabled={isSelf || setRole.isPending} className="h-8 rounded-lg border border-slate-200 px-2 disabled:opacity-50" style={{ fontSize: 12 }}>
                         {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                       </select>
                     </Td>
                     <Td>{a.isActive ? <span style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>نشط</span> : <span style={{ color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>معطّل</span>}</Td>
                     <Td>
                       {!isSelf && (
-                        <button onClick={() => setActive.mutate({ id: a.id, isActive: !a.isActive })} className="px-3 rounded-lg" style={{ background: a.isActive ? '#FEE2E2' : '#DCFCE7', color: a.isActive ? '#B91C1C' : '#15803D', fontSize: 12, fontWeight: 600 }}>
+                        <button onClick={() => setActiveConfirm({ admin: a, next: !a.isActive })} disabled={setActive.isPending} data-testid={`active-btn-${a.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: a.isActive ? '#FEE2E2' : '#DCFCE7', color: a.isActive ? '#B91C1C' : '#15803D', fontSize: 12, fontWeight: 600 }}>
                           {a.isActive ? 'تعطيل' : 'تفعيل'}
                         </button>
                       )}
@@ -87,6 +92,44 @@ export default function Admins() {
         )}
       </Card>
       <p style={{ color: '#94A3B8', fontSize: 12 }}>الأدوار: {ROLES.map(([, l]) => l).join(' · ')}</p>
+
+      <ConfirmDialog
+        open={activeConfirm !== null}
+        title={activeConfirm?.next ? 'تأكيد تفعيل المسؤول' : 'تأكيد تعطيل المسؤول'}
+        body={
+          activeConfirm
+            ? activeConfirm.next
+              ? `سيُعاد تفعيل حساب ${activeConfirm.admin.name} ويتمكن من الدخول إلى لوحة الإدارة.`
+              : `سيتم تعطيل حساب ${activeConfirm.admin.name} ولن يتمكن من الدخول إلى لوحة الإدارة.`
+            : undefined
+        }
+        confirmLabel={activeConfirm?.next ? 'تفعيل' : 'تعطيل'}
+        cancelLabel="إلغاء"
+        confirmVariant={activeConfirm?.next ? 'primary' : 'danger'}
+        onConfirm={() => {
+          if (activeConfirm) setActive.mutate({ id: activeConfirm.admin.id, isActive: activeConfirm.next });
+          setActiveConfirm(null);
+        }}
+        onCancel={() => setActiveConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={roleConfirm !== null}
+        title="تأكيد تغيير الدور"
+        body={
+          roleConfirm
+            ? `سيتم تغيير دور ${roleConfirm.admin.name} من «${roleLabel(roleConfirm.admin.role)}» إلى «${roleLabel(roleConfirm.next)}». يؤثر هذا على صلاحياته فوراً.`
+            : undefined
+        }
+        confirmLabel="تغيير الدور"
+        cancelLabel="إلغاء"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (roleConfirm) setRole.mutate({ id: roleConfirm.admin.id, role: roleConfirm.next });
+          setRoleConfirm(null);
+        }}
+        onCancel={() => setRoleConfirm(null)}
+      />
     </div>
   );
 }

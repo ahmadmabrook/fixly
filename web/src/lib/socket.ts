@@ -106,9 +106,16 @@ export interface LiveLocation {
 }
 
 /**
- * Subscribe to the assigned technician's live location for a booking. Joins the
- * booking room (server authorises) and listens for `location:update`. Returns
+ * Subscribe to the assigned technician's live location for a booking. Returns
  * the latest point, or null until the first ping.
+ *
+ * Room membership (booking:join / booking:leave) is owned by the ref-counted
+ * status subscription (subscribeToStatus) — we reuse it here so that:
+ *   - the room is reliably (re)joined, including across reconnects and when the
+ *     socket is still handshaking on mount, and
+ *   - we never emit a bare `booking:leave` that would yank the room out from
+ *     under a still-active status listener (a race when both hooks unmount).
+ * The location listener itself is keyed by bookingId so stale pings are ignored.
  */
 export function useBookingLocation(bookingId: string | null): LiveLocation | null {
   const [loc, setLoc] = useState<LiveLocation | null>(null);
@@ -117,19 +124,18 @@ export function useBookingLocation(bookingId: string | null): LiveLocation | nul
       setLoc(null);
       return;
     }
+    setLoc(null);
+    // Hold the room open for the lifetime of this hook (no-op callback — we only
+    // need the join/leave bookkeeping, not status updates).
+    const releaseRoom = subscribeToStatus(bookingId, () => {});
     const sock = getSharedSocket();
-    if (!sock) return;
-    const join = () => sock.emit('booking:join', bookingId);
-    if (sock.connected) join();
-    sock.on('connect', join);
     const onLoc = (e: { bookingId: string; lat: number; lng: number; at?: number }) => {
       if (e.bookingId === bookingId) setLoc({ lat: e.lat, lng: e.lng, at: e.at ?? Date.now() });
     };
-    sock.on('location:update', onLoc);
+    sock?.on('location:update', onLoc);
     return () => {
-      sock.off('location:update', onLoc);
-      sock.off('connect', join);
-      if (sock.connected) sock.emit('booking:leave', bookingId);
+      sock?.off('location:update', onLoc);
+      releaseRoom();
     };
   }, [bookingId]);
   return loc;

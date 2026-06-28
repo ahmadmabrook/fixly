@@ -127,6 +127,8 @@ export default function Technicians() {
 function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { data: t, isLoading } = useQuery({ queryKey: ['admin-technician', id], queryFn: () => api.get<TechnicianDetail>(`/technicians/${id}`) });
   const [reason, setReason] = useState('');
+  // Pending confirmation for a destructive technician action (reject / suspend).
+  const [confirmAction, setConfirmAction] = useState<'reject' | 'suspend' | null>(null);
   const reject = useMutation({
     mutationFn: () => api.post(`/technicians/${id}/reject`, { reason: reason.trim() }),
     onSuccess: () => { notify('تم رفض الفني', 'success'); onChanged(); },
@@ -185,10 +187,10 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
               <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="mt-1 w-full rounded-xl border border-slate-200 p-2" style={{ fontSize: 14 }} />
               <div className="mt-2 flex gap-2">
                 {t.status !== 'REJECTED' && t.status !== 'APPROVED' && (
-                  <button onClick={() => reject.mutate()} disabled={!reason.trim() || reject.isPending} className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>رفض</button>
+                  <button onClick={() => setConfirmAction('reject')} disabled={!reason.trim() || reject.isPending} data-testid="reject-tech-btn" className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>رفض</button>
                 )}
                 {t.status === 'APPROVED' && (
-                  <button onClick={() => suspend.mutate()} disabled={!reason.trim() || suspend.isPending} className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>إيقاف</button>
+                  <button onClick={() => setConfirmAction('suspend')} disabled={!reason.trim() || suspend.isPending} data-testid="suspend-tech-btn" className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>إيقاف</button>
                 )}
                 <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
               </div>
@@ -196,6 +198,25 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction === 'reject' ? 'تأكيد رفض الفني' : 'تأكيد إيقاف الفني'}
+        body={
+          confirmAction === 'reject'
+            ? 'سيتم رفض طلب التحاق الفني ولن يتمكن من استقبال الحجوزات.'
+            : 'سيتم إيقاف حساب الفني فوراً ولن يتمكن من استقبال حجوزات جديدة.'
+        }
+        confirmLabel={confirmAction === 'reject' ? 'رفض' : 'إيقاف'}
+        cancelLabel="إلغاء"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (confirmAction === 'reject') reject.mutate();
+          else if (confirmAction === 'suspend') suspend.mutate();
+          setConfirmAction(null);
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

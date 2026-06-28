@@ -58,10 +58,12 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   async function verifyOtp() {
     setLoading(true);
     try {
-      const res = await api.post<{ accessToken: string; refreshToken: string }>('/auth/otp/verify', { phone, code: otp });
-      const { accessToken, refreshToken } = res;
+      // The refresh token is set by the server as an httpOnly cookie (same as
+      // /auth/refresh), so it's never JS-readable. The access token is kept in
+      // memory only. We deliberately do NOT persist any token to localStorage —
+      // doing so would re-expose it to XSS, defeating the whole token model.
+      const { accessToken } = await api.post<{ accessToken: string }>('/auth/otp/verify', { phone, code: otp });
       setTokens(accessToken, roleFromJwt(accessToken));
-      localStorage.setItem('refresh_token', refreshToken);
       notify('تم تسجيل الدخول بنجاح', 'success');
       onSuccess();
     } catch (e: unknown) {
