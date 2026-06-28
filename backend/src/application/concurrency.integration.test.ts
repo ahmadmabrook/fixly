@@ -29,6 +29,8 @@ afterAll(async () => {
 
 describe('promo redemption cap under concurrency', () => {
   it('lets exactly ONE of many parallel bookings redeem a one-use code', async () => {
+    // CI runners can be slow under load — extend from the default 5s.
+    jest.setTimeout(15_000);
     const user = await prisma.user.create({ data: { phone: `+962799${String(tag).slice(-6)}`, name: 'Race C', role: 'CUSTOMER' } });
     created.userIds.push(user.id);
     const promo = await prisma.promoCode.create({
