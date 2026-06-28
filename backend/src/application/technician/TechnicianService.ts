@@ -6,7 +6,7 @@ import { haversineKm } from '../../shared/geo';
 
 const MIN_WITHDRAWAL_JOD = 20;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const NEARBY_RADIUS_KM = 25;
+
 
 interface OnboardingInput {
   serviceIds: string[];

@@ -45,7 +45,6 @@ jest.mock('../../../infrastructure/providers/PaymentProviderFactory', () => ({
 }));
 jest.mock('../../../shared/env', () => ({ env: () => ({ PAYMENT_PROVIDER: 'mock' }) }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires -- import after mocks are registered
 const { bookingsRouter } = require('./bookings');
 
 function makeApp(): Express {

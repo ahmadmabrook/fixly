@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, PayoutItem } from '../lib/api';
-import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify } from '../components/shared';
 
 const STATUSES = ['', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
 const STATUS_LABELS: Record<string, string> = { '': 'الكل', PENDING: 'معلّق', PROCESSING: 'قيد المعالجة', COMPLETED: 'مكتمل', FAILED: 'فشل' };

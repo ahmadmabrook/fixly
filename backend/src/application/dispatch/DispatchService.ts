@@ -8,7 +8,7 @@ import { haversineKm } from '../../shared/geo';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 import {
   dispatchOffersTotal, dispatchRoundsTotal,
-  dispatchExhaustedTotal, dispatchAcceptLatencySeconds,
+  dispatchExhaustedTotal,
 } from '../../shared/metrics';
 
 const LOCK_TTL_SECONDS = 10;
@@ -111,7 +111,7 @@ export class DispatchService {
     });
 
     dispatchRoundsTotal.inc();
-    for (const t of techs) dispatchOffersTotal.inc({ result: 'offered' });
+    techs.forEach(() => dispatchOffersTotal.inc({ result: 'offered' }));
 
     // Broadcast to each tech (outside the tx — socket is side-effect).
     for (const t of techs) {
