@@ -121,7 +121,25 @@ export default function Payouts() {
           </TableWrapper>
         )}
 
-        <Pagination page={page} total={total} limit={limit} onPage={setPage} />
+        {total > limit && (
+          <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9' }}>
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.4 : 1 }}
+            >
+              السابق
+            </button>
+            <span style={{ fontSize: 13, color: '#64748B' }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={(page + 1) * limit >= total}
+              style={{ fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none', cursor: (page + 1) * limit >= total ? 'not-allowed' : 'pointer', opacity: (page + 1) * limit >= total ? 0.4 : 1 }}
+            >
+              التالي
+            </button>
+          </div>
+        )}
       </Card>
 
       <ConfirmDialog
