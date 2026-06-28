@@ -1,0 +1,264 @@
+//@version=6
+// =====================================================================
+//  MRT Strategy — Macro Reflexive Trend (Backtestable)
+//  Pine Script v6 | strategy() version of the MRT indicator
+//
+//  Same hierarchy: Macro (manual) -> Reflexivity (manual) -> HTF trend
+//  -> Setup (Donchian breakout OR EMA pullback) -> risk-sized entry
+//  with ATR stop, R:R take-profit, breakeven, optional trailing, and
+//  daily trade/loss caps.
+//
+//  Non-repainting:
+//    * HTF data via request.security(..., lookahead=barmerge.lookahead_off)
+//    * process_orders_on_close=true, calc_on_every_tick=false
+//      => orders evaluated/filled on CLOSED bars only.
+//
+//  SAFETY: pyramiding=0 (one position, no stacking), risk-based sizing
+//  (never scales after a loss), every entry carries a hard stop.
+//
+//  WARNING: backtest results are NOT a profit guarantee. Macro &
+//  reflexivity are MANUAL — set them to reflect the regime you are
+//  testing, or run in Technical-Only mode for the mechanical edge.
+//  Test US100 and XAUUSD SEPARATELY. Use realistic commission+slippage.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// INPUTS
+// ---------------------------------------------------------------------
+grpExec   = "Backtest / Execution"
+startCap   = input.float(10000, "Initial Capital", group=grpExec)
+commPct    = input.float(0.0, "Commission % per order", minval=0.0, step=0.01, group=grpExec)
+slipTicks  = input.int(2, "Slippage (ticks)", minval=0, group=grpExec)
+
+strategy("MRT Strategy — Macro Reflexive Trend", shorttitle="MRT-S", overlay=true, initial_capital=10000, default_qty_type=strategy.fixed, default_qty_value=1, pyramiding=0, commission_type=strategy.commission.percent, commission_value=0.0, slippage=2, process_orders_on_close=true, calc_on_every_tick=false, margin_long=100, margin_short=100, close_entries_rule="ANY")
+
+grpMode   = "Strategy Mode"
+strategyMode = input.string("Manual Macro", "Mode", options=["Manual Macro", "Technical Only", "Backtest Diagnostic"], group=grpMode)
+
+grpMacro  = "Macro / Reflexivity (manual)"
+macroScore   = input.int(0, "Macro Score (-6..+6)", minval=-6, maxval=6, group=grpMacro)
+macroThresh  = input.int(3, "Macro Threshold", minval=1, maxval=6, group=grpMacro)
+reflexScore  = input.int(0, "Reflexivity Score (0..5)", minval=0, maxval=5, group=grpMacro)
+reflexMin    = input.int(2, "Min Reflexivity", minval=0, maxval=5, group=grpMacro)
+requireReflex= input.bool(true, "Require Reflexivity Confirmation", group=grpMacro)
+
+grpTrend  = "Trend Filter"
+htf        = input.timeframe("240", "Higher Timeframe (trend)", group=grpTrend)
+emaFastLen = input.int(50, "EMA Fast", minval=1, group=grpTrend)
+emaSlowLen = input.int(200, "EMA Slow", minval=1, group=grpTrend)
+require200 = input.bool(false, "Require EMA Fast > EMA Slow on HTF", group=grpTrend)
+
+grpDon    = "Donchian Breakout"
+donFastLen = input.int(20, "Donchian Fast", minval=2, group=grpDon)
+donSlowLen = input.int(55, "Donchian Slow", minval=2, group=grpDon)
+useSlowDon = input.bool(false, "Use Slow Donchian for breakout", group=grpDon)
+
+grpPull   = "Pullback"
+pullTolATR = input.float(0.5, "Pullback EMA Tolerance (ATR)", minval=0.0, step=0.1, group=grpPull)
+allowLong  = input.bool(true, "Allow Longs", group=grpPull)
+allowShort = input.bool(true, "Allow Shorts", group=grpPull)
+
+grpStop   = "Stops & Targets"
+stopMode    = input.string("ATR", "Stop Mode", options=["ATR", "Structure"], group=grpStop)
+atrLen      = input.int(14, "ATR Length", minval=1, group=grpStop)
+atrStopMult = input.float(1.5, "ATR Stop Multiplier", minval=0.1, step=0.1, group=grpStop)
+structLook  = input.int(10, "Structure Stop Lookback", minval=2, group=grpStop)
+structBufATR= input.float(0.25, "Structure Stop Buffer (ATR)", minval=0.0, step=0.05, group=grpStop)
+maxStopATR  = input.float(4.0, "Max Stop Distance (ATR) — skip if wider", minval=1.0, step=0.5, group=grpStop)
+rrTarget    = input.float(2.0, "Reward:Risk Target", minval=0.5, step=0.5, group=grpStop)
+
+grpManage = "Trade Management"
+useBE      = input.bool(true, "Move to Breakeven", group=grpManage)
+beAtR      = input.float(1.0, "Breakeven at R", minval=0.1, step=0.1, group=grpManage)
+useTrail   = input.bool(true, "Use ATR Trailing Stop", group=grpManage)
+trailStartR= input.float(1.5, "Trail Start at R", minval=0.1, step=0.1, group=grpManage)
+trailMult  = input.float(2.0, "Trail ATR Multiplier", minval=0.1, step=0.1, group=grpManage)
+
+grpRisk   = "Risk"
+useFixedQty= input.bool(false, "Use Fixed Quantity", group=grpRisk)
+fixedQty   = input.float(1.0, "Fixed Quantity", minval=0.0, step=0.1, group=grpRisk)
+riskPct    = input.float(0.5, "Risk % per Trade", minval=0.01, step=0.05, group=grpRisk)
+
+grpDaily  = "Daily Controls"
+useDaily      = input.bool(true, "Enable Daily Controls", group=grpDaily)
+maxTradesDay  = input.int(2, "Max Trades / Day", minval=1, group=grpDaily)
+maxLossesDay  = input.int(2, "Max Losses / Day", minval=1, group=grpDaily)
+maxDailyLoss  = input.float(1.0, "Max Daily Loss %", minval=0.1, step=0.1, group=grpDaily)
+
+grpWindow = "Backtest Window"
+useWindow  = input.bool(false, "Limit to Date Range", group=grpWindow)
+startTime  = input.time(timestamp("2020-01-01 00:00"), "Start", group=grpWindow)
+endTime    = input.time(timestamp("2030-01-01 00:00"), "End", group=grpWindow)
+
+// ---------------------------------------------------------------------
+// CORE INDICATORS
+// ---------------------------------------------------------------------
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+atr     = ta.atr(atrLen)
+
+donFastHigh = ta.highest(high, donFastLen)
+donFastLow  = ta.lowest(low, donFastLen)
+donSlowHigh = ta.highest(high, donSlowLen)
+donSlowLow  = ta.lowest(low, donSlowLen)
+
+// ---------------------------------------------------------------------
+// HTF TREND (non-repainting)
+// ---------------------------------------------------------------------
+htfClose   = request.security(syminfo.tickerid, htf, close,                     lookahead=barmerge.lookahead_off)
+htfEmaFast = request.security(syminfo.tickerid, htf, ta.ema(close, emaFastLen),  lookahead=barmerge.lookahead_off)
+htfEmaSlow = request.security(syminfo.tickerid, htf, ta.ema(close, emaSlowLen),  lookahead=barmerge.lookahead_off)
+
+trendBull = htfClose > htfEmaFast and (not require200 or htfEmaFast > htfEmaSlow)
+trendBear = htfClose < htfEmaFast and (not require200 or htfEmaFast < htfEmaSlow)
+
+// ---------------------------------------------------------------------
+// MACRO / REFLEXIVITY GATES
+// ---------------------------------------------------------------------
+techMode  = strategyMode == "Technical Only"
+reflexOK  = techMode or not requireReflex or reflexScore >= reflexMin
+dirLongOK  = techMode ? trendBull : macroScore >=  macroThresh
+dirShortOK = techMode ? trendBear : macroScore <= -macroThresh
+
+// ---------------------------------------------------------------------
+// SETUP DETECTION (prior channel / prior bar => no repaint)
+// ---------------------------------------------------------------------
+brkUpLevel = useSlowDon ? donSlowHigh[1] : donFastHigh[1]
+brkDnLevel = useSlowDon ? donSlowLow[1]  : donFastLow[1]
+breakoutUp = close > brkUpLevel
+breakoutDn = close < brkDnLevel
+
+nearEmaUp  = low  <= emaFast + atr * pullTolATR and low  >= emaFast - atr * pullTolATR
+nearEmaDn  = high >= emaFast - atr * pullTolATR and high <= emaFast + atr * pullTolATR
+pullbackUp = nearEmaUp and close > open and close > high[1]
+pullbackDn = nearEmaDn and close < open and close < low[1]
+
+longSetup  = breakoutUp or pullbackUp
+shortSetup = breakoutDn or pullbackDn
+
+// ---------------------------------------------------------------------
+// DAILY CONTROLS
+// ---------------------------------------------------------------------
+newDay = ta.change(time("D")) != 0
+var int   tradesToday   = 0
+var int   lossesToday   = 0
+var float dayStartEquity = na
+
+if newDay
+    tradesToday   := 0
+    lossesToday   := 0
+    dayStartEquity := strategy.equity
+
+// count a loss when a trade closes in the red
+if strategy.closedtrades > nz(strategy.closedtrades[1])
+    if strategy.closedtrades.profit(strategy.closedtrades - 1) < 0
+        lossesToday := lossesToday + 1
+
+dayDDpct = (not na(dayStartEquity) and dayStartEquity > 0) ? (strategy.equity - dayStartEquity) / dayStartEquity * 100.0 : 0.0
+dailyOK  = not useDaily or (tradesToday < maxTradesDay and lossesToday < maxLossesDay and dayDDpct > -maxDailyLoss)
+
+inWindow = not useWindow or (time >= startTime and time <= endTime)
+
+// ---------------------------------------------------------------------
+// STOP / TARGET / SIZE HELPERS
+// ---------------------------------------------------------------------
+f_longStop(_entry) =>
+    atrStop = _entry - atr * atrStopMult
+    strStop = ta.lowest(low, structLook) - atr * structBufATR
+    s = stopMode == "Structure" ? math.min(atrStop, strStop) : atrStop
+    s := math.min(s, _entry - atr * 0.1)   // ensure below entry
+    s
+
+f_shortStop(_entry) =>
+    atrStop = _entry + atr * atrStopMult
+    strStop = ta.highest(high, structLook) + atr * structBufATR
+    s = stopMode == "Structure" ? math.max(atrStop, strStop) : atrStop
+    s := math.max(s, _entry + atr * 0.1)   // ensure above entry
+    s
+
+f_qty(_entry, _stop) =>
+    q = 0.0
+    if useFixedQty
+        q := fixedQty
+    else
+        rm = strategy.equity * riskPct / 100.0
+        sd = math.abs(_entry - _stop)
+        pv = syminfo.pointvalue
+        q := (sd > 0 and pv > 0) ? rm / (sd * pv) : 0.0
+    q
+
+// ---------------------------------------------------------------------
+// ENTRY GATE
+// ---------------------------------------------------------------------
+canTrade = inWindow and dailyOK and reflexOK and strategy.position_size == 0
+longSignal  = canTrade and allowLong  and dirLongOK  and trendBull and longSetup
+shortSignal = canTrade and allowShort and dirShortOK and trendBear and shortSetup
+
+// Latched per-trade levels
+var float curSL  = na
+var float curTP  = na
+var float curRisk= na
+
+// --- LONG ENTRY ---
+if longSignal
+    e  = close
+    sl = f_longStop(e)
+    rDist = e - sl
+    // skip if stop too wide vs ATR, or invalid
+    if rDist > 0 and (atr <= 0 or rDist <= maxStopATR * atr)
+        q = f_qty(e, sl)
+        if q > 0
+            curSL   := sl
+            curTP   := e + rDist * rrTarget
+            curRisk := rDist
+            tradesToday := tradesToday + 1
+            strategy.entry("Long", strategy.long, qty=q)
+
+// --- SHORT ENTRY ---
+if shortSignal
+    e  = close
+    sl = f_shortStop(e)
+    rDist = sl - e
+    if rDist > 0 and (atr <= 0 or rDist <= maxStopATR * atr)
+        q = f_qty(e, sl)
+        if q > 0
+            curSL   := sl
+            curTP   := e - rDist * rrTarget
+            curRisk := sl - e
+            tradesToday := tradesToday + 1
+            strategy.entry("Short", strategy.short, qty=q)
+
+// ---------------------------------------------------------------------
+// TRADE MANAGEMENT (breakeven + trailing) — never loosens the stop
+// ---------------------------------------------------------------------
+if strategy.position_size > 0 and not na(curRisk) and curRisk > 0
+    avg = strategy.position_avg_price
+    rMult = (close - avg) / curRisk
+    if useBE and rMult >= beAtR
+        curSL := math.max(curSL, avg)
+    if useTrail and rMult >= trailStartR
+        curSL := math.max(curSL, close - atr * trailMult)
+    strategy.exit("ExitLong", from_entry="Long", stop=curSL, limit=curTP)
+
+if strategy.position_size < 0 and not na(curRisk) and curRisk > 0
+    avg = strategy.position_avg_price
+    rMult = (avg - close) / curRisk
+    if useBE and rMult >= beAtR
+        curSL := math.min(curSL, avg)
+    if useTrail and rMult >= trailStartR
+        curSL := math.min(curSL, close + atr * trailMult)
+    strategy.exit("ExitShort", from_entry="Short", stop=curSL, limit=curTP)
+
+// ---------------------------------------------------------------------
+// VISUALS
+// ---------------------------------------------------------------------
+plot(emaFast, "EMA Fast", color=color.new(color.orange, 0), linewidth=2)
+plot(emaSlow, "EMA Slow", color=color.new(color.purple, 0), linewidth=2)
+plot(htfEmaFast, "HTF EMA", color=color.new(color.teal, 0), linewidth=2)
+bgcolor(trendBull ? color.new(color.green, 94) : trendBear ? color.new(color.red, 94) : na, title="HTF Bias")
+
+plot(strategy.position_size != 0 ? curSL : na, "Stop",   color=color.new(color.red, 0),   style=plot.style_linebr, linewidth=1)
+plot(strategy.position_size != 0 ? curTP : na, "Target", color=color.new(color.green, 0), style=plot.style_linebr, linewidth=1)
+
+plotshape(longSignal,  title="Long",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.tiny)
+plotshape(shortSignal, title="Short", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   size=size.tiny)
