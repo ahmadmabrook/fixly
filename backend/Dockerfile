@@ -55,7 +55,8 @@ RUN chmod +x ./start.sh
 
 # Copy the generated Prisma client from the build stage instead of re-generating
 # (prisma CLI is a devDep, not available in the --prod runtime image).
-COPY --from=build /app/backend/node_modules/.prisma ./node_modules/.prisma
+# pnpm hoists .prisma to the workspace root, not backend/node_modules.
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 ENV NODE_ENV=production
 ENV PORT=4000
