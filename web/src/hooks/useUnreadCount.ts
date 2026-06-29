@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import { getSharedSocket } from '../lib/socket';
+import { subscribeToNotifications } from '../lib/socket';
 import { useAuth } from '../lib/store';
 
 interface NotificationsEnvelope {
@@ -39,21 +38,15 @@ export function useUnreadCount(): number {
     refetchInterval: 60_000,
   });
 
-  // Subscribe to real-time notification events via socket
+  // Subscribe to real-time notification events. Uses the module-level
+  // subscription (not getSharedSocket().on) so it works regardless of whether
+  // the socket exists yet — avoiding the child-before-parent effect-ordering
+  // race where the socket is created after this component mounts.
   useEffect(() => {
     if (!accessToken) return;
-    const sock = getSharedSocket();
-    if (!sock) return;
-
-    const onNew = () => {
-      // Increment optimistically, then refetch in background
+    return subscribeToNotifications(() => {
       qc.setQueryData<number>(['notifications-unread'], (old) => (old ?? 0) + 1);
-    };
-
-    sock.on('notification:new', onNew);
-    return () => {
-      sock.off('notification:new', onNew);
-    };
+    });
   }, [accessToken, qc]);
 
   return data ?? 0;

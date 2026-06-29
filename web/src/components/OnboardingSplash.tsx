@@ -14,13 +14,21 @@ export default function OnboardingSplash() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      setVisible(true);
+    // localStorage access can throw in private mode / disabled-storage browsers.
+    // Treat any failure as "already onboarded" so the splash never blocks the app.
+    try {
+      if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
+    } catch {
+      /* storage unavailable — skip the splash */
     }
   }, []);
 
   const dismiss = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, '1');
+    try {
+      localStorage.setItem(STORAGE_KEY, '1');
+    } catch {
+      /* storage unavailable — still dismiss for this session */
+    }
     setVisible(false);
   }, []);
 
@@ -74,14 +82,14 @@ export default function OnboardingSplash() {
         <h2 className="mt-5" style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>{slide.title}</h2>
         <p className="mt-2" style={{ color: '#64748B', fontSize: 14, lineHeight: 1.6 }}>{slide.subtitle}</p>
 
-        {/* Dot indicators */}
-        <div className="mt-6 flex justify-center gap-2" role="tablist" aria-label="شرائح">
+        {/* Dot indicators — progress controls, not a real tablist (no tabpanels) */}
+        <div className="mt-6 flex justify-center gap-2" role="group" aria-label="شرائح التعريف">
           {slides.map((_, i) => (
             <button
               key={i}
-              role="tab"
-              aria-selected={i === current}
-              aria-label={`شريحة ${i + 1}`}
+              type="button"
+              aria-label={`الانتقال إلى الشريحة ${i + 1}`}
+              aria-current={i === current ? 'true' : undefined}
               onClick={() => setCurrent(i)}
               className="rounded-full"
               style={{

@@ -11,14 +11,65 @@ const TIME_SLOTS = Array.from({ length: 13 }, (_, i) => {
   return `${h.toString().padStart(2, '0')}:00`;
 });
 
-function generateReceiptHtml(b: FullBooking, extras: AdditionalWorkItem[]) {
+export interface SlotDay {
+  key: string;
+  label: string;
+  dateStr: string;
+  dayName: string;
+}
+
+/**
+ * Builds the next 7 selectable days (starting *tomorrow* so no slot is ever in
+ * the past). Uses local calendar fields throughout so the `dateStr` we store
+ * matches how `new Date("YYYY-MM-DDThh:mm:00")` is later parsed (local time).
+ * `Date.prototype.setDate` rolls over month/year boundaries correctly.
+ */
+export function buildSlotDays(now: Date = new Date()): SlotDay[] {
+  const result: SlotDay[] = [];
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+    result.push({
+      key: dateStr,
+      label: `${d.getDate()}/${d.getMonth() + 1}`,
+      dateStr,
+      dayName: AR_DAYS[d.getDay()],
+    });
+  }
+  return result;
+}
+
+/**
+ * Escapes HTML-special characters so untrusted, server-supplied strings
+ * (service name, additional-work description, payment status, IDs) cannot
+ * break out of their text context when interpolated into the receipt HTML
+ * string written to a new window. Without this, a technician-controlled
+ * `description` is a stored-XSS sink in the print window.
+ */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function generateReceiptHtml(b: FullBooking, extras: AdditionalWorkItem[]) {
   const price = Number(b.service?.priceJod ?? b.totalJod);
   const discount = Number(b.discountJod ?? 0);
   const rows = [
-    `<tr><td>سعر الخدمة</td><td>${price} دينار</td></tr>`,
-    ...(discount > 0 ? [`<tr><td>الخصم</td><td>- ${discount} دينار</td></tr>`] : []),
-    ...extras.map((e) => `<tr><td>عمل إضافي: ${e.description}</td><td>${Number(e.amountJod)} دينار</td></tr>`),
+    `<tr><td>سعر الخدمة</td><td>${escapeHtml(price)} دينار</td></tr>`,
+    ...(discount > 0 ? [`<tr><td>الخصم</td><td>- ${escapeHtml(discount)} دينار</td></tr>`] : []),
+    ...extras.map((e) => `<tr><td>عمل إضافي: ${escapeHtml(e.description)}</td><td>${escapeHtml(Number(e.amountJod))} دينار</td></tr>`),
   ].join('');
+
+  const date = b.scheduledAt
+    ? new Date(b.scheduledAt).toLocaleDateString('ar-JO')
+    : b.createdAt
+      ? new Date(b.createdAt).toLocaleDateString('ar-JO')
+      : '—';
 
   return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
 <title>إيصال Fixly</title>
@@ -37,14 +88,14 @@ td:last-child{text-align:left;font-weight:600;font-family:'Inter',monospace}
 <h1>Fixly</h1>
 <p class="sub">إيصال دفع</p>
 <table>
-<tr><td><strong>الخدمة</strong></td><td>${b.service?.nameAr ?? '—'}</td></tr>
+<tr><td><strong>الخدمة</strong></td><td>${escapeHtml(b.service?.nameAr ?? '—')}</td></tr>
 ${rows}
-<tr class="total"><td>الإجمالي</td><td>${Number(b.totalJod)} دينار</td></tr>
+<tr class="total"><td>الإجمالي</td><td>${escapeHtml(Number(b.totalJod))} دينار</td></tr>
 </table>
 <div class="meta">
-<div>رقم الحجز: ${b.id.slice(0, 8)}</div>
-<div>التاريخ: ${b.scheduledAt ? new Date(b.scheduledAt).toLocaleDateString('ar-JO') : b.createdAt ? new Date(b.createdAt).toLocaleDateString('ar-JO') : '—'}</div>
-<div>حالة الدفع: ${b.payment?.status ?? '—'}</div>
+<div>رقم الحجز: ${escapeHtml(b.id.slice(0, 8))}</div>
+<div>التاريخ: ${escapeHtml(date)}</div>
+<div>حالة الدفع: ${escapeHtml(b.payment?.status ?? '—')}</div>
 </div>
 </body></html>`;
 }
@@ -62,7 +113,7 @@ function downloadReceipt(b: FullBooking, extras: AdditionalWorkItem[]) {
   w.print();
 }
 
-type FullBooking = Booking & {
+export type FullBooking = Booking & {
   technicianId: string | null;
   discountJod?: string | number;
   scheduledAt: string | null;
@@ -285,23 +336,7 @@ export default function BookingDetail() {
 function SlotPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const days = useMemo(() => {
-    const result: Array<{ key: string; label: string; dateStr: string; dayName: string }> = [];
-    const now = new Date();
-    for (let i = 1; i <= 7; i++) {
-      const d = new Date(now);
-      d.setDate(now.getDate() + i);
-      const dayName = AR_DAYS[d.getDay()];
-      const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
-      result.push({
-        key: dateStr,
-        label: `${d.getDate()}/${d.getMonth() + 1}`,
-        dateStr,
-        dayName,
-      });
-    }
-    return result;
-  }, []);
+  const days = useMemo(() => buildSlotDays(), []);
 
   function pickSlot(dateStr: string, time: string) {
     const iso = `${dateStr}T${time}:00`;

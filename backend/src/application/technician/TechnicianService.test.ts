@@ -8,7 +8,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     service: { findMany: jest.fn() },
     technicianProfile: { findUnique: jest.fn(), update: jest.fn(), upsert: jest.fn() },
     payout: { aggregate: jest.fn() },
-    withdrawalRequest: { aggregate: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+    withdrawalRequest: { aggregate: jest.fn(), create: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     booking: { findMany: jest.fn() },
     dispatchOffer: { findMany: jest.fn() },
     user: { update: jest.fn() },
@@ -20,7 +20,7 @@ const mockedPrisma = prisma as unknown as {
   service: { findMany: jest.Mock };
   technicianProfile: { findUnique: jest.Mock; update: jest.Mock; upsert: jest.Mock };
   payout: { aggregate: jest.Mock };
-  withdrawalRequest: { aggregate: jest.Mock; create: jest.Mock; findMany: jest.Mock };
+  withdrawalRequest: { aggregate: jest.Mock; create: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock };
   booking: { findMany: jest.Mock };
   dispatchOffer: { findMany: jest.Mock };
   user: { update: jest.Mock };
@@ -107,10 +107,30 @@ describe('TechnicianService.earnings', () => {
     mockedPrisma.withdrawalRequest.aggregate
       .mockResolvedValueOnce({ _sum: { amountJod: D(100) } }) // withdrawn
       .mockResolvedValueOnce({ _sum: { amountJod: D(20) } }); // pending
+    // Last withdrawal with a stored IBAN — surfaced so the tech can re-use it.
+    mockedPrisma.withdrawalRequest.findFirst.mockResolvedValue({ iban: 'JO94CBJO0010', bankName: 'Arab Bank' });
     const e = await service.earnings('u1');
     expect(e.totalJod).toBe('300');
     expect(e.todayJod).toBe('85');
     expect(e.balanceJod).toBe('180'); // 300 - 100 - 20
+    // Saved bank details echoed back from the tech's own last withdrawal.
+    expect(e.savedIban).toBe('JO94CBJO0010');
+    expect(e.savedBankName).toBe('Arab Bank');
+  });
+
+  it('returns null saved bank details when the tech has no prior withdrawal with an IBAN', async () => {
+    mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1', lastWithdrawalAt: null });
+    mockedPrisma.payout.aggregate
+      .mockResolvedValueOnce({ _sum: { amountJod: D(0) } })
+      .mockResolvedValueOnce({ _sum: { amountJod: D(0) } })
+      .mockResolvedValueOnce({ _sum: { amountJod: D(0) } });
+    mockedPrisma.withdrawalRequest.aggregate
+      .mockResolvedValueOnce({ _sum: { amountJod: D(0) } })
+      .mockResolvedValueOnce({ _sum: { amountJod: D(0) } });
+    mockedPrisma.withdrawalRequest.findFirst.mockResolvedValue(null);
+    const e = await service.earnings('u1');
+    expect(e.savedIban).toBeNull();
+    expect(e.savedBankName).toBeNull();
   });
 });
 
@@ -131,6 +151,9 @@ describe('TechnicianService.requestWithdrawal', () => {
     mockedPrisma.withdrawalRequest.aggregate
       .mockResolvedValueOnce({ _sum: { amountJod: D(0) } })
       .mockResolvedValueOnce({ _sum: { amountJod: D(0) } });
+    // earnings() (called inside requestWithdrawal) now also looks up the last
+    // withdrawal for saved bank details — keep it resolvable in the balance path.
+    mockedPrisma.withdrawalRequest.findFirst.mockResolvedValue(null);
   }
 
   it('rejects below the 20 JOD minimum', async () => {

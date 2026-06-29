@@ -38,9 +38,9 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
   const active = activeFor(location.pathname);
   const [menuOpen, setMenuOpen] = useState(false);
   const t = useT();
-  const { pref, setPref } = useTheme();
+  const setPref = useTheme((s) => s.setPref);
+  const isDark = useTheme((s) => s.isDark);
   const unread = useUnreadCount();
-  const isDark = pref === 'dark' || (pref === 'system' && typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const toggleDark = () => setPref(isDark ? 'light' : 'dark');
 
   const items = NAV_ITEMS.filter(([, , , authedOnly]) => authed || !authedOnly);

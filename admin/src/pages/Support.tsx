@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, SupportAdminItem } from '../lib/api';
 import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 import { fmtJod } from '../lib/format';
+import { extractBookingId } from '../lib/extractBookingId';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_PROGRESS', 'قيد المعالجة'], ['CLOSED', 'مغلق'],
@@ -78,24 +79,24 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
   const [refundOpen, setRefundOpen] = useState(false);
   const [bookingId, setBookingId] = useState('');
   const [amount, setAmount] = useState('');
+  // True while the bookingId field still holds the auto-extracted value
+  // untouched by the admin. Drives a "verify this" warning on a money action.
+  const [bookingIdAutofilled, setBookingIdAutofilled] = useState(false);
 
   // Auto-fill bookingId from ticket messages if a UUID pattern is found.
   // Users/customers often include their booking ID in the conversation.
-  const inferredBookingId = (() => {
-    if (!ticket?.messages?.length) return null;
-    const uuidRe = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
-    for (const m of ticket.messages) {
-      const match = m.body.match(uuidRe);
-      if (match) return match[0];
-    }
-    return null;
-  })();
+  // NOTE: this is only a *convenience hint* (see extractBookingId). A
+  // mis-extracted ID (e.g. a customer pasting someone else's booking, or
+  // several UUIDs in the thread) must never silently drive a refund — the admin
+  // still edits the field and must pass the confirm dialog, which surfaces an
+  // auto-fill warning.
+  const inferredBookingId = useMemo(() => extractBookingId(ticket?.messages), [ticket?.messages]);
   const [refundConfirm, setRefundConfirm] = useState(false);
   const amountNum = Number(amount);
   const refundValid = bookingId.trim().length > 0 && amount !== '' && amountNum > 0;
   const refund = useMutation({
     mutationFn: () => api.post(`/bookings/${bookingId.trim()}/refund`, { amountJod: amount }),
-    onSuccess: () => { notify('تم إصدار المبلغ المسترد', 'success'); setRefundOpen(false); setBookingId(''); setAmount(''); },
+    onSuccess: () => { notify('تم إصدار المبلغ المسترد', 'success'); setRefundOpen(false); setBookingId(''); setAmount(''); setBookingIdAutofilled(false); },
     onError: (e) => notify(e instanceof Error ? e.message : 'تعذّر الاسترداد', 'error'),
   });
   return (
@@ -117,12 +118,17 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
           </div>
           <div className="mt-2 flex gap-2">
             <button onClick={() => setStatus.mutate('CLOSED')} className="px-3 h-8 rounded-lg" style={{ background: '#DCFCE7', color: '#15803D', fontSize: 12, fontWeight: 600 }}>إغلاق التذكرة</button>
-            <button onClick={() => { setRefundOpen((o) => !o); if (!refundOpen && inferredBookingId && !bookingId) setBookingId(inferredBookingId); }} className="px-3 h-8 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 12, fontWeight: 600 }}>استرداد</button>
+            <button onClick={() => { setRefundOpen((o) => !o); if (!refundOpen && inferredBookingId && !bookingId) { setBookingId(inferredBookingId); setBookingIdAutofilled(true); } }} className="px-3 h-8 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 12, fontWeight: 600 }}>استرداد</button>
             <button onClick={onClose} className="px-3 h-8 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>رجوع</button>
           </div>
           {refundOpen && (
             <div className="mt-2 p-3 rounded-xl" style={{ background: '#FFFBEB' }}>
-              <input value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder="معرّف الحجز" className="w-full h-9 rounded-lg border border-slate-200 px-2 mb-2" style={{ fontSize: 12, direction: 'ltr' }} />
+              <input value={bookingId} onChange={(e) => { setBookingId(e.target.value); setBookingIdAutofilled(false); }} placeholder="معرّف الحجز" className="w-full h-9 rounded-lg border border-slate-200 px-2 mb-2" style={{ fontSize: 12, direction: 'ltr' }} />
+              {bookingIdAutofilled && bookingId.trim().length > 0 && (
+                <p style={{ color: '#B45309', fontSize: 11, marginBottom: 6 }} data-testid="refund-autofill-warning">
+                  ⚠ تم استخراج معرّف الحجز تلقائياً من الرسائل — تحقّق منه قبل الاسترداد.
+                </p>
+              )}
               <div className="flex gap-2">
                 <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} placeholder="المبلغ (دينار)" className="flex-1 h-9 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12, direction: 'ltr' }} />
                 <button onClick={() => setRefundConfirm(true)} disabled={!refundValid || refund.isPending} data-testid="refund-confirm-btn" className="px-3 h-9 rounded-lg disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontSize: 12, fontWeight: 600 }}>تأكيد</button>
@@ -138,7 +144,7 @@ function ConversationDrawer({ id, onClose }: { id: string; onClose: () => void }
       <ConfirmDialog
         open={refundConfirm}
         title="تأكيد إصدار مبلغ مسترد"
-        body={`سيتم استرداد ${refundValid ? fmtJod(amountNum) : '—'} د للحجز ${bookingId.trim()}. حركة مالية لا يمكن التراجع عنها.`}
+        body={`سيتم استرداد ${refundValid ? fmtJod(amountNum) : '—'} د للحجز ${bookingId.trim()}. حركة مالية لا يمكن التراجع عنها.${bookingIdAutofilled ? ' ⚠ معرّف الحجز مُستخرَج تلقائياً — تأكّد أنه الحجز الصحيح.' : ''}`}
         confirmLabel="استرداد"
         cancelLabel="إلغاء"
         confirmVariant="danger"

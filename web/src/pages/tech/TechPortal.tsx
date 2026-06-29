@@ -363,7 +363,3 @@ function StatusScreen({ title, body, tone, retry }: { title: string; body: strin
     </main>
   );
 }
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return <main className="max-w-[600px] mx-auto px-6 py-16 text-center"><p style={{ color: '#94A3B8', fontSize: 16 }}>{children}</p></main>;
-}

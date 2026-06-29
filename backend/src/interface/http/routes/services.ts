@@ -10,8 +10,12 @@ export const servicesRouter: Router = Router();
 servicesRouter.get(
   '/',
   validate([
-    query('category').optional().isString().trim(),
-    query('search').optional().isString().trim(),
+    // Length-cap both free-text params: this is a public, unauthenticated route
+    // and `search` drives a case-insensitive `contains` (LIKE %…%) over the
+    // un-indexed nameAr/nameEn columns — an unbounded string is a slow-query /
+    // abuse vector. Caps match the codebase convention (addresses/adminOps).
+    query('category').optional().isString().trim().isLength({ max: 60 }),
+    query('search').optional().isString().trim().isLength({ max: 80 }),
     query('sort').optional().isIn(['price_asc', 'price_desc', 'duration_asc', 'duration_desc', 'category']),
   ]),
   asyncHandler(async (req, res) => {

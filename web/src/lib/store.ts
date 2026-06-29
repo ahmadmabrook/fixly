@@ -6,43 +6,64 @@ export type ThemePref = 'light' | 'dark' | 'system';
 
 interface ThemeState {
   pref: ThemePref;
+  /** Resolved appearance after applying the system preference. Subscribers
+   *  (e.g. the nav toggle) read this so the UI re-renders when the OS theme
+   *  changes while pref === 'system'. */
+  isDark: boolean;
   setPref: (p: ThemePref) => void;
 }
 
 const storedTheme = (typeof localStorage !== 'undefined' ? localStorage.getItem('theme') : null) as ThemePref | null;
 
-/** Applies (or removes) the `dark` class on `<html>` and persists preference. */
-function applyTheme(pref: ThemePref) {
-  if (typeof document === 'undefined') return;
-  const systemDark =
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false;
-  const isDark = pref === 'dark' || (pref === 'system' && systemDark);
-  document.documentElement.classList.toggle('dark', isDark);
+function systemPrefersDark(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+}
+
+/** Resolves whether the given preference should render dark right now. */
+export function resolveIsDark(pref: ThemePref): boolean {
+  return pref === 'dark' || (pref === 'system' && systemPrefersDark());
+}
+
+/** Applies (or removes) the `dark` class on `<html>`. */
+function applyTheme(pref: ThemePref): boolean {
+  const isDark = resolveIsDark(pref);
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('dark', isDark);
+  }
+  return isDark;
 }
 
 export const useTheme = create<ThemeState>((set) => ({
   pref: storedTheme ?? 'system',
+  isDark: resolveIsDark(storedTheme ?? 'system'),
   setPref(pref) {
     try {
       localStorage.setItem('theme', pref);
     } catch {
       /* ignore */
     }
-    applyTheme(pref);
-    set({ pref });
+    set({ pref, isDark: applyTheme(pref) });
   },
 }));
 
-// Apply on initial load.
+// Apply on initial load (synchronous, before first paint → no FOUC).
 applyTheme(useTheme.getState().pref);
 
 // Re-apply when system preference changes (relevant when pref === 'system').
+// A single named listener is registered once; it updates the store so
+// `isDark` subscribers re-render. (Guarded so HMR re-imports don't stack it.)
 if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    applyTheme(useTheme.getState().pref);
-  });
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const onSystemThemeChange = () => {
+    const { pref } = useTheme.getState();
+    useTheme.setState({ isDark: applyTheme(pref) });
+  };
+  mq.removeEventListener('change', onSystemThemeChange);
+  mq.addEventListener('change', onSystemThemeChange);
 }
 
 /* ── Auth state ────────────────────────────────────────────────────────────── */

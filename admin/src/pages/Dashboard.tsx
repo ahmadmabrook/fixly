@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -24,11 +25,25 @@ export default function Dashboard() {
   const from30 = isoDaysAgo(30);
   const to0 = isoDaysAgo(0);
   const qs = `from=${from30}T00:00:00.000Z&to=${to0}T23:59:59.999Z&granularity=day`;
-  const { data: financials } = useQuery<FinancialReport>({
+  const { data: financials, isError: financialsError } = useQuery<FinancialReport>({
     queryKey: ['admin-financial-dashboard', from30, to0],
     queryFn: () => api.get<FinancialReport>(`/reports/financial?${qs}`),
     enabled: !isLoading && !isError,
   });
+
+  // Derive chart datasets once per data change so recharts isn't handed a new
+  // array identity on every render (which would force a full re-render/animate).
+  // Hooks must run before any early return, so guard on the data inside.
+  const revenueSeries = useMemo(
+    () =>
+      (financials?.series ?? []).map((s) => ({
+        period: new Date(s.period).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }),
+        grossJod: s.grossJod,
+        platformFeeJod: s.platformFeeJod,
+      })),
+    [financials],
+  );
+  const serviceData = useMemo(() => stats?.bookingsByService ?? [], [stats?.bookingsByService]);
 
   if (isLoading) {
     return (
@@ -54,14 +69,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const revenueSeries = (financials?.series ?? []).map((s) => ({
-    period: new Date(s.period).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }),
-    grossJod: s.grossJod,
-    platformFeeJod: s.platformFeeJod,
-  }));
-
-  const serviceData = stats.bookingsByService ?? [];
 
   return (
     <div className="space-y-6">
@@ -96,9 +103,12 @@ export default function Dashboard() {
           <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 16 }}>
             اتجاه الإيرادات (30 يوم)
           </h2>
-          {revenueSeries.length === 0 ? (
+          {financialsError ? (
+            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>تعذّر تحميل بيانات الإيرادات</p>
+          ) : revenueSeries.length === 0 ? (
             <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
           ) : (
+            <div role="img" aria-label="رسم بياني لاتجاه الإيرادات خلال آخر 30 يوماً">
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={revenueSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
@@ -125,6 +135,7 @@ export default function Dashboard() {
                 <Line type="monotone" dataKey="platformFeeJod" stroke={ACCENT_TEAL} strokeWidth={2} dot={false} name="platformFeeJod" />
               </LineChart>
             </ResponsiveContainer>
+            </div>
           )}
         </Card>
 
@@ -136,6 +147,7 @@ export default function Dashboard() {
           {serviceData.length === 0 ? (
             <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
           ) : (
+            <div role="img" aria-label="رسم بياني لعدد الحجوزات حسب الخدمة">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={serviceData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} layout="horizontal">
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -165,6 +177,7 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            </div>
           )}
         </Card>
       </div>

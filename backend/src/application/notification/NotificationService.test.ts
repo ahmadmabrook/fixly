@@ -38,6 +38,27 @@ describe('NotificationService', () => {
     expect(mockedPrisma.booking.findUnique).not.toHaveBeenCalled(); // customerId from payload, no lookup
   });
 
+  it('also emits notification:new (bell payload) with the same timestamp as booking:status', async () => {
+    const { io, emit } = makeIo();
+    mockedPrisma.notification.create.mockResolvedValue({});
+    const svc = new NotificationService(io);
+
+    await svc.handleBookingEvent('booking.confirmed', { bookingId: 'bk-1', customerId: 'cu-1' });
+
+    expect(emit).toHaveBeenCalledTimes(2);
+    const statusCall = emit.mock.calls.find((c) => c[0] === 'booking:status');
+    const bellCall = emit.mock.calls.find((c) => c[0] === 'notification:new');
+    expect(statusCall).toBeDefined();
+    expect(bellCall).toBeDefined();
+    // The bell event carries title + body + bookingId (no status leak).
+    expect(bellCall![1]).toEqual(
+      expect.objectContaining({ titleAr: expect.any(String), bodyAr: expect.any(String), bookingId: 'bk-1', at: expect.any(Number) }),
+    );
+    expect(bellCall![1]).not.toHaveProperty('status');
+    // Both events share the single Date.now() snapshot → consistent ordering.
+    expect(bellCall![1].at).toBe(statusCall![1].at);
+  });
+
   it('sets a dedupeKey and is idempotent: a duplicate (P2002) is swallowed, no re-emit', async () => {
     const { io, emit } = makeIo();
     mockedPrisma.notification.create.mockRejectedValue(

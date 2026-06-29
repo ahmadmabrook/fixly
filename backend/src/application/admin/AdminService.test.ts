@@ -5,11 +5,14 @@ import type { IPayoutProvider } from '../../domain/providers/IPayoutProvider';
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
-    payout: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+    payout: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), update: jest.fn(), count: jest.fn() },
     ledgerEntry: { create: jest.fn() },
     adminAuditLog: { create: jest.fn() },
     adminUser: { findUnique: jest.fn() },
-    technicianProfile: { findUnique: jest.fn(), update: jest.fn() },
+    technicianProfile: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn(), aggregate: jest.fn() },
+    booking: { count: jest.fn(), aggregate: jest.fn(), groupBy: jest.fn() },
+    service: { findMany: jest.fn() },
+    guaranteeTicket: { count: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -19,11 +22,14 @@ jest.mock('../../shared/env', () => ({
 }));
 
 const mockedPrisma = prisma as unknown as {
-  payout: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; update: jest.Mock };
+  payout: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; update: jest.Mock; count: jest.Mock };
   ledgerEntry: { create: jest.Mock };
   adminAuditLog: { create: jest.Mock };
   adminUser: { findUnique: jest.Mock };
-  technicianProfile: { findUnique: jest.Mock; update: jest.Mock };
+  technicianProfile: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock; aggregate: jest.Mock };
+  booking: { count: jest.Mock; aggregate: jest.Mock; groupBy: jest.Mock };
+  service: { findMany: jest.Mock };
+  guaranteeTicket: { count: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -307,6 +313,68 @@ describe('AdminService.login (failed-login logging)', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'bad_password' }),
       expect.any(String),
+    );
+  });
+});
+
+describe('AdminService.getStats (bookingsByService)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AdminService({ disburse: jest.fn(), getStatus: jest.fn() } as unknown as IPayoutProvider);
+    // The parallel header block — values are irrelevant to the new logic, just resolvable.
+    mockedPrisma.booking.count.mockResolvedValue(0);
+    mockedPrisma.booking.aggregate.mockResolvedValue({ _sum: { totalJod: 0 } });
+    mockedPrisma.technicianProfile.count.mockResolvedValue(0);
+    mockedPrisma.technicianProfile.aggregate.mockResolvedValue({ _avg: { rating: 0 } });
+    mockedPrisma.guaranteeTicket.count.mockResolvedValue(0);
+    mockedPrisma.payout.count.mockResolvedValue(0);
+  });
+
+  it('maps grouped booking counts to their Arabic service names, preserving desc order', async () => {
+    mockedPrisma.booking.groupBy.mockResolvedValue([
+      { serviceId: 'svc-1', _count: { id: 9 } },
+      { serviceId: 'svc-2', _count: { id: 4 } },
+    ]);
+    // findMany may return rows in any order — the service builds a Map, so order-independent.
+    mockedPrisma.service.findMany.mockResolvedValue([
+      { id: 'svc-2', nameAr: 'سباكة' },
+      { id: 'svc-1', nameAr: 'كهرباء' },
+    ]);
+
+    const stats = await service.getStats();
+
+    expect(stats.bookingsByService).toEqual([
+      { serviceId: 'svc-1', nameAr: 'كهرباء', count: 9 },
+      { serviceId: 'svc-2', nameAr: 'سباكة', count: 4 },
+    ]);
+    // groupBy is capped at the top 10 — a sanity check on the query shape.
+    expect(mockedPrisma.booking.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ by: ['serviceId'], take: 10, orderBy: { _count: { id: 'desc' } } }),
+    );
+    // The name lookup only fetches the grouped service ids (no full-table scan).
+    expect(mockedPrisma.service.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['svc-1', 'svc-2'] } } }),
+    );
+  });
+
+  it('falls back to the serviceId when a name row is missing (deleted service)', async () => {
+    mockedPrisma.booking.groupBy.mockResolvedValue([{ serviceId: 'svc-gone', _count: { id: 2 } }]);
+    mockedPrisma.service.findMany.mockResolvedValue([]); // name not found
+
+    const stats = await service.getStats();
+
+    expect(stats.bookingsByService).toEqual([{ serviceId: 'svc-gone', nameAr: 'svc-gone', count: 2 }]);
+  });
+
+  it('returns an empty bookingsByService when there are no bookings', async () => {
+    mockedPrisma.booking.groupBy.mockResolvedValue([]);
+    mockedPrisma.service.findMany.mockResolvedValue([]);
+
+    const stats = await service.getStats();
+
+    expect(stats.bookingsByService).toEqual([]);
+    expect(mockedPrisma.service.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: [] } } }),
     );
   });
 });

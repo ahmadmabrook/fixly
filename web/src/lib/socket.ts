@@ -12,6 +12,12 @@ let sharedSocket: Socket | null = null;
 const statusListeners = new Map<string, Set<(s: string) => void>>();
 // Joins queued before the socket is connected — flushed on `connect`.
 const pendingJoins: string[] = [];
+// Notification listeners are kept in a module-level set so they survive socket
+// re-creation (login/user-switch). The actual `notification:new` handler is
+// (re)bound once per socket in getOrCreateSocket — this avoids the race where a
+// consumer (e.g. the unread badge) subscribes *before* the socket exists or
+// against a socket that is about to be torn down.
+const notificationListeners = new Set<() => void>();
 
 /** Lazily open a single socket for the whole app. We tear it down on logout. */
 export function getOrCreateSocket(token: string): Socket {
@@ -35,7 +41,25 @@ export function getOrCreateSocket(token: string): Socket {
       sharedSocket.emit('booking:join', bookingId);
     }
   });
+  // Bind the notification fan-out once per socket. Consumers register via
+  // subscribeToNotifications and are notified regardless of when they
+  // subscribed relative to the socket's creation.
+  sharedSocket.on('notification:new', () => {
+    for (const cb of notificationListeners) cb();
+  });
   return sharedSocket;
+}
+
+/**
+ * Subscribe to `notification:new` events. Survives socket re-creation because
+ * the listener lives in a module-level set, not on a specific Socket instance.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToNotifications(cb: () => void): () => void {
+  notificationListeners.add(cb);
+  return () => {
+    notificationListeners.delete(cb);
+  };
 }
 
 export function disconnectSocket() {

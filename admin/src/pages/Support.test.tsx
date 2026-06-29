@@ -56,6 +56,16 @@ const ticketPayload = {
   },
 };
 
+const UUID_IN_MSG = '11111111-2222-4333-8444-555555555555';
+const ticketWithUuidPayload = {
+  data: {
+    id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    user: { name: 'أحمد', phone: '0790000000' },
+    messages: [{ id: 'm1', senderRole: 'USER', body: `رقم حجزي هو ${UUID_IN_MSG}`, createdAt: new Date().toISOString() }],
+  },
+};
+
 describe('Support page (refund is confirm-gated)', () => {
   it('does NOT fire the refund mutation on a single click — confirm dialog required', async () => {
     const seq = mockFetchWith([
@@ -148,5 +158,69 @@ describe('Support page (refund is confirm-gated)', () => {
     expect(screen.getByTestId('refund-confirm-btn')).toBeDisabled();
     // Validation message should be shown
     expect(screen.getByText('أدخل مبلغاً أكبر من صفر.')).toBeInTheDocument();
+  });
+});
+
+describe('Support page (refund booking-id auto-extract)', () => {
+  it('prefills bookingId from a UUID in the messages and shows a verify warning', async () => {
+    mockFetchWith([
+      { payload: listPayload },
+      { payload: ticketWithUuidPayload },
+      { payload: ticketWithUuidPayload },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<Support />);
+    await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
+
+    await user.click(screen.getByText('فتح'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await user.click(screen.getByText('استرداد'));
+
+    const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;
+    await waitFor(() => expect(bookingInput.value).toBe(UUID_IN_MSG));
+    // The auto-fill safety warning must be visible on this money action.
+    expect(screen.getByTestId('refund-autofill-warning')).toBeInTheDocument();
+  });
+
+  it('clears the auto-fill warning once the admin edits the bookingId', async () => {
+    mockFetchWith([
+      { payload: listPayload },
+      { payload: ticketWithUuidPayload },
+      { payload: ticketWithUuidPayload },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<Support />);
+    await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
+
+    await user.click(screen.getByText('فتح'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await user.click(screen.getByText('استرداد'));
+
+    const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;
+    await waitFor(() => expect(bookingInput.value).toBe(UUID_IN_MSG));
+    expect(screen.getByTestId('refund-autofill-warning')).toBeInTheDocument();
+
+    // Admin edits the field → it's no longer "auto-filled untouched".
+    await user.type(bookingInput, 'X');
+    expect(screen.queryByTestId('refund-autofill-warning')).not.toBeInTheDocument();
+  });
+
+  it('does NOT prefill when no UUID is present in the messages', async () => {
+    mockFetchWith([
+      { payload: listPayload },
+      { payload: ticketPayload },
+      { payload: ticketPayload },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<Support />);
+    await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
+
+    await user.click(screen.getByText('فتح'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await user.click(screen.getByText('استرداد'));
+
+    const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;
+    expect(bookingInput.value).toBe('');
+    expect(screen.queryByTestId('refund-autofill-warning')).not.toBeInTheDocument();
   });
 });

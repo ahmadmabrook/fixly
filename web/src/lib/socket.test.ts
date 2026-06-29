@@ -21,7 +21,7 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket),
 }));
 
-import { useBookingSocket, getOrCreateSocket, disconnectSocket, getSharedSocket, dispatchStatus } from './socket';
+import { useBookingSocket, getOrCreateSocket, disconnectSocket, getSharedSocket, dispatchStatus, subscribeToNotifications } from './socket';
 import { useAuth } from './store';
 
 beforeEach(() => {
@@ -70,6 +70,47 @@ describe('useBookingSocket', () => {
     id = null;
     rerender();
     expect(result.current).toBeNull();
+  });
+});
+
+describe('subscribeToNotifications', () => {
+  function fireNotification() {
+    for (const cb of listeners['notification:new'] ?? []) cb(undefined);
+  }
+
+  it('notifies subscribers regardless of when they subscribe vs socket creation', () => {
+    const fn = vi.fn();
+    // Subscribe BEFORE the socket exists (the real-world race we are fixing).
+    const unsub = subscribeToNotifications(fn);
+    getOrCreateSocket('seed');
+    fireNotification();
+    expect(fn).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it('stops notifying after unsubscribe', () => {
+    getOrCreateSocket('seed');
+    const fn = vi.fn();
+    const unsub = subscribeToNotifications(fn);
+    fireNotification();
+    expect(fn).toHaveBeenCalledTimes(1);
+    unsub();
+    fireNotification();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-binds the handler when the socket is re-created (user switch)', () => {
+    const fn = vi.fn();
+    subscribeToNotifications(fn);
+    getOrCreateSocket('user-A');
+    fireNotification();
+    expect(fn).toHaveBeenCalledTimes(1);
+    // Simulate logout + new login → fresh socket, listener must still fire.
+    disconnectSocket();
+    Object.keys(listeners).forEach((k) => delete listeners[k]);
+    getOrCreateSocket('user-B');
+    fireNotification();
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 });
 
