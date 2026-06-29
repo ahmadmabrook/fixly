@@ -28,7 +28,8 @@ export default function Landing() {
   const navigate = useNavigate();
   const t = useT();
   const accessToken = useAuth((s) => s.accessToken);
-  const { data: services, isLoading: servicesLoading } = useServices();
+  const { data: svcResponse, isLoading: servicesLoading } = useServices();
+  const services = svcResponse?.data;
 
   // Active booking banner — only runs when authed
   const { data: activeBooking } = useQuery({
@@ -75,7 +76,7 @@ export default function Landing() {
       <section className="grid md:grid-cols-2 gap-8 items-center py-16">
         <div>
           <GuaranteePill />
-          <h1 className="mt-4" style={{ fontWeight: 800, fontSize: 48, lineHeight: 1.15, color: '#0F172A' }}>
+          <h1 className="mt-4 text-3xl sm:text-5xl" style={{ fontWeight: 800, lineHeight: 1.15, color: '#0F172A' }}>
             {t('hero.title')} <span style={{ color: '#1366D6' }}>{t('hero.titleAccent')}</span>
           </h1>
           <p className="mt-4" style={{ fontSize: 17, color: '#475569' }}>
@@ -101,7 +102,7 @@ export default function Landing() {
             <button type="submit" className="h-12 px-6 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>{t('hero.searchCta')}</button>
           </form>
 
-          <div className="mt-6 flex items-center gap-6">
+          <div className="mt-6 flex items-center gap-4 sm:gap-6 flex-wrap">
             <div className="flex items-center gap-2"><Stars rating={4.8} /><span style={{ fontSize: 13, color: '#475569' }}>+5,000 تقييم</span></div>
             <div className="flex items-center gap-2" style={{ color: '#475569', fontSize: 13 }}><ShieldCheck size={16} color="#15803D" aria-hidden="true" /> ضمان 30 يوم</div>
           </div>

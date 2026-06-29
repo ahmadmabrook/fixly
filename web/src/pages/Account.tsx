@@ -20,15 +20,23 @@ export default function Account() {
   return (
     <main className="max-w-[900px] mx-auto px-6 py-8">
       <h1 style={{ fontWeight: 800, fontSize: 28 }}>حسابي</h1>
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-4 flex gap-2 overflow-x-auto scrollbar-hide flex-nowrap pb-1" role="tablist" aria-label="أقسام الحساب">
         {TABS.map(([k, label, Icon]) => (
-          <button key={k} onClick={() => setTab(k)} className="flex items-center gap-1.5 px-4 h-10 rounded-full shrink-0"
-            style={{ background: tab === k ? '#1366D6' : '#FFF', color: tab === k ? '#FFF' : '#475569', fontWeight: 600, fontSize: 13, border: '1px solid #E2E8F0' }}>
-            <Icon size={15} /> {label}
+          <button
+            key={k}
+            role="tab"
+            id={`tab-${k}`}
+            aria-selected={tab === k}
+            aria-controls={`tabpanel-${k}`}
+            onClick={() => setTab(k)}
+            className="flex items-center gap-1.5 px-4 h-10 rounded-full shrink-0 whitespace-nowrap"
+            style={{ background: tab === k ? '#1366D6' : '#FFF', color: tab === k ? '#FFF' : '#475569', fontWeight: 600, fontSize: 13, border: '1px solid #E2E8F0' }}
+          >
+            <Icon size={15} aria-hidden="true" /> {label}
           </button>
         ))}
       </div>
-      <div className="mt-5">
+      <div className="mt-5" role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'profile' && <ProfileTab />}
         {tab === 'addresses' && <AddressesTab />}
         {tab === 'payment' && <PaymentTab />}
@@ -137,7 +145,7 @@ function AddressesTab() {
       ))}
       {adding ? (
         <Card className="p-4 space-y-3">
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="التسمية (مثال: المنزل)" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="التسمية (مثال: المنزل)" aria-label="تسمية العنوان" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
           <MapAddressPicker value={addr} onChange={setAddr} height={220} />
           <div className="flex gap-2">
             <button onClick={() => void add()} disabled={!label.trim() || !addr.address.trim()} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
@@ -186,13 +194,13 @@ function PaymentTab() {
       ))}
       {adding ? (
         <Card className="p-4 space-y-2">
-          <select value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }}>
+          <select value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} aria-label="نوع البطاقة" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }}>
             <option value="visa">Visa</option><option value="mastercard">Mastercard</option>
           </select>
-          <input value={form.last4} onChange={(e) => setForm({ ...form, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="آخر 4 أرقام" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+          <input value={form.last4} onChange={(e) => setForm({ ...form, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="آخر 4 أرقام" aria-label="آخر 4 أرقام من البطاقة" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
           <div className="grid grid-cols-2 gap-2">
-            <input value={form.expMonth} onChange={(e) => setForm({ ...form, expMonth: e.target.value })} placeholder="MM" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-            <input value={form.expYear} onChange={(e) => setForm({ ...form, expYear: e.target.value })} placeholder="YYYY" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+            <input value={form.expMonth} onChange={(e) => setForm({ ...form, expMonth: e.target.value })} placeholder="MM" aria-label="شهر الانتهاء" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+            <input value={form.expYear} onChange={(e) => setForm({ ...form, expYear: e.target.value })} placeholder="YYYY" aria-label="سنة الانتهاء" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
           </div>
           <div className="flex gap-2">
             <button onClick={() => void add()} disabled={form.last4.length !== 4} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
@@ -263,8 +271,8 @@ function SupportTab() {
       ))}
       {creating ? (
         <Card className="p-4 space-y-2">
-          <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="الموضوع" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
-          <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="كيف يمكننا مساعدتك؟" rows={3} className="w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
+          <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="الموضوع" aria-label="موضوع تذكرة الدعم" className="w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
+          <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="كيف يمكننا مساعدتك؟" aria-label="وصف مشكلة الدعم" rows={3} className="w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
           <div className="flex gap-2">
             <button onClick={() => void create()} disabled={!form.subject.trim() || !form.body.trim()} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إرسال</button>
             <button onClick={() => setCreating(false)} className="px-4 h-11 rounded-xl" style={{ color: '#475569' }}>إلغاء</button>
@@ -304,7 +312,7 @@ function SupportThread({ id, onBack }: { id: string; onBack: () => void }) {
         ))}
       </div>
       <div className="mt-3 flex gap-2">
-        <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="اكتب رسالتك..." className="flex-1 h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
+        <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="اكتب رسالتك..." aria-label="رسالة الدعم" className="flex-1 h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
         <button onClick={() => void send()} className="px-4 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إرسال</button>
       </div>
     </div>

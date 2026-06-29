@@ -59,7 +59,7 @@ export default function TrackingPage() {
         <ChevronLeft size={18} /> طلباتي
       </button>
 
-      <Card className="mt-4 overflow-hidden">
+      <Card className="mt-4 overflow-hidden" aria-label="خريطة تتبع الفني">
         <TrackingMap
           customer={{ lat: booking.addressLat, lng: booking.addressLng }}
           tech={location ? { lat: location.lat, lng: location.lng } : null}
@@ -78,9 +78,9 @@ export default function TrackingPage() {
       </div>
 
       {/* Status stepper */}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4 flex items-center justify-between" role="list" aria-label="مراحل الطلب">
         {STEPS.map(([s, label], i) => (
-          <div key={s} className="flex-1 flex flex-col items-center">
+          <div key={s} className="flex-1 flex flex-col items-center" role="listitem" aria-current={i === activeIdx ? 'step' : undefined}>
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center"
               style={{ background: i <= activeIdx ? '#1366D6' : '#E2E8F0', color: i <= activeIdx ? '#FFF' : '#94A3B8', fontSize: 12, fontWeight: 700, fontFamily: 'Inter' }}
@@ -106,7 +106,7 @@ export default function TrackingPage() {
               {tech.vehicle && <div style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>{tech.vehicle}</div>}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
             <button onClick={() => notify('جارٍ الاتصال (رقم مُقنّع)')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600, fontSize: 13 }}>
               <Phone size={16} /> اتصال
             </button>

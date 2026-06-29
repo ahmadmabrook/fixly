@@ -141,12 +141,13 @@ export class TechnicianService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [total, today, month, withdrawnAgg, pendingWithdrawAgg] = await Promise.all([
+    const [total, today, month, withdrawnAgg, pendingWithdrawAgg, lastWithdrawal] = await Promise.all([
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id } }),
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, createdAt: { gte: startOfToday } } }),
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, createdAt: { gte: startOfMonth } } }),
       prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: 'PAID' } }),
       prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: { in: ['REQUESTED', 'PROCESSING'] } } }),
+      prisma.withdrawalRequest.findFirst({ where: { technicianId: profile.id, iban: { not: null } }, orderBy: { createdAt: 'desc' }, select: { iban: true, bankName: true } }),
     ]);
 
     const earned = new Prisma.Decimal(total._sum.amountJod ?? 0);
@@ -160,6 +161,8 @@ export class TechnicianService {
       totalJod: earned.toString(),
       balanceJod: (balance.isNegative() ? new Prisma.Decimal(0) : balance).toString(),
       lastWithdrawalAt: profile.lastWithdrawalAt,
+      savedIban: lastWithdrawal?.iban ?? null,
+      savedBankName: lastWithdrawal?.bankName ?? null,
     };
   }
 

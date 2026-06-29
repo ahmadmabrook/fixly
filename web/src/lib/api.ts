@@ -295,6 +295,8 @@ export interface TechEarnings {
   totalJod: string;
   balanceJod: string;
   lastWithdrawalAt: string | null;
+  savedIban: string | null;
+  savedBankName: string | null;
 }
 
 export interface Withdrawal {

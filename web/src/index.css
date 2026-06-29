@@ -64,3 +64,12 @@
   --color-border: #334155;
   --color-brand-primary-soft: #1E3A5F;
 }
+
+/* Hide scrollbar on horizontally scrollable strips (category pills, tabs) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

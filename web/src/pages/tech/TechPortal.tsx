@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wrench, Clock, Power, Star } from 'lucide-react';
 import { api, ApiError, TechnicianProfileMe, NearbyJob, TechEarnings, BookingListItem, Service } from '../../lib/api';
@@ -240,10 +240,23 @@ function Earnings({ onChange }: { onChange: () => void }) {
   const { data: e } = useQuery({ queryKey: ['tech-earnings'], queryFn: () => api.get<TechEarnings>('/technician/earnings') });
   const [amount, setAmount] = useState('');
   const [iban, setIban] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [prefilled, setPrefilled] = useState(false);
+  const didPrefill = useRef(false);
+
+  // Pre-fill IBAN and bank name from last withdrawal when data arrives
+  useEffect(() => {
+    if (!e || didPrefill.current) return;
+    didPrefill.current = true;
+    if (e.savedIban) { setIban(e.savedIban); setPrefilled(true); }
+    if (e.savedBankName) { setBankName(e.savedBankName); }
+  }, [e]);
+
   async function withdraw() {
     try {
-      await api.post('/technician/withdrawals', { amountJod: Number(amount), iban: iban.trim() || undefined });
-      notify('تم إرسال طلب السحب', 'success'); setAmount(''); setIban('');
+      await api.post('/technician/withdrawals', { amountJod: Number(amount), iban: iban.trim() || undefined, bankName: bankName.trim() || undefined });
+      notify('تم إرسال طلب السحب', 'success'); setAmount(''); setIban(''); setBankName('');
+      setPrefilled(false); didPrefill.current = false;
       void qc.invalidateQueries({ queryKey: ['tech-earnings'] }); onChange();
     } catch (err) { notify(err instanceof ApiError ? err.message : 'خطأ', 'error'); }
   }
@@ -258,7 +271,11 @@ function Earnings({ onChange }: { onChange: () => void }) {
         <h3 style={{ fontWeight: 700, fontSize: 16 }}>سحب الرصيد</h3>
         <p style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>الحد الأدنى 20 ديناراً — مرة كل 24 ساعة.</p>
         <input value={amount} onChange={(ev) => setAmount(ev.target.value.replace(/[^\d.]/g, ''))} placeholder="المبلغ (دينار)" className="mt-3 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-        <input value={iban} onChange={(ev) => setIban(ev.target.value)} placeholder="IBAN" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+        <input value={iban} onChange={(ev) => { setIban(ev.target.value); setPrefilled(false); }} placeholder="IBAN" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+        {prefilled && (
+          <p className="mt-1" style={{ color: '#1366D6', fontSize: 11 }}>تم استخدام آخر IBAN مُسجّل</p>
+        )}
+        <input value={bankName} onChange={(ev) => setBankName(ev.target.value)} placeholder="اسم البنك (اختياري)" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
         <button onClick={() => void withdraw()} disabled={Number(amount) < 20} className="mt-3 w-full h-12 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>سحب الرصيد</button>
       </Card>
     </div>
@@ -305,7 +322,7 @@ function Onboarding({ onDone }: { onDone: () => void }) {
 
       <h2 className="mt-6" style={{ fontWeight: 700, fontSize: 16 }}>الخدمات</h2>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {(services ?? []).map((s: Service) => (
+        {(services?.data ?? []).map((s: Service) => (
           <button key={s.id} onClick={() => toggle(s.id)} className="p-3 rounded-xl border-2 flex items-center gap-2 text-start"
             style={{ borderColor: selected.includes(s.id) ? '#1366D6' : '#E2E8F0', background: selected.includes(s.id) ? '#E8F1FE' : '#FFF' }}>
             <ServiceIcon nameAr={s.nameAr} size={18} />

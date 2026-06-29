@@ -11,6 +11,7 @@ import TopNav from './components/TopNav';
 import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import OnboardingSplash from './components/OnboardingSplash';
 
 /* ── Route-level code splitting ─────────────────────────────────────────────── */
 const Landing = lazy(() => import('./pages/Landing'));
@@ -86,6 +87,7 @@ export default function App() {
     <BrowserRouter>
       <BookingSocketProvider>
         <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
+          <OnboardingSplash />
           <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
 
           <ErrorBoundary>

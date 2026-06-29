@@ -1,9 +1,66 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Star, Navigation, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, Star, Navigation, ShieldCheck, Download } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, AdditionalWorkItem } from '../lib/api';
 import { Card, ServiceIcon, StatusBadge, InlineRow, ConfirmDialog, Modal, notify } from '../components/shared';
+
+const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+const TIME_SLOTS = Array.from({ length: 13 }, (_, i) => {
+  const h = i + 8;
+  return `${h.toString().padStart(2, '0')}:00`;
+});
+
+function generateReceiptHtml(b: FullBooking, extras: AdditionalWorkItem[]) {
+  const price = Number(b.service?.priceJod ?? b.totalJod);
+  const discount = Number(b.discountJod ?? 0);
+  const rows = [
+    `<tr><td>سعر الخدمة</td><td>${price} دينار</td></tr>`,
+    ...(discount > 0 ? [`<tr><td>الخصم</td><td>- ${discount} دينار</td></tr>`] : []),
+    ...extras.map((e) => `<tr><td>عمل إضافي: ${e.description}</td><td>${Number(e.amountJod)} دينار</td></tr>`),
+  ].join('');
+
+  return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
+<title>إيصال Fixly</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;padding:32px;max-width:420px;margin:0 auto;color:#0F172A}
+h1{font-size:22px;color:#1366D6;margin-bottom:4px}
+.sub{color:#64748B;font-size:12px;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;margin-bottom:12px}
+td{padding:8px 0;font-size:14px;border-bottom:1px solid #E2E8F0}
+td:last-child{text-align:left;font-weight:600;font-family:'Inter',monospace}
+.total td{border-bottom:none;font-weight:800;font-size:16px;padding-top:12px}
+.meta{margin-top:20px;font-size:12px;color:#64748B;line-height:1.8}
+@media print{body{padding:16px}}
+</style></head><body>
+<h1>Fixly</h1>
+<p class="sub">إيصال دفع</p>
+<table>
+<tr><td><strong>الخدمة</strong></td><td>${b.service?.nameAr ?? '—'}</td></tr>
+${rows}
+<tr class="total"><td>الإجمالي</td><td>${Number(b.totalJod)} دينار</td></tr>
+</table>
+<div class="meta">
+<div>رقم الحجز: ${b.id.slice(0, 8)}</div>
+<div>التاريخ: ${b.scheduledAt ? new Date(b.scheduledAt).toLocaleDateString('ar-JO') : b.createdAt ? new Date(b.createdAt).toLocaleDateString('ar-JO') : '—'}</div>
+<div>حالة الدفع: ${b.payment?.status ?? '—'}</div>
+</div>
+</body></html>`;
+}
+
+function downloadReceipt(b: FullBooking, extras: AdditionalWorkItem[]) {
+  const html = generateReceiptHtml(b, extras);
+  const w = window.open('', '_blank');
+  if (!w) {
+    notify('يرجى السماح بالنوافذ المنبثقة لتحميل الإيصال', 'error');
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  w.print();
+}
 
 type FullBooking = Booking & {
   technicianId: string | null;
@@ -121,6 +178,13 @@ export default function BookingDetail() {
         {b.payment && (
           <p className="mt-2" style={{ color: '#15803D', fontSize: 12 }}>حالة الدفع: {b.payment.status}</p>
         )}
+        <button
+          onClick={() => downloadReceipt(b, approvedExtras)}
+          className="mt-3 w-full h-11 rounded-xl flex items-center justify-center gap-2"
+          style={{ background: '#F1F5F9', color: '#1366D6', fontWeight: 700, fontSize: 13 }}
+        >
+          <Download size={16} /> تحميل الإيصال
+        </button>
       </Card>
 
       {proposedExtras.length > 0 && (
@@ -158,10 +222,15 @@ export default function BookingDetail() {
         {isScheduled && (
           <Card className="p-4">
             <label className="block" style={{ fontSize: 13, color: '#475569' }}>تغيير الموعد</label>
-            <div className="mt-2 flex gap-2">
-              <input type="datetime-local" value={reschedule} onChange={(e) => setReschedule(e.target.value)} className="flex-1 h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
-              <button onClick={() => void doReschedule()} disabled={!reschedule} className="px-4 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 13 }}>تأكيد</button>
-            </div>
+            <SlotPicker value={reschedule} onChange={setReschedule} />
+            <button
+              onClick={() => void doReschedule()}
+              disabled={!reschedule}
+              className="mt-3 w-full h-11 rounded-xl disabled:opacity-50"
+              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 13 }}
+            >
+              تأكيد
+            </button>
           </Card>
         )}
         {isScheduled && (
@@ -210,6 +279,87 @@ export default function BookingDetail() {
         />
       )}
     </main>
+  );
+}
+
+function SlotPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const days = useMemo(() => {
+    const result: Array<{ key: string; label: string; dateStr: string; dayName: string }> = [];
+    const now = new Date();
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      const dayName = AR_DAYS[d.getDay()];
+      const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+      result.push({
+        key: dateStr,
+        label: `${d.getDate()}/${d.getMonth() + 1}`,
+        dateStr,
+        dayName,
+      });
+    }
+    return result;
+  }, []);
+
+  function pickSlot(dateStr: string, time: string) {
+    const iso = `${dateStr}T${time}:00`;
+    onChange(iso);
+  }
+
+  const selectedTime = value ? value.split('T')[1]?.slice(0, 5) ?? null : null;
+
+  return (
+    <div className="mt-3">
+      <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
+        {days.map((d) => (
+          <button
+            key={d.key}
+            onClick={() => setSelectedDate(d.key)}
+            className="flex-shrink-0 px-3 py-2 rounded-xl text-center"
+            style={{
+              minWidth: 72,
+              background: selectedDate === d.key ? '#1366D6' : '#FFF',
+              color: selectedDate === d.key ? '#FFF' : '#475569',
+              border: '1px solid',
+              borderColor: selectedDate === d.key ? '#1366D6' : '#E2E8F0',
+              fontWeight: 600,
+              fontSize: 13,
+            }}
+          >
+            <div>{d.dayName}</div>
+            <div style={{ fontSize: 11, marginTop: 2, fontFamily: 'Inter' }}>{d.label}</div>
+          </button>
+        ))}
+      </div>
+
+      {selectedDate && (
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {TIME_SLOTS.map((t) => {
+            const isActive = selectedDate === value?.split('T')[0] && selectedTime === t;
+            return (
+              <button
+                key={t}
+                onClick={() => pickSlot(selectedDate, t)}
+                className="h-10 rounded-xl"
+                style={{
+                  background: isActive ? '#1366D6' : '#FFF',
+                  color: isActive ? '#FFF' : '#475569',
+                  border: '1px solid',
+                  borderColor: isActive ? '#1366D6' : '#E2E8F0',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                }}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

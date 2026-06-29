@@ -25,7 +25,7 @@ export default function MyBookings() {
         <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>لا توجد طلبات بعد.</p>
       )}
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-6 space-y-3" role="list" aria-label="قائمة الطلبات">
         {(bookings ?? []).map((b) => (
           <BookingRow key={b.id} item={b} />
         ))}
@@ -39,7 +39,7 @@ function BookingRow({ item }: { item: { id: string; status: string; scheduledAt:
   const live = useBookingSocket(item.id);
   const status = live ?? item.status;
   return (
-    <Card className="p-5 cursor-pointer" data-testid={`booking-row-${item.id}`} onClick={() => navigate(`/bookings/${item.id}`)}>
+    <Card className="p-5 cursor-pointer" role="listitem" data-testid={`booking-row-${item.id}`} onClick={() => navigate(`/bookings/${item.id}`)}>
       <div className="flex items-center gap-4">
         <ServiceIcon nameAr={item.service?.nameAr ?? ''} size={20} />
         <div className="flex-1">
