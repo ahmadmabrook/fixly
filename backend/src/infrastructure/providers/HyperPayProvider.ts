@@ -187,8 +187,7 @@ export class HyperPayProvider implements IPaymentProvider {
       const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
       json = JSON.parse(plain) as OppwaNotification;
     } catch (err) {
-      // Wrong key, tampered ciphertext, or bad auth tag → reject (do not process).
-      logger.warn({ err: (err as Error).message }, 'HyperPay webhook decryption failed');
+      logger.warn({ err: (err as Error).message, ivLen: ivHex?.length, tagLen: tagHex?.length, bodyLen: rawBody.length }, 'HyperPay webhook decryption failed');
       return null;
     }
     return this.mapNotification(json);

@@ -23,6 +23,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
   const mapRef = useRef<MbMap | null>(null);
   const markerRef = useRef<MbMarker | null>(null);
   const [ready, setReady] = useState(false);
+  const [mapError, setMapError] = useState(false);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -71,7 +72,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
         map.on('click', (e) => void applyPoint(e.lngLat.lng, e.lngLat.lat));
         map.on('load', () => { if (!cancelled) setReady(true); });
       } catch {
-        // WebGL/jsdom/load failure → leave the graceful fallback in place.
+        setMapError(true);
       }
     })();
     return () => {
@@ -206,7 +207,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
       </div>
 
       {/* Map (or graceful fallback note) */}
-      {hasMapbox ? (
+      {hasMapbox && !mapError ? (
         <div className="mt-3 rounded-xl overflow-hidden relative" style={{ height }}>
           <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="خريطة لتحديد الموقع" />
           {!ready && (
@@ -215,6 +216,10 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
             </div>
           )}
         </div>
+      ) : mapError ? (
+        <p className="mt-3 p-3 rounded-xl" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>
+          تعذّر تحميل الخريطة — أدخل عنوانك يدوياً أدناه.
+        </p>
       ) : (
         <p className="mt-3 p-3 rounded-xl" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 13 }}>
           الخريطة غير متاحة — أدخل عنوانك يدوياً أدناه.

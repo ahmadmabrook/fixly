@@ -1,20 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './lib/store';
 import { onAuthExpired, restoreSession } from './lib/api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Bookings from './pages/Bookings';
-import Technicians from './pages/Technicians';
-import Payouts from './pages/Payouts';
-import Customers from './pages/Customers';
-import Guarantee from './pages/Guarantee';
-import Support from './pages/Support';
-import Reports from './pages/Reports';
-import Broadcast from './pages/Broadcast';
-import Withdrawals from './pages/Withdrawals';
-import Admins from './pages/Admins';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Bookings = lazy(() => import('./pages/Bookings'));
+const Technicians = lazy(() => import('./pages/Technicians'));
+const Payouts = lazy(() => import('./pages/Payouts'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Guarantee = lazy(() => import('./pages/Guarantee'));
+const Support = lazy(() => import('./pages/Support'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Broadcast = lazy(() => import('./pages/Broadcast'));
+const Withdrawals = lazy(() => import('./pages/Withdrawals'));
+const Admins = lazy(() => import('./pages/Admins'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();

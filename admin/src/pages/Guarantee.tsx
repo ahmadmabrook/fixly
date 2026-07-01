@@ -99,7 +99,7 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
           <p className="mt-4 p-3 rounded-lg" style={{ background: '#F8FAFC', fontSize: 14 }}>{ticket.description}</p>
           {ticket.mediaUrls.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {ticket.mediaUrls.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: '#1366D6', fontSize: 13 }}>مرفق {i + 1}</a>)}
+              {ticket.mediaUrls.filter((u) => u.startsWith('https://')).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: '#1366D6', fontSize: 13 }}>مرفق {i + 1}</a>)}
             </div>
           )}
           <label className="block mt-5" style={{ fontSize: 13, color: '#64748B' }}>ملاحظة للعميل</label>

@@ -1,4 +1,3 @@
-import { notify } from './shared';
 import { useT } from '../lib/i18n';
 
 export default function Footer() {
@@ -24,7 +23,7 @@ export default function Footer() {
             <ul className="mt-3 space-y-1.5">
               {c.items.map((i) => (
                 <li key={i}>
-                  <button onClick={() => notify(i)} style={{ color: '#475569', fontSize: 13 }}>{i}</button>
+                  <span style={{ color: '#475569', fontSize: 13 }}>{i}</span>
                 </li>
               ))}
             </ul>

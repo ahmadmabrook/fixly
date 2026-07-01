@@ -160,9 +160,10 @@ adminRouter.get(
   }),
 );
 
-// POST /payouts/:id/process
+// POST /payouts/:id/process — FINANCE-scoped (financial disbursement).
 adminRouter.post(
   '/payouts/:id/process',
+  requireAdminRole('FINANCE'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
     const payout = await adminService.processPayout(req.params.id, req.user!.userId, req.ip);
@@ -171,8 +172,10 @@ adminRouter.post(
 );
 
 // POST /bookings/:id/refund — admin-initiated partial/full refund of a capture.
+// FINANCE-scoped: only finance admins (+ SUPER_ADMIN) may issue refunds.
 adminRouter.post(
   '/bookings/:id/refund',
+  requireAdminRole('FINANCE'),
   validate([
     param('id').isUUID(),
     // Accept a decimal string or number; validate as a positive ≤3-dp (fils)

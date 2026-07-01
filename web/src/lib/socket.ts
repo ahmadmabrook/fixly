@@ -11,7 +11,7 @@ interface BookingStatusEvent {
 let sharedSocket: Socket | null = null;
 const statusListeners = new Map<string, Set<(s: string) => void>>();
 // Joins queued before the socket is connected — flushed on `connect`.
-const pendingJoins: string[] = [];
+const pendingJoins = new Set<string>();
 // Notification listeners are kept in a module-level set so they survive socket
 // re-creation (login/user-switch). The actual `notification:new` handler is
 // (re)bound once per socket in getOrCreateSocket — this avoids the race where a
@@ -37,9 +37,8 @@ export function getOrCreateSocket(token: string): Socket {
   // every status event until the next re-render.
   sharedSocket.on('connect', () => {
     if (!sharedSocket) return;
-    for (const bookingId of pendingJoins.splice(0)) {
-      sharedSocket.emit('booking:join', bookingId);
-    }
+    for (const bookingId of pendingJoins) sharedSocket.emit('booking:join', bookingId);
+    pendingJoins.clear();
   });
   // Bind the notification fan-out once per socket. Consumers register via
   // subscribeToNotifications and are notified regardless of when they
@@ -86,7 +85,7 @@ export function subscribeToStatus(bookingId: string, cb: (s: string) => void): (
   if (sharedSocket?.connected) {
     sharedSocket.emit('booking:join', bookingId);
   } else if (sharedSocket) {
-    pendingJoins.push(bookingId);
+    pendingJoins.add(bookingId);
   }
   return () => {
     bucket?.delete(cb);

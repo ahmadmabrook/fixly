@@ -91,7 +91,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         addressLine: address.trim(),
         addressLat: latNum,
         addressLng: lngNum,
-        scheduledAt: when === 'now' ? null : new Date(Date.now() + 86_400_000).toISOString(),
+        scheduledAt: when === 'now' ? null : (() => {
+          const d = new Date(Date.now() + 86_400_000);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+        })(),
         promoCode: promo ? promoInput.trim() : null,
       },
       {

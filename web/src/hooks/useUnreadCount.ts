@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { subscribeToNotifications } from '../lib/socket';
 import { useAuth } from '../lib/store';
+import { api } from '../lib/api';
 
 interface NotificationsEnvelope {
   items: unknown[];
@@ -22,17 +23,8 @@ export function useUnreadCount(): number {
   const { data } = useQuery({
     queryKey: ['notifications-unread'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/notifications', {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-      });
-      if (!res.ok) return 0;
-      const body = (await res.json()) as { data?: NotificationsEnvelope; meta?: { unread: number } };
-      // Support both envelope shapes: { data: { meta: { unread } } } and { meta: { unread } }
-      return body.data?.meta?.unread ?? body.meta?.unread ?? 0;
+      const res = await api.get<NotificationsEnvelope>('/notifications?limit=0');
+      return res?.meta?.unread ?? 0;
     },
     enabled: !!accessToken,
     refetchInterval: 60_000,

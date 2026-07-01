@@ -79,6 +79,8 @@ export function createApp(): { app: Express; httpServer: http.Server } {
     customProps: (req) => ({ reqId: (req as { id?: string }).id }),
   }));
 
+  app.use((req, res, next) => { res.setHeader('x-request-id', (req as { id?: string }).id ?? ''); next(); });
+
   // Per-request latency + count, labelled by matched route (not raw path, so
   // /services/:id collapses to one series instead of exploding cardinality).
   app.use((req, res, next) => {

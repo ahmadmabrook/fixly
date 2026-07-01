@@ -363,7 +363,7 @@ export class BookingService {
   /** Technician proposes extra work mid-job (itemised). Customer must approve
    *  before it's added to the total. Only the assigned tech, only IN_PROGRESS. */
   async proposeAdditionalWork(bookingId: string, technicianUserId: string, description: string, amountJod: number | string) {
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { technician: { select: { userId: true } } } });
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true, technician: { select: { userId: true } } } });
     if (!booking) throw new NotFoundError('Booking');
     if (!booking.technician || booking.technician.userId !== technicianUserId) throw new ForbiddenError();
     if (booking.status !== 'IN_PROGRESS') throw new ConflictError('Additional work can only be added while the job is in progress');

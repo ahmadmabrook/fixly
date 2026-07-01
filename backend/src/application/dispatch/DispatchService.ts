@@ -68,20 +68,19 @@ export class DispatchService {
     await this.openRound(bookingId, 1, env().DISPATCH_INITIAL_RADIUS_KM);
   }
 
-  /** Open a new dispatch round: create offers for qualified techs + broadcast. */
-  private async openRound(bookingId: string, round: number, radiusKm: number): Promise<void> {
+  /** Open a new dispatch round: create offers for qualified techs + broadcast.
+   *  When called from advanceRound, pass knownExcludeIds to skip the redundant
+   *  priorOffers query (advanceRound already fetched them). */
+  private async openRound(bookingId: string, round: number, radiusKm: number, knownExcludeIds?: string[]): Promise<void> {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: { serviceId: true, addressLat: true, addressLng: true, totalJod: true },
     });
     if (!booking) return;
 
-    // Exclude techs already offered for this booking (any prior round).
-    const priorOffers = await prisma.dispatchOffer.findMany({
-      where: { bookingId },
-      select: { technicianId: true },
-    });
-    const excludeIds = priorOffers.map((o) => o.technicianId);
+    const excludeIds = knownExcludeIds ?? (
+      await prisma.dispatchOffer.findMany({ where: { bookingId }, select: { technicianId: true } })
+    ).map((o) => o.technicianId);
 
     const techs = await this.qualifiedTechs(
       booking.serviceId, booking.addressLat, booking.addressLng, radiusKm, excludeIds,
@@ -90,27 +89,17 @@ export class DispatchService {
     const expiresAt = new Date(Date.now() + env().DISPATCH_ACCEPT_TIMEOUT_MS);
 
     await prisma.$transaction(async (tx) => {
-      // Upsert booking dispatch state.
       await tx.booking.update({
         where: { id: bookingId },
         data: { dispatchRound: round, dispatchRadiusKm: radiusKm, dispatchExpiresAt: expiresAt },
       });
 
-      // Create OFFERED rows (skip duplicates via onConflict — idempotent).
-      // Sequential, NOT Promise.all: Prisma forbids concurrent queries on a single
-      // interactive-transaction client (races can surface as "Transaction already
-      // closed" under load). The per-row P2002 swallow keeps it idempotent.
-      for (const t of techs) {
-        try {
-          await tx.dispatchOffer.create({
-            data: { bookingId, technicianId: t.id, round, radiusKm, status: 'OFFERED' },
-          });
-        } catch (err) {
-          // Swallow unique-violation (tech already offered in earlier round).
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') continue;
-          throw err;
-        }
-      }
+      await tx.dispatchOffer.createMany({
+        data: techs.map((t) => ({
+          bookingId, technicianId: t.id, round, radiusKm, status: 'OFFERED' as const,
+        })),
+        skipDuplicates: true,
+      });
     });
 
     dispatchRoundsTotal.inc();
@@ -179,7 +168,7 @@ export class DispatchService {
       });
       if (expired.count > 0) dispatchOffersTotal.inc({ result: 'expired' }, expired.count);
 
-      await this.openRound(bookingId, booking.dispatchRound + 1, nextRadius);
+      await this.openRound(bookingId, booking.dispatchRound + 1, nextRadius, excludeIds);
     } finally {
       await redis.del(lockKey);
     }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
+import { Prisma } from '@prisma/client';
 import { authenticate, requireActiveUser, requireRole } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
@@ -200,8 +201,10 @@ bookingsRouter.post(
     param('id').isUUID(),
     body('description').isString().trim().isLength({ min: 1, max: 500 }),
     body('amountJod').custom((v) => {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n <= 0) throw new Error('amountJod must be greater than 0');
+      let d: Prisma.Decimal;
+      try { d = new Prisma.Decimal(String(v)); } catch { throw new Error('amountJod must be a number'); }
+      if (!d.isFinite() || d.lessThanOrEqualTo(0)) throw new Error('amountJod must be greater than 0');
+      if (d.decimalPlaces() > 3) throw new Error('amountJod supports at most 3 decimal places');
       return true;
     }),
   ]),

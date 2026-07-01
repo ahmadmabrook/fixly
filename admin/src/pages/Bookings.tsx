@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { api, BookingItem } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination } from '../components/shared';
 import { fmtJod } from '../lib/format';
@@ -23,6 +23,7 @@ export default function Bookings() {
       if (status) params.set('status', status);
       return api.list<BookingItem>(`/bookings?${params}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const bookings = data?.items ?? [];

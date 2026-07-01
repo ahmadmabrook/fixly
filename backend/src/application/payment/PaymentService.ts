@@ -3,7 +3,7 @@ import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
 import { toDecimal, isPositive, splitCommission } from '../../shared/money';
-import { NotFoundError, ConflictError, ValidationError } from '../../shared/errors';
+import { AppError, NotFoundError, ConflictError, ValidationError } from '../../shared/errors';
 import { paymentOpsTotal, pspWebhookTotal } from '../../shared/metrics';
 import type { IPaymentProvider, PspWebhookEvent, PrepareCheckoutResult, CheckoutResult } from '../../domain/providers/IPaymentProvider';
 
@@ -71,7 +71,7 @@ export class PaymentService {
   private capturedAmount(payment: { capturedAmountJod: Prisma.Decimal | null; amountJod: Prisma.Decimal; bookingId: string; status: string }): Prisma.Decimal {
     if (payment.capturedAmountJod == null) {
       logger.error({ bookingId: payment.bookingId, status: payment.status }, 'captured amount missing on a captured payment — data anomaly, manual review required');
-      return toDecimal(0);
+      throw new AppError('Payment data anomaly: captured amount missing. Manual review required.', 500, 'DATA_ANOMALY');
     }
     return toDecimal(payment.capturedAmountJod);
   }

@@ -257,8 +257,8 @@ export function MapMock({ customerLabel = 'موقعك', height = 360 }: { custom
           <MapPin size={28} color="#1366D6" fill="#1366D6" strokeWidth={1.5} stroke="#FFF" />
         </div>
       </div>
-      <button onClick={() => notify('تم تحديد موقعك')} className="absolute bottom-4 left-4 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center">
-        <Navigation size={18} color="#1366D6" />
+      <button onClick={() => notify('تم تحديد موقعك')} className="absolute bottom-4 left-4 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center" aria-label="تحديد موقعي">
+        <Navigation size={18} color="#1366D6" aria-hidden="true" />
       </button>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { CheckoutSession } from '../lib/api';
 
 interface HyperPayWidgetProps {
@@ -7,29 +7,29 @@ interface HyperPayWidgetProps {
   returnUrl: string;
 }
 
-/**
- * Mounts HyperPay's COPYandPAY payment widget. The card fields render inside HyperPay's
- * own iframe (so the PAN never touches our page — PCI SAQ-A). On submit the widget
- * redirects the browser to `returnUrl` with the result, where we finalize the checkout.
- *
- * The integration is script-driven: we inject
- *   <script src="{scriptUrl}?checkoutId=…">
- * and render a <form class="paymentWidgets"> that the script populates.
- */
 export default function HyperPayWidget({ session, returnUrl }: HyperPayWidgetProps) {
+  const [loadError, setLoadError] = useState(false);
+
   useEffect(() => {
     const script = document.createElement('script');
     script.src = `${session.scriptUrl}?checkoutId=${encodeURIComponent(session.checkoutId)}`;
     script.async = true;
+    script.onerror = () => setLoadError(true);
     document.body.appendChild(script);
     return () => {
-      // Remove the script + any widget globals it installed so re-mounting (e.g. a retry
-      // with a fresh checkoutId) starts clean instead of reusing the stale session.
       script.remove();
       delete (window as unknown as Record<string, unknown>).wpwlOptions;
       delete (window as unknown as Record<string, unknown>).wpwl;
     };
   }, [session.checkoutId, session.scriptUrl]);
+
+  if (loadError) {
+    return (
+      <p style={{ color: '#d03b3b', textAlign: 'center', padding: '1rem' }}>
+        فشل تحميل نموذج الدفع. يرجى تحديث الصفحة والمحاولة مرة أخرى.
+      </p>
+    );
+  }
 
   return (
     <form
