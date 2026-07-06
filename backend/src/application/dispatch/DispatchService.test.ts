@@ -26,7 +26,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     technicianProfile: { findMany: jest.fn(), findUnique: jest.fn() },
     booking: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     payment: { findUnique: jest.fn() },
-    dispatchOffer: { findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn(), create: jest.fn() },
+    dispatchOffer: { findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn(), create: jest.fn(), createMany: jest.fn() },
     notification: { create: jest.fn() },
     outboxEvent: { create: jest.fn() },
     $transaction: jest.fn(),
@@ -38,7 +38,7 @@ const mockedPrisma = prisma as unknown as {
   technicianProfile: { findMany: jest.Mock; findUnique: jest.Mock };
   booking: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
   payment: { findUnique: jest.Mock };
-  dispatchOffer: { findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock; create: jest.Mock };
+  dispatchOffer: { findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock; create: jest.Mock; createMany: jest.Mock };
   notification: { create: jest.Mock };
   outboxEvent: { create: jest.Mock };
   $transaction: jest.Mock;
@@ -136,11 +136,11 @@ describe('DispatchService', () => {
   describe('startDispatch', () => {
     function txCapture() {
       const update = jest.fn().mockResolvedValue({});
-      const create = jest.fn().mockResolvedValue({});
+      const createMany = jest.fn().mockResolvedValue({ count: 1 });
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
-        fn({ booking: { update }, dispatchOffer: { create } }),
+        fn({ booking: { update }, dispatchOffer: { createMany } }),
       );
-      return { update, create };
+      return { update, createMany };
     }
 
     it('opens round 1 at 10km, creates offers, broadcasts, and sets dispatchExpiresAt', async () => {
@@ -149,7 +149,7 @@ describe('DispatchService', () => {
         .mockResolvedValueOnce({ serviceId: 'svc-1', addressLat: ORIGIN.lat, addressLng: ORIGIN.lng, totalJod: money('20.000') }); // openRound read
       mockedPrisma.dispatchOffer.findMany.mockResolvedValue([]); // no prior offers
       mockedPrisma.technicianProfile.findMany.mockResolvedValue([{ id: 'tp-near', userId: 'u-near', ...NEAR }]);
-      const { update, create } = txCapture();
+      const { update, createMany } = txCapture();
 
       await svc.startDispatch('b1');
 
@@ -160,9 +160,14 @@ describe('DispatchService', () => {
           data: expect.objectContaining({ dispatchRound: 1, dispatchRadiusKm: 10, dispatchExpiresAt: expect.any(Date) }),
         }),
       );
-      // An OFFERED row for the in-range tech.
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ bookingId: 'b1', technicianId: 'tp-near', round: 1, status: 'OFFERED' }) }),
+      // An OFFERED row for the in-range tech (batched createMany, skipDuplicates).
+      expect(createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({ bookingId: 'b1', technicianId: 'tp-near', round: 1, status: 'OFFERED' }),
+          ]),
+          skipDuplicates: true,
+        }),
       );
       // Real-time broadcast to that tech's room.
       expect(io.to).toHaveBeenCalledWith('user:u-near');
@@ -200,11 +205,11 @@ describe('DispatchService', () => {
   describe('advanceRound (round expansion)', () => {
     function openRoundTx() {
       const update = jest.fn().mockResolvedValue({});
-      const create = jest.fn().mockResolvedValue({});
+      const createMany = jest.fn().mockResolvedValue({ count: 1 });
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
-        fn({ booking: { update }, dispatchOffer: { create } }),
+        fn({ booking: { update }, dispatchOffer: { createMany } }),
       );
-      return { update, create };
+      return { update, createMany };
     }
 
     it('expands 10→15 on the next round, excludes prior-offered techs, and EXPIRES prior OFFERED rows', async () => {
@@ -218,7 +223,7 @@ describe('DispatchService', () => {
         .mockResolvedValueOnce([{ technicianId: 'tp-near' }]); // openRound exclude scan
       mockedPrisma.technicianProfile.findMany.mockResolvedValue([{ id: 'tp-mid', userId: 'u-mid', ...MID }]);
       mockedPrisma.dispatchOffer.updateMany.mockResolvedValue({ count: 1 }); // 1 prior OFFERED expired
-      const { update, create } = openRoundTx();
+      const { update, createMany } = openRoundTx();
 
       await svc.advanceRound('b1');
 
@@ -234,9 +239,13 @@ describe('DispatchService', () => {
       expect(mockedPrisma.technicianProfile.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ id: { notIn: ['tp-near'] } }) }),
       );
-      // New offer for the mid-range tech only.
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ technicianId: 'tp-mid', round: 2, radiusKm: 15 }) }),
+      // New offer for the mid-range tech only (batched createMany).
+      expect(createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({ technicianId: 'tp-mid', round: 2, radiusKm: 15 }),
+          ]),
+        }),
       );
     });
 
@@ -426,7 +435,7 @@ describe('DispatchService', () => {
       mockedPrisma.technicianProfile.findMany.mockResolvedValue([]); // none this round
       const update = jest.fn().mockResolvedValue({});
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
-        fn({ booking: { update }, dispatchOffer: { create: jest.fn() } }),
+        fn({ booking: { update }, dispatchOffer: { createMany: jest.fn() } }),
       );
 
       await svc.advanceRound('b1');

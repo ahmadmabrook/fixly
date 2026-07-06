@@ -5,6 +5,7 @@ import { redis } from '../../infrastructure/cache/redis';
 import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
 import { haversineKm } from '../../shared/geo';
+import { PROBATION_MAX_RADIUS_KM } from '../technician/TrustService';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 import {
   dispatchOffersTotal, dispatchRoundsTotal,
@@ -28,7 +29,9 @@ export function getDispatchService(): DispatchService {
 export class DispatchService {
   constructor(private readonly io: SocketServer) {}
 
-  /** APPROVED + available techs offering the service within radiusKm, excluding already-offered. */
+  /** APPROVED + available techs offering the service within radiusKm, excluding already-offered.
+   *  PROBATION techs (§0.2 #1) are gated to a tighter radius so unproven technicians only
+   *  take nearby jobs while they build a track record — bounding guarantee liability. */
   async qualifiedTechs(
     serviceId: string, lat: number, lng: number,
     radiusKm: number, excludeTechIds: string[],
@@ -42,11 +45,12 @@ export class DispatchService {
         currentLng: { not: null },
         ...(excludeTechIds.length > 0 ? { id: { notIn: excludeTechIds } } : {}),
       },
-      select: { id: true, userId: true, currentLat: true, currentLng: true },
+      select: { id: true, userId: true, currentLat: true, currentLng: true, trustTier: true },
     });
-    return techs.filter(
-      (t) => haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= radiusKm,
-    );
+    return techs.filter((t) => {
+      const cap = t.trustTier === 'PROBATION' ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
+      return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
+    });
   }
 
   /** Kick off dispatching for a freshly-authorized PENDING booking. */

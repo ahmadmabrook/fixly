@@ -34,6 +34,10 @@ model User {
   addresses         Address[]
   paymentMethods    PaymentMethod[]
   promoRedemptions  PromoRedemption[]
+  subscriptions     Subscription[]
+  serviceCredits    ServiceCredit[]
+  quotes            BookingQuote[]     @relation("CustomerQuotes")
+  conductReports    ConductReport[]    @relation("ConductReporter")
 
   // Admin customer list filters by role.
   @@index([role])
@@ -153,6 +157,7 @@ model Service {
 
   bookings    Booking[]
   technicians TechnicianProfile[] @relation("TechnicianServices")
+  quotes      BookingQuote[]
 
   // Public catalogue query: WHERE isActive ORDER BY category.
   @@index([isActive, category])
@@ -164,31 +169,40 @@ model Service {
 // ─────────────────────────────────────────────
 
 model TechnicianProfile {
-  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId            String           @unique @db.Uuid
-  bio               String?
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String           @unique @db.Uuid
+  bio                String?
   // Onboarding lifecycle. isVerified is kept (== status APPROVED) for back-compat
   // with existing queries/tests; new code should read `status`.
-  status            TechnicianStatus @default(PENDING)
-  rejectionReason   String?
-  approvedAt        DateTime?
-  isAvailable       Boolean          @default(false)
-  isVerified        Boolean          @default(false)
+  status             TechnicianStatus @default(PENDING)
+  rejectionReason    String?
+  approvedAt         DateTime?
+  isAvailable        Boolean          @default(false)
+  isVerified         Boolean          @default(false)
   // Onboarding documents (uploaded to object storage; URLs only here).
-  idDocUrl          String?
-  certificateUrl    String?
-  selfieUrl         String?
-  vehicle           String?
-  hourlyRateJod     Decimal?         @db.Decimal(10, 3)
-  currentLat        Float?
-  currentLng        Float?
-  locationUpdatedAt DateTime?
+  idDocUrl           String?
+  certificateUrl     String?
+  selfieUrl          String?
+  vehicle            String?
+  hourlyRateJod      Decimal?         @db.Decimal(10, 3)
+  currentLat         Float?
+  currentLng         Float?
+  locationUpdatedAt  DateTime?
   // Earnings cash-out cooldown (spec: withdraw at most once / 24h).
-  lastWithdrawalAt  DateTime?
-  rating            Decimal          @default(0) @db.Decimal(3, 2)
-  totalReviews      Int              @default(0)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  lastWithdrawalAt   DateTime?
+  rating             Decimal          @default(0) @db.Decimal(3, 2)
+  totalReviews       Int              @default(0)
+  // v1.5 trust & vetting (§0.2 #1). trustTier drives dispatch priority + bounds
+  // guarantee liability; recomputed nightly from rating/volume/upheld reports.
+  trustTier          TrustTier        @default(PROBATION)
+  bgCheckStatus      BgCheckStatus    @default(PENDING)
+  skillsTestPassedAt DateTime?
+  isInsured          Boolean          @default(false)
+  introVideoUrl      String?
+  jobsCompleted      Int              @default(0)
+  offPlatformFlags   Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   techBookings   Booking[]           @relation("TechnicianBookings")
@@ -196,11 +210,14 @@ model TechnicianProfile {
   withdrawals    WithdrawalRequest[]
   services       Service[]           @relation("TechnicianServices")
   dispatchOffers DispatchOffer[]
+  conductReports ConductReport[]
 
   // getStats counts verified technicians; admin list orders by createdAt.
   @@index([isVerified])
   @@index([status])
   @@index([createdAt])
+  // Dispatch/quality queries filter by tier (e.g. exclude PROBATION from priority).
+  @@index([trustTier])
   @@map("technician_profiles")
 }
 
@@ -216,30 +233,36 @@ enum TechnicianStatus {
 // ─────────────────────────────────────────────
 
 model Booking {
-  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId    String        @db.Uuid
-  technicianId  String?       @db.Uuid
-  serviceId     String        @db.Uuid
-  status        BookingStatus @default(PENDING)
-  addressLine   String
-  addressLat    Float
-  addressLng    Float
-  scheduledAt   DateTime?
-  rescheduledAt DateTime?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  cancelledAt   DateTime?
-  cancelReason  String?
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId        String        @db.Uuid
+  technicianId      String?       @db.Uuid
+  serviceId         String        @db.Uuid
+  status            BookingStatus @default(PENDING)
+  addressLine       String
+  addressLat        Float
+  addressLng        Float
+  scheduledAt       DateTime?
+  rescheduledAt     DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
   // Pricing: totalJod is the amount charged (service price − discount). discountJod
   // records any promo applied so receipts/reports can show the breakdown.
-  discountJod   Decimal       @default(0) @db.Decimal(10, 3)
-  promoCodeId   String?       @db.Uuid
+  discountJod       Decimal       @default(0) @db.Decimal(10, 3)
+  promoCodeId       String?       @db.Uuid
   totalJod          Decimal       @db.Decimal(10, 3)
   version           Int           @default(0)
   // Dispatch state: round counter, current radius, and when the round expires.
   dispatchRound     Int           @default(0)
   dispatchRadiusKm  Int?
   dispatchExpiresAt DateTime?
+  // v1.5 SLA + subscriber priority (§0.3). isPriority = subscriber fast-lane;
+  // slaArriveBy = arrival promise; arrivedAt set by /arrive; lateCompJod = auto credit.
+  isPriority        Boolean       @default(false)
+  slaArriveBy       DateTime?
+  arrivedAt         DateTime?
+  lateCompJod       Decimal       @default(0) @db.Decimal(10, 3)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -255,6 +278,8 @@ model Booking {
   additionalWork  AdditionalWorkItem[]
   promoRedemption PromoRedemption?
   offers          DispatchOffer[]
+  serviceCredits  ServiceCredit[]
+  quote           BookingQuote?
 
   @@index([customerId])
   @@index([status])
@@ -812,4 +837,193 @@ enum AdditionalWorkStatus {
   PROPOSED
   APPROVED
   DECLINED
+}
+
+// ─────────────────────────────────────────────
+// v1.5 — Technician trust tiers & vetting (§0.2 #1)
+// ─────────────────────────────────────────────
+
+enum TrustTier {
+  PROBATION
+  VERIFIED
+  PRO
+  ELITE
+}
+
+enum BgCheckStatus {
+  PENDING
+  PASSED
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// v1.5 — Protection subscription (recurring plan; benefits applied at booking)
+// ─────────────────────────────────────────────
+
+model Subscription {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId          String             @db.Uuid
+  planSlug            String             @default("protect")
+  status              SubscriptionStatus @default(ACTIVE)
+  priceJod            Decimal            @default(5.000) @db.Decimal(10, 3)
+  // Percent off each booking (0–100), matching PromoType.PERCENT semantics.
+  discountPercent     Int                @default(15)
+  guaranteeDays       Int                @default(90)
+  priorityDispatch    Boolean            @default(true)
+  inspectionEveryDays Int                @default(90)
+  nextInspectionAt    DateTime?
+  currentPeriodEnd    DateTime
+  // PSP card-on-file token for the recurring charge (never a PAN).
+  paymentToken        String?
+  providerRef         String?
+  cancelledAt         DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  customer User                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  charges  SubscriptionCharge[]
+
+  // At most one ACTIVE subscription per customer is enforced by a partial unique
+  // index added in the migration (Prisma @@unique can't carry a WHERE clause).
+  @@index([customerId])
+  @@index([status, currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+model SubscriptionCharge {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId String        @db.Uuid
+  amountJod      Decimal       @db.Decimal(10, 3)
+  status         PaymentStatus @default(PENDING)
+  providerRef    String?
+  periodStart    DateTime
+  periodEnd      DateTime
+  chargedAt      DateTime?
+  createdAt      DateTime      @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+  @@map("subscription_charges")
+}
+
+// ─────────────────────────────────────────────
+// v1.5 — Video pre-check quotes (customer uploads a problem video; a firm price is
+// set and, on accept, becomes the booking price — preserves the "no surprises" promise)
+// ─────────────────────────────────────────────
+
+model BookingQuote {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String      @db.Uuid
+  serviceId   String      @db.Uuid
+  status      QuoteStatus @default(PENDING)
+  videoUrl    String
+  description String?
+  // FIRM price set on review; becomes the booking's totalJod on accept.
+  quotedJod   Decimal?    @db.Decimal(10, 3)
+  quotedById  String?     @db.Uuid
+  addressLine String?
+  addressLat  Float?
+  addressLng  Float?
+  bookingId   String?     @unique @db.Uuid
+  expiresAt   DateTime
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  customer User     @relation("CustomerQuotes", fields: [customerId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+  booking  Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@index([status])
+  @@map("booking_quotes")
+}
+
+enum QuoteStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+// ─────────────────────────────────────────────
+// v1.5 — Customer service-credit wallet (late compensation / referral / goodwill).
+// Balance = SUM(amountJod). Grants are exactly-once via refKey; redemption is a
+// negative row capped at the amount due (never makes a charge negative).
+// ─────────────────────────────────────────────
+
+model ServiceCredit {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String       @db.Uuid
+  // Signed: positive = granted, negative = redeemed.
+  amountJod  Decimal      @db.Decimal(10, 3)
+  reason     CreditReason
+  bookingId  String?      @db.Uuid
+  // Exactly-once guard for automatic grants (e.g. 'latecomp:{bookingId}').
+  refKey     String?      @unique
+  expiresAt  DateTime?
+  createdAt  DateTime     @default(now())
+
+  customer User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  booking  Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@map("service_credits")
+}
+
+enum CreditReason {
+  LATE_COMPENSATION
+  REFERRAL
+  GOODWILL
+  PROMO
+  ADJUSTMENT
+  REDEMPTION
+}
+
+// ─────────────────────────────────────────────
+// v1.5 — Conduct reports (anti-disintermediation + quality, §0.2 #2). An UPHELD
+// report increments technician_profiles.offPlatformFlags and can demote trust tier.
+// ─────────────────────────────────────────────
+
+model ConductReport {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId    String        @db.Uuid
+  subjectTechId String?       @db.Uuid
+  bookingId     String?       @db.Uuid
+  kind          ConductKind
+  details       String?
+  status        ConductStatus @default(OPEN)
+  resolvedById  String?       @db.Uuid
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  reporter    User               @relation("ConductReporter", fields: [reporterId], references: [id])
+  subjectTech TechnicianProfile? @relation(fields: [subjectTechId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([subjectTechId])
+  @@map("conduct_reports")
+}
+
+enum ConductKind {
+  OFF_PLATFORM_SOLICIT
+  NO_SHOW
+  QUALITY
+  SAFETY
+  OTHER
+}
+
+enum ConductStatus {
+  OPEN
+  REVIEWING
+  UPHELD
+  DISMISSED
 }

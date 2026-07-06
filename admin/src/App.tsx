@@ -16,6 +16,10 @@ const Reports = lazy(() => import('./pages/Reports'));
 const Broadcast = lazy(() => import('./pages/Broadcast'));
 const Withdrawals = lazy(() => import('./pages/Withdrawals'));
 const Admins = lazy(() => import('./pages/Admins'));
+const Quality = lazy(() => import('./pages/Quality'));
+const ConductReports = lazy(() => import('./pages/ConductReports'));
+const Subscriptions = lazy(() => import('./pages/Subscriptions'));
+const Quotes = lazy(() => import('./pages/Quotes'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -91,6 +95,10 @@ export function AppShell() {
           <Route path="broadcast"   element={<Broadcast />} />
           <Route path="admins"      element={<Admins />} />
           <Route path="customers"   element={<Customers />} />
+          <Route path="quality"     element={<Quality />} />
+          <Route path="conduct"     element={<ConductReports />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
+          <Route path="quotes"      element={<Quotes />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
