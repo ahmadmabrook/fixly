@@ -1,0 +1,63 @@
+import { Router } from 'express';
+import { body, param } from 'express-validator';
+import { authenticate, requireActiveUser } from '../middleware/auth';
+import { asyncHandler } from '../asyncHandler';
+import { validate } from '../validate';
+import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+
+/** Customer video pre-check quotes (§0.3). Ops pricing lives on the admin router. */
+export const quotesRouter: Router = Router();
+
+const quoteService = new BookingQuoteService();
+
+quotesRouter.use(authenticate, requireActiveUser);
+
+// POST /quotes — upload a problem video for a firm price.
+quotesRouter.post(
+  '/',
+  validate([
+    body('serviceId').isUUID(),
+    body('videoUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('description').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
+    body('addressLine').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+    body('addressLat').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).toFloat(),
+    body('addressLng').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).toFloat(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const quote = await quoteService.create(req.user!.userId, {
+      serviceId: req.body.serviceId,
+      videoUrl: req.body.videoUrl,
+      description: req.body.description ?? undefined,
+      addressLine: req.body.addressLine ?? undefined,
+      addressLat: req.body.addressLat ?? undefined,
+      addressLng: req.body.addressLng ?? undefined,
+    });
+    res.status(201).json({ data: quote });
+  }),
+);
+
+// GET /quotes — my quotes.
+quotesRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    res.json({ data: await quoteService.listForCustomer(req.user!.userId) });
+  }),
+);
+
+// GET /quotes/:id
+quotesRouter.get(
+  '/:id',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await quoteService.getForCustomer(req.params.id, req.user!.userId) });
+  }),
+);
+
+// POST /quotes/:id/accept — convert a firm quote into a booking at the quoted price.
+quotesRouter.post(
+  '/:id/accept',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.status(201).json({ data: await quoteService.accept(req.params.id, req.user!.userId) });
+  }),
+);

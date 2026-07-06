@@ -3,18 +3,21 @@
 **Product:** On-demand home maintenance platform (Electricity, Plumbing, AC, Painting, Furniture)
 **Market:** Jordan (Amman) → KSA, Egypt, UAE
 **Author:** System Architecture
-**Version:** 1.4
+**Version:** 1.6
 **Status:** Implementation-ready (MVP / Phase 1)
 **Changelog 1.1:** Fixed review findings — transactional outbox (dual-write), Redis-authoritative live location, race-safe ledger + cached balance, optimistic-lock status transitions, web token storage (HttpOnly cookie + in-memory), `device_tokens` (multi-device push), capture idempotency, rating trigger, scheduled/dispatch-timeout/reconciler jobs, OTel tracing, graceful shutdown, backups/DR, GDPR anonymize-not-delete, PII `BYTEA` columns, secrets-as-files, iOS RTL fix.
 **Changelog 1.2 (right-sizing + locked decisions):** Mobile collapsed to **one Skip codebase** (Swift/SwiftUI → iOS + Android); **OTP → Twilio Verify** backend flow (Firebase dropped); **payments → HyperPay hosted checkout in system browser + native Apple Pay/Google Pay**, webhook=truth, card-on-file; infra **right-sized** (Fargate only — no EKS, single RDS + single Redis at launch, k6 50 RPS, scale-up as documented triggers); cost down ~25%; Skip go/no-go = release-build Maps POC.
 **Changelog 1.3 (lowest-cost + clean architecture):** Infra moved to **Cloudflare (free CDN/WAF/DNS/TLS) + Pages + R2** in front of a **single Graviton box** (EC2 t4g.small + Docker: API+worker+Redis+Caddy) + **RDS `db.t4g.micro`**. Dropped ALB, NAT GW, ElastiCache, CloudFront, AWS WAF, MongoDB, Secrets Manager (→ free SSM Parameter Store). **Google Maps on BOTH platforms** (no Apple Maps). **WhatsApp Cloud API primary OTP** + SMS fallback. **Clean/hexagonal architecture** backend + mobile. Dropped premature: distributed tracing (Tempo/Jaeger), self-host Prometheus/Grafana, ClamAV (→ scale-up). Infra ~$30–45/mo; total fixed ~$70–255/mo.
 **Changelog 1.4 (free local dev tier):** Added **§16 Local Development (Free Tier)** — run all 4 apps end-to-end for **$0**, no paid contracts or store accounts. Every production dependency has a free local stand-in behind the existing provider interfaces (Mock payment / console OTP / MapLibre+OSM / MinIO / in-app Socket.io push). `ENV=local` selects mocks; `ENV=production` selects HyperPay / WhatsApp / Google Maps / R2 — a config flip, not a rewrite. Also added **§14 Tier 0 — FREE hosting** ($0/mo on Oracle Cloud Always Free + Cloudflare free tiers) so even the deployed demo costs nothing until there's revenue.
+**Changelog 1.5 (business alignment — founder deep-research findings):** Folded the competitive + product findings from the founder research into the spec so it is the single source of truth for the build. Added **§0 Business Context & Product Strategy** (positioning vs Mahara / Aoun / HomeFix / Urban Company; the **3 existential decisions** and the concrete mechanism answering each). New business capabilities modeled end-to-end (DB + API + flows): **technician trust tiers + multi-stage vetting + probation dispatch** (existential #1 — quality), **extra-work customer-approval gate** protecting the fixed-price promise (existential #3), **anti-disintermediation** (masked calls + `conduct_reports` + off-platform flags + on-platform loyalty) (existential #2), **arrival-SLA + automatic late-compensation** (customer service credits), **monthly Protection subscription** (5 JOD: priority dispatch, 15% off, 90-day guarantee, quarterly free inspection, VIP support — Phase 2), **video pre-check firm quotes** and **technician intro-video/credentials/video reviews** (Phase 2). Tables added: `subscriptions`, `subscription_charges`, `booking_quotes`, `service_credits`, `conduct_reports`; new enums (`subscription_status`, `quote_status`, `trust_tier`, `credit_reason`, `extra_work_status`); new `technician_profiles` trust columns + `bookings` SLA / extra-work columns; new endpoints (§3.4), flows (§8.7–§8.10), jobs, and phasing.
+**Changelog 1.6 (operating model — "Ultimate MVP" requirements + design-review actions):** Captured the remaining **business & operations** requirements surfaced in the founder conversation so the doc specifies the *whole* venture, not just the software. Added **§0.5** (the **5 fatal risks**, MVP scope discipline — Amman-only + 3 launch categories, and the explicit "what NOT to build now" list) and a new **§17 MVP Operating Model — Business & Operations Requirements**: the micro-operating-system framing + the 4 things a customer notices; the six **core service engines** (Matching / Pricing / Quality / Warranty / Fraud-Leakage / Notification) mapped to the existing implementation; the **Fixly Certified** technician certification & onboarding program (KYC → docs → interview → practical test → SOP onboarding → 10-order probation → re-evaluation); **per-service SOPs** + `service_scopes`; the **fixed-scope pricing model** (callout/inspection fee + package pricing + governed add-ons); **Ops Console** requirements; data-model additions (**Zones**, **availability slots**, comprehensive **order-event log**, **complaint taxonomy**, technician **scorecards**) with current-vs-target mapping; the **nine operating policies**; **support operations** (macros, decision tree, escalation matrix, SLAs); the **week-1 product-KPI dashboard**; the **operating team**; **go-to-market** (chicken-and-egg, first-500 acquisition); the **12-month Amman operational plan** (pilot → expand → categories, with KPI gates); a **high-level regional-expansion** plan; the **legal & compliance framework** (Terms, Privacy, contractor agreement, refund/warranty, dispute); the **final MVP readiness checklist**; and the **design-review verdict** (external review scored this design **88/100**) with the top execution risk (no formal training in MVP → guarantee-cost risk if vetting is weak) recorded as a watch-item. This changelog adds specification only — no code or schema was changed by v1.6.
 
 > **Payment gateway note (Jordan reality check):** "Kinnamon" is not a known Jordanian PSP. The verified, integrable options in Jordan are: **HyperPay** (cards, Apple Pay, mada/Visa/Mastercard — recommended primary), **MadfooatCom / eFAWATEERcom** (bill-style, bank-rail), **Dinarak**, **Zain Cash**, and **Orange Money** (mobile wallets). This design integrates **HyperPay** as the primary card gateway behind a `PaymentProvider` interface so any of the above can be swapped/added without touching business logic. Replace `HyperPay` with your contracted PSP if different.
 
 ---
 
 ## Table of Contents
+0. [Business Context & Product Strategy](#0-business-context--product-strategy)
 1. [High-Level Architecture](#1-high-level-architecture)
 2. [Database Design](#2-database-design)
 3. [API Design](#3-api-design)
@@ -30,6 +33,77 @@
 13. [Testing Strategy](#13-testing-strategy)
 14. [Cost Estimates](#14-cost-estimates)
 15. [Code Templates](#15-code-templates)
+16. [Local Development (Free Tier)](#16-local-development-free-tier--run-the-whole-app-for-0)
+17. [MVP Operating Model — Business & Operations Requirements](#17-mvp-operating-model--business--operations-requirements)
+
+---
+
+## 0. Business Context & Product Strategy
+
+> This section is the **why** behind the build. It captures the founder research (market, competitors, and the make-or-break decisions) so implementation optimizes for what actually determines success — not just a feature checklist. Every claim below maps to a concrete table/endpoint later in this document.
+
+### 0.1 Positioning
+
+Fixly is a **trust-first** on-demand home-maintenance platform for Jordan (Amman first → KSA, Egypt, UAE). The market is real and underserved:
+
+- **Demand is proven & rails are ready.** On-demand home-services is growing double digits; Jordan's digital-payment infrastructure is mature (high consumer trust in digital pay, rapid e-wallet growth). The old "people won't pay online" objection is effectively gone — **digital-only payment is viable**.
+- **Local competitors are weak.** Mahara (مهارة) ≈3.1★ with documented complaints (high/opaque prices, technicians pushing customers to off-platform cash, weak support); Aoun (عون) barely adopted; HomeFix (هوم فيكس) has no app and does not operate Fridays. **No strong local app exists — the gap is real.**
+- **The real threat is regional and time-boxed.** Urban Company — full-stack (trains technicians, uniforms, insurance, guarantee, live tracking) — entered KSA and UAE in 2025. Not in Jordan yet. If Fixly proves the market, a funded regional entrant could follow. **Window ≈ 18–24 months** to build durable brand loyalty.
+
+**Strategic implication for the build:** win on **execution of trust**, fast — quality + guarantee, not feature sprawl. Ship the trust mechanisms first; they are the moat and the P&L risk.
+
+### 0.2 The three existential decisions (design-in, never bolt-on)
+
+The research is blunt that three problems kill platforms like this. Each maps to a concrete mechanism in this design; treat these as non-negotiable MVP scope.
+
+| # | Existential problem | Why it kills | System's answer (this doc) |
+|---|---|---|---|
+| 1 | **Technician quality / trust** | Customers fear an unknown worker in their home; document-screening alone never built trust. Urban Company won by training + uniforms + insurance. A weak vetting bar turns the 30-day guarantee into a loss-making liability instead of an asset. | **Multi-stage vetting + trust tiers.** `technician_profiles.trust_tier` (`probation`→`verified`→`pro`→`elite`) + `bg_check_status` + `skills_test_passed_at` + `is_insured`. New techs start on **probation** (throttled/narrow-radius dispatch, closer monitoring, fast suspension on valid complaints). A nightly job recomputes tier from rating + volume + upheld `conduct_reports`. Only proven techs reach priority dispatch — bounding guarantee liability. (Formal training/insurance program = Phase 2; the model carries it now.) |
+| 2 | **Customer poaching / disintermediation** | After the first visit the technician has the customer's number and goes direct next time — the platform loses the relationship. Mahara and Handy never solved this. | **Make leaving costly + staying valuable.** Masked calling (Twilio proxy — real numbers never shared) + in-app-only chat; `conduct_reports` for off-platform solicitation raise `off_platform_flags` → tier demotion/suspension; loyalty that only lives on-platform (Protection subscription, service credits, **guarantee valid only for on-platform jobs**). |
+| 3 | **Fixed-price integrity** | Fixed price is the #1 differentiator, but real jobs sometimes need more work. If a technician can silently add charges, the "no surprises" promise dies. | **Extra work needs explicit customer approval before it can be billed.** Technician proposes extra scope + price → `bookings.extra_status='proposed'`; customer approves/declines in-app; capture may include `extra_fils` **only if** `extra_status='approved'`. Decline → base price only (or cancel per policy). The promise holds. |
+
+### 0.3 Differentiator feature map
+
+Features that make customers *prefer* Fixly (from the research), each mapped to a mechanism and a phase:
+
+| Differentiator | Mechanism in this design | Phase |
+|---|---|---|
+| Real 30-day guarantee + **instant, no-argument refund** | `guarantee_tickets` + admin decide + PSP refund/void | **MVP** |
+| **Fixed price**, shown before booking | `services.base_price_fils` snapshot + extra-work gate (§0.2 #3) | **MVP** |
+| **Digital-only payment** (no cash to technician) | HyperPay; customer pays platform; tech paid via `payouts` | **MVP** |
+| **Bidirectional ratings** (customer↔technician) | `reviews` (both directions) | **MVP** |
+| **Technician trust / vetting** | trust tiers + multi-stage vetting (§0.2 #1) | **MVP** |
+| **Arrival SLA + late compensation** (auto credit if the tech is >30 min past the promised window) | `bookings.sla_arrive_by`/`arrived_at` + `service_credits` (`late_compensation`) | **MVP-light** |
+| **24/7 human Arabic support** + emergency dispatch | `support_tickets` + priority queue; subscriber VIP path | **MVP** (support), VIP Phase 2 |
+| **Monthly Protection subscription** (5 JOD: priority dispatch, 15% off every job, quarterly free inspection, guarantee extended to 90 days, VIP support) | `subscriptions` + `subscription_charges` + priority flag at dispatch | **Phase 2** |
+| **Video pre-check → firm quote before booking** | `booking_quotes` (customer uploads problem video → firm price that becomes the booking price) | **Phase 2** |
+| **Technician intro video + verified credentials + video reviews** | `technician_profiles.intro_video_url` + cert docs + review media | **Phase 2** |
+
+### 0.4 Year-1 success metrics (what we optimize for)
+
+1,000 customers + 100 approved technicians in Amman; ~500 completed bookings/month; **70% customer retention** (measured via PostHog `repeat_booking`); 4.5★+ average technician rating. **Watch the guarantee-claim and dispute rates closely** — if vetting (§0.2 #1) is weak, the guarantee flips from trust asset to the platform's biggest cost. The whole MVP is engineered so the guarantee stays net-positive.
+
+### 0.5 The 5 fatal risks + MVP scope discipline
+
+> **Guiding principle: a "near-perfect" MVP is NOT feature-rich — it is risk-complete.** In a trust-dependent, home-services marketplace the real product is not the app; it is the **controlled end-to-end experience**. The MVP is judged by whether it neutralizes the five risks that kill this class of business from day one — not by screen count. §17 specifies the operating model that does this; this section states the risks and the scope discipline that keep the MVP shippable.
+
+**The 5 fatal risks (every one must be addressed at launch).** The three "existential decisions" of §0.2 are the hardest three of these five; the full set is:
+
+| # | Fatal risk | Primary mitigation in this design |
+|---|-----------|-----------------------------------|
+| 1 | **No trust** (customer fears an unknown worker) | Fixly Certified vetting + trust tiers (§0.2 #1, §17.3); technician name/photo/rating shown before arrival (§17.1); 30-day structured guarantee (§8.4) |
+| 2 | **Off-platform leakage** (tech/customer go direct) | Masked calling + `conduct_reports` + on-platform-only loyalty (§0.2 #2, §17.8 off-platform policy) |
+| 3 | **Poor quality** (bad job → lost customer + guarantee cost) | Certification + probation + SOP checklists + Quality engine (redo/complaint rate) (§17.2, §17.3, §17.4) |
+| 4 | **Undisciplined pricing** (surprise bills break the promise) | Fixed-scope pricing + callout fee + governed add-on approval (§0.2 #3, §17.5) |
+| 5 | **Non-scalable operations** (no visibility → system breaks silently) | Ops Console + comprehensive order-event log + week-1 KPI dashboard (§17.6, §17.7, §17.10) |
+
+**MVP scope discipline (deliberately narrow — expansion before quality control hurts the brand).**
+
+- **One city: Amman only.** North + Central Amman for the first ~6 months.
+- **Three launch categories only: Electricity, Plumbing, AC.** The catalogue/schema supports more (Painting, Furniture are seeded), but they are **switched on progressively after quality is proven** — not offered at launch.
+- **Platform depth at launch:** **Android app + Backend + Ops/Admin console + a simple landing/booking web** carry the launch. iOS, the full customer web app, and equal-depth multi-platform come after the model is proven (Skip already produces both mobile targets from one codebase — see §4 — but effort/QA focus stays on Android first).
+
+**Explicitly NOT in the MVP (guard against scope creep — see §17.17 for the full list):** early VIP subscription push, loyalty gamification, a full AI support chatbot, 10 categories, and building iOS + Android + Web at equal depth on day one. (The Protection subscription and video pre-check are **built but Phase-2-gated** — see §0.3.)
 
 ---
 
@@ -151,6 +225,13 @@ erDiagram
     admin_users ||--o{ guarantee_tickets : reviews
     admin_users ||--o{ support_tickets : handles
     bookings ||--o{ booking_status_history : tracks
+    users ||--o| subscriptions : subscribes
+    subscriptions ||--o{ subscription_charges : billed
+    users ||--o{ booking_quotes : requests
+    booking_quotes ||--o| bookings : becomes
+    users ||--o{ service_credits : wallet
+    users ||--o{ conduct_reports : files
+    technician_profiles ||--o{ conduct_reports : subject_of
 ```
 
 ### 2.2 Schema (DDL)
@@ -177,6 +258,12 @@ CREATE TYPE payout_status    AS ENUM ('requested','processing','paid','failed');
 CREATE TYPE guarantee_status AS ENUM ('open','under_review','approved','rejected','resolved');
 CREATE TYPE ticket_status    AS ENUM ('open','in_progress','resolved','closed');
 CREATE TYPE notif_channel    AS ENUM ('push','sms','in_app');
+-- v1.5 business enums (§0)
+CREATE TYPE subscription_status AS ENUM ('active','past_due','cancelled','expired');
+CREATE TYPE quote_status        AS ENUM ('pending','quoted','accepted','declined','expired');
+CREATE TYPE trust_tier          AS ENUM ('probation','verified','pro','elite');
+CREATE TYPE credit_reason       AS ENUM ('late_compensation','referral','goodwill','promo','adjustment');
+CREATE TYPE extra_work_status   AS ENUM ('none','proposed','approved','declined');
 
 -- ============ USERS ============
 CREATE TABLE users (
@@ -214,6 +301,14 @@ CREATE TABLE technician_profiles (
   rating_count        INTEGER NOT NULL DEFAULT 0,
   balance_fils        INTEGER NOT NULL DEFAULT 0,      -- cached balance; mutated only under row lock (see §2.5)
   consecutive_rejects SMALLINT NOT NULL DEFAULT 0,
+  -- v1.5 trust & quality (§0.2 #1). trust_tier drives dispatch priority + guarantee liability.
+  trust_tier          trust_tier  NOT NULL DEFAULT 'probation',
+  bg_check_status     VARCHAR(12) NOT NULL DEFAULT 'pending',  -- pending | passed | failed
+  skills_test_passed_at TIMESTAMPTZ,
+  is_insured          BOOLEAN NOT NULL DEFAULT false,
+  intro_video_url     TEXT,                                    -- profile trust video (Phase 2)
+  jobs_completed      INTEGER NOT NULL DEFAULT 0,              -- lifetime; feeds nightly tier recompute
+  off_platform_flags  SMALLINT NOT NULL DEFAULT 0,             -- upheld disintermediation reports (§0.2 #2)
   approved_by         UUID,
   approved_at         TIMESTAMPTZ,
   reject_reason       TEXT,
@@ -268,6 +363,14 @@ CREATE TABLE bookings (
   completed_at       TIMESTAMPTZ,
   cancelled_at       TIMESTAMPTZ,
   cancel_reason      TEXT,
+  -- v1.5 SLA + fixed-price integrity + subscriber priority (§0.2 #3, §0.3)
+  is_priority        BOOLEAN NOT NULL DEFAULT false,           -- subscriber priority dispatch
+  sla_arrive_by      TIMESTAMPTZ,                              -- immediate bookings: accepted_at + 30m
+  arrived_at         TIMESTAMPTZ,                              -- set by /tech/bookings/{id}/arrive
+  late_comp_fils     INTEGER NOT NULL DEFAULT 0,               -- auto credit granted if arrival > SLA + 30m
+  extra_status       extra_work_status NOT NULL DEFAULT 'none',-- extra-work approval gate (§0.2 #3)
+  extra_note         TEXT,
+  quote_id           UUID,                                     -- originating booking_quotes.id (no FK: avoids circular DDL)
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -471,6 +574,93 @@ CREATE TABLE outbox_events (
 );
 CREATE INDEX idx_outbox_poll ON outbox_events(status, next_retry_at) WHERE status IN ('pending','failed');
 
+-- ============ SUBSCRIPTIONS (Protection plan — §0.3, Phase 2) ============
+CREATE TABLE subscriptions (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_slug             VARCHAR(30) NOT NULL DEFAULT 'protect',
+  status                subscription_status NOT NULL DEFAULT 'active',
+  price_fils            INTEGER NOT NULL DEFAULT 5000,        -- 5 JOD / month
+  discount_bps          INTEGER NOT NULL DEFAULT 1500,        -- 15% off each booking
+  guarantee_days        SMALLINT NOT NULL DEFAULT 90,         -- extended guarantee window for members
+  priority_dispatch     BOOLEAN NOT NULL DEFAULT true,
+  inspection_every_days SMALLINT NOT NULL DEFAULT 90,         -- free quarterly inspection
+  next_inspection_at    TIMESTAMPTZ,
+  current_period_end    TIMESTAMPTZ NOT NULL,
+  payment_token         VARCHAR(120),                         -- PSP card-on-file for recurring charge
+  provider_ref          VARCHAR(120),
+  cancelled_at          TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- at most one ACTIVE subscription per customer
+CREATE UNIQUE INDEX idx_sub_active ON subscriptions(customer_id) WHERE status = 'active';
+
+CREATE TABLE subscription_charges (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+  amount_fils     INTEGER NOT NULL,
+  status          payment_status NOT NULL DEFAULT 'pending',
+  provider_ref    VARCHAR(120),
+  period_start    TIMESTAMPTZ NOT NULL,
+  period_end      TIMESTAMPTZ NOT NULL,
+  charged_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_subcharge_sub ON subscription_charges(subscription_id, created_at DESC);
+
+-- ============ BOOKING QUOTES (video pre-check — §0.3, Phase 2) ============
+-- Customer uploads a problem video; a qualified tech/ops returns a FIRM price that
+-- becomes the booking price — preserving "no surprises" for non-standard jobs.
+CREATE TABLE booking_quotes (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  service_id    UUID NOT NULL REFERENCES services(id),
+  status        quote_status NOT NULL DEFAULT 'pending',
+  video_url     TEXT NOT NULL,                     -- customer's problem video (R2, private)
+  description   TEXT,
+  quoted_fils   INTEGER,                           -- FIRM price set on review; becomes booking price
+  quoted_by     UUID,                              -- technician or ops actor who priced it
+  location      GEOGRAPHY(POINT,4326),
+  address_text  TEXT,
+  booking_id    UUID REFERENCES bookings(id),      -- set when accepted → booking
+  expires_at    TIMESTAMPTZ NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_quotes_customer ON booking_quotes(customer_id, created_at DESC);
+CREATE INDEX idx_quotes_status   ON booking_quotes(status) WHERE status IN ('pending','quoted');
+
+-- ============ CUSTOMER SERVICE CREDITS (late comp / referral / goodwill — §0.3) ============
+-- Customer wallet. Balance = SUM(amount_fils). Redemptions post negative rows.
+-- Exactly-once grants via ref_key (e.g. 'latecomp:{bookingId}'); redemption never exceeds amount due.
+CREATE TABLE service_credits (
+  id            BIGSERIAL PRIMARY KEY,
+  customer_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount_fils   INTEGER NOT NULL,                  -- signed: + granted, - redeemed
+  reason        credit_reason NOT NULL,
+  booking_id    UUID REFERENCES bookings(id),
+  ref_key       VARCHAR(80) UNIQUE,                -- exactly-once guard
+  expires_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_credits_customer ON service_credits(customer_id, created_at DESC);
+
+-- ============ CONDUCT REPORTS (anti-disintermediation + quality — §0.2 #2) ============
+CREATE TABLE conduct_reports (
+  id              BIGSERIAL PRIMARY KEY,
+  reporter_id     UUID NOT NULL REFERENCES users(id),
+  subject_tech_id UUID REFERENCES technician_profiles(id),
+  booking_id      UUID REFERENCES bookings(id),
+  kind            VARCHAR(30) NOT NULL,            -- off_platform_solicit | no_show | quality | safety | other
+  details         TEXT,
+  status          VARCHAR(12) NOT NULL DEFAULT 'open', -- open | reviewing | upheld | dismissed
+  resolved_by     UUID,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_conduct_status  ON conduct_reports(status, created_at);
+CREATE INDEX idx_conduct_subject ON conduct_reports(subject_tech_id);
+
 -- ============ updated_at trigger ============
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END; $$ LANGUAGE plpgsql;
@@ -479,7 +669,7 @@ CREATE TRIGGER trg_users_updated   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_bookings_updated BEFORE UPDATE ON bookings
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
--- (repeat for technician_profiles, payments, guarantee_tickets, support_tickets)
+-- (repeat for technician_profiles, payments, guarantee_tickets, support_tickets, subscriptions, booking_quotes)
 
 -- ============ rating maintenance (atomic, race-safe) ============
 -- Recompute target's rating_avg/count from source rows on every review insert.
@@ -558,6 +748,17 @@ BEGIN;
 COMMIT;
 -- balance_fils is only a cache; SUM(amount_fils) is authoritative and reconciled nightly.
 ```
+
+### 2.6 Business-domain rules (trust · SLA · extra-work · subscription · quotes · credits)
+
+These are the operational rules the tables above enforce. They are the heart of the product (§0) — implement them exactly.
+
+- **Technician trust tiers & dispatch (§0.2 #1).** `trust_tier`: `probation` (new tech — dispatched only within a tight radius, lower job concurrency, auto-suspend on 2 upheld complaints), `verified` (passed docs + skills test + background check), `pro` (sustained ≥4.7 rating + volume), `elite` (top — first in priority ordering). A nightly `trust-tier-recompute` job derives tier from `rating_avg`, `jobs_completed`, and upheld `conduct_reports`/`off_platform_flags`. **Guarantee liability is bounded by only promoting proven techs.**
+- **Arrival SLA & late compensation (§0.3).** For `immediate` bookings, on accept set `sla_arrive_by = accepted_at + interval '30 min'`. The tech calls `/tech/bookings/{id}/arrive` (or a geofence auto-marks) → `arrived_at`. If `arrived_at > sla_arrive_by + interval '30 min'`, grant a `late_compensation` credit of **20 JOD (20000 fils)** to the customer **exactly once** (`service_credits.ref_key = 'latecomp:'||booking_id`) and set `bookings.late_comp_fils`. Credits are redeemed at checkout **before** charging the card.
+- **Extra-work approval — fixed-price integrity (§0.2 #3).** Tech `/tech/bookings/{id}/extra` `{ amountFils, note }` → `extra_status='proposed'` + notify customer. Customer `/bookings/{id}/extra/decide` `{ decision }` → `approved`|`declined`. At completion, capture may include `extra_fils` **only if `extra_status='approved'`**. Declined → base price only (or cancel per policy). **Never capture unapproved extra.**
+- **Protection subscription (§0.3, Phase 2).** One `active` `subscriptions` row per customer (enforced by `idx_sub_active`), recurring via card-on-file (`payment_token`), billed monthly by the `subscription-biller` job into `subscription_charges` (fail → `past_due` → retry → `cancelled`/`expired`). Benefits applied **at booking time**: `is_priority=true` (dispatch ordering), `discount_bps` off `price_fils`, `guarantee_days=90`, quarterly free-inspection via `next_inspection_at`. **Subscription revenue is platform revenue — it does NOT post to `ledger_entries`** (that ledger is technician money only).
+- **Video pre-check quotes (§0.3, Phase 2).** Customer uploads a problem video → `booking_quotes` (`pending`). A qualified tech/ops sets a **firm** `quoted_fils` (`quoted`). Customer `/quotes/{id}/accept` creates a booking with `price_fils = quoted_fils` and links `booking_quotes.booking_id`. Preserves "no surprises" for non-standard jobs.
+- **Customer service credits (§0.3).** `service_credits` is the customer wallet (late comp, referral, goodwill, promo). Balance = `SUM(amount_fils)` per customer; a redemption posts a negative row and is **capped at the amount due** (never makes a charge negative). Grants are exactly-once via unique `ref_key`.
 
 ---
 
@@ -860,6 +1061,41 @@ paths:
 
 Rate limiting on `location:update`: server samples max 1/2s per socket; excess dropped.
 
+**v1.5 events (§0):** `booking:extra_proposed` (S→Customer `{ bookingId, amountFils, note }`), `booking:extra_decided` (S→Tech `{ bookingId, decision }`), `quote:ready` (S→Customer `{ quoteId, quotedFils }`), `credit:granted` (S→Customer `{ amountFils, reason }`).
+
+### 3.4 Business-feature Endpoints (subscription · quotes · SLA · quality)
+
+Same envelopes, auth, and error codes as §3.1–§3.2; `Idempotency-Key` required on any money-moving POST. Full definitions land in `docs/openapi.yaml`.
+
+**Customer**
+| Method + path | Purpose | Notes |
+|---|---|---|
+| `POST /subscriptions` | Start Protection plan | `{ paymentToken }` (card-on-file recurring) → `201 { subscription }`. *Phase 2* |
+| `GET /subscriptions/me` | Current plan | period end, `nextInspectionAt`, benefits |
+| `POST /subscriptions/cancel` | Cancel at period end | stays active until `current_period_end` |
+| `GET /credits/me` | Service-credit balance + history | balance = `SUM(amount_fils)` |
+| `POST /quotes` | Upload problem video for a firm quote | `{ serviceId, videoUrl, description, location, addressText }` → `201 { quote }`. *Phase 2* |
+| `GET /quotes/{id}` | Quote status + `quotedFils` | |
+| `POST /quotes/{id}/accept` | Convert quote → booking at `quotedFils` | then pay as normal; `409` if expired/declined |
+| `POST /bookings/{id}/extra/decide` | Approve/decline proposed extra work | `{ decision: approve\|decline }` — guards fixed price (§0.2 #3) |
+| `POST /conduct-reports` | Report off-platform solicitation / issue | `{ subjectTechId?, bookingId?, kind, details }` |
+
+**Technician**
+| Method + path | Purpose | Notes |
+|---|---|---|
+| `POST /tech/bookings/{id}/arrive` | Mark arrival | sets `arrived_at`; triggers SLA/late-comp check. Idempotent |
+| `POST /tech/bookings/{id}/extra` | Propose extra work | `{ amountFils, note }` → `extra_status='proposed'`; needs customer approval before capture |
+| `POST /tech/intro-video` | Set profile intro video | `{ videoUrl }`. *Phase 2* |
+
+**Admin (quality & growth)**
+| Method + path | Purpose | Notes |
+|---|---|---|
+| `GET /admin/quality/techs` | Trust-tier board | tiers, bg-check queue, flag counts |
+| `POST /admin/technicians/{id}/trust-tier` | Set/override tier | `{ tier, reason }` (audited) |
+| `POST /admin/technicians/{id}/bg-check` | Record background-check result | `{ result: passed\|failed, notes }` |
+| `GET /admin/conduct-reports` | Report queue | + `POST /admin/conduct-reports/{id}/resolve` `{ decision: upheld\|dismissed }` (upheld → `off_platform_flags += 1`) |
+| `GET /admin/subscriptions` | MRR + active/past-due counts | growth dashboard |
+
 ---
 
 ## 4. Technology Stack
@@ -982,7 +1218,7 @@ graph LR
 - **Compute:** 1× Graviton box (EC2 `t4g.small`, instance IAM role), Docker: API + worker + Redis + Caddy.
 - **DB:** 1× RDS `db.t4g.micro` (managed, for PITR). Redis on the box with **AOF persistence ON** — BullMQ jobs + distributed locks + OTP hashes live there (cache is rebuildable; money lives in PG).
 - **Static/media:** Cloudflare Pages (web/admin) + R2 (media). No CloudFront/S3.
-- **Queues / scheduled jobs (BullMQ):** `outbox-relay` (~1s), `dispatch-timeout` (90s → expand radius → `expired` + auto-void), `scheduled-dispatch`, `preauth-reconciler`, `balance-reconcile` (nightly), `location-pruner`.
+- **Queues / scheduled jobs (BullMQ):** `outbox-relay` (~1s), `dispatch-timeout` (90s → expand radius → `expired` + auto-void), `scheduled-dispatch`, `preauth-reconciler`, `balance-reconcile` (nightly), `location-pruner`, **`trust-tier-recompute`** (nightly — §0.2 #1), **`subscription-biller`** (monthly recurring charges — Phase 2), **`inspection-scheduler`** (subscriber quarterly free inspection — Phase 2).
 
 **Scale-up triggers (only when a metric says so):**
 | Add | Trigger |
@@ -1168,6 +1404,60 @@ flowchart LR
     W --> RT[Socket notification:new if online]
 ```
 
+### 8.7 Extra-Work Approval (fixed-price integrity — §0.2 #3)
+
+```mermaid
+flowchart TD
+    A[Tech finds bigger job than fixed price] --> B[POST /tech/bookings/{id}/extra amountFils+note]
+    B --> C[extra_status=proposed + emit booking:extra_proposed]
+    C --> D{Customer decides in-app}
+    D -->|approve| E[extra_status=approved]
+    D -->|decline| F[extra_status=declined]
+    E --> G[On complete: capture price_fils + extra_fils]
+    F --> H[Capture base price_fils ONLY<br/>or cancel per policy]
+    G --> I[Promise intact — no silent charge]
+    H --> I
+```
+
+### 8.8 Arrival SLA & Late Compensation (§0.3)
+
+```mermaid
+flowchart TD
+    A[Booking accepted immediate] --> B[sla_arrive_by = accepted_at + 30m]
+    B --> C[Tech: POST /arrive → arrived_at]
+    C --> D{arrived_at > sla_arrive_by + 30m?}
+    D -->|yes| E[Grant 20 JOD service_credit<br/>ref_key=latecomp:bookingId once]
+    E --> F[emit credit:granted + notify]
+    D -->|no| G[No compensation]
+    F --> H[Credit auto-applied at next checkout]
+```
+
+### 8.9 Video Pre-Check Quote (§0.3, Phase 2)
+
+```mermaid
+flowchart TD
+    A[Customer uploads problem video] --> B[POST /quotes → status=pending]
+    B --> C[Qualified tech/ops sets FIRM quoted_fils]
+    C --> D[status=quoted + emit quote:ready]
+    D --> E{Customer accepts before expiry?}
+    E -->|yes| F[POST /quotes/{id}/accept → booking price_fils=quoted_fils]
+    F --> G[Pay as normal → dispatch]
+    E -->|no / expired| H[status=declined/expired]
+```
+
+### 8.10 Protection Subscription Lifecycle (§0.3, Phase 2)
+
+```mermaid
+flowchart TD
+    A[POST /subscriptions card-on-file] --> B[status=active, current_period_end=+30d]
+    B --> C[subscription-biller monthly charge]
+    C --> D{Charge ok?}
+    D -->|yes| E[extend current_period_end + record subscription_charges]
+    D -->|no| F[status=past_due → retry]
+    F -->|retries exhausted| G[status=cancelled/expired]
+    E --> H[At booking: is_priority + 15% off + 90d guarantee + quarterly inspection]
+```
+
 ---
 
 ## 9. Infrastructure Design (lean MVP)
@@ -1331,7 +1621,7 @@ Load target validated with **k6**: **50 RPS** sustained (≈10× Year-1 peak), p
 | Load | **k6** | 50 RPS, soak 30min (≈10× peak) |
 | Security | **OWASP ZAP** + `npm audit` + Snyk | weekly + pre-release |
 
-Critical test cases: double-accept race (version guard), refund-on-cancel policy, guarantee 30-day boundary (day 30 vs 31), payout min/24h gate, payment-capture idempotency (replay returns same result, no double charge), fixed-price snapshot immutability, **outbox exactly-once across a crash mid-relay**, **ledger balance == SUM(entries) under concurrent earnings**, dispatch-timeout auto-expire+void, pre-auth-expiry reconciler, multi-device push fan-out, **Skip Android release-build map render + moving marker (the ComposeView/ProGuard trap)**, payment webhook = source of truth (ignore spoofed redirect).
+Critical test cases: double-accept race (version guard), refund-on-cancel policy, guarantee 30-day boundary (day 30 vs 31), payout min/24h gate, payment-capture idempotency (replay returns same result, no double charge), fixed-price snapshot immutability, **outbox exactly-once across a crash mid-relay**, **ledger balance == SUM(entries) under concurrent earnings**, dispatch-timeout auto-expire+void, pre-auth-expiry reconciler, multi-device push fan-out, **Skip Android release-build map render + moving marker (the ComposeView/ProGuard trap)**, payment webhook = source of truth (ignore spoofed redirect). **v1.5 business rules (§0):** extra-work gate — unapproved `extra_fils` is NEVER captured; late-compensation credit granted exactly-once (`ref_key`) only when `arrived_at > sla_arrive_by + 30m`; service-credit redemption capped at amount due (never negative charge); subscriber discount + `is_priority` applied at booking; probation-tier tech excluded from priority/wide-radius dispatch; upheld conduct report increments `off_platform_flags` and can demote tier; video quote → booking carries `price_fils = quoted_fils`; subscription revenue never posts to `ledger_entries`.
 
 ---
 
@@ -1751,11 +2041,214 @@ Goal: see all 4 apps working end-to-end **before** any paid contract or store ac
 
 ---
 
+## 17. MVP Operating Model — Business & Operations Requirements
+
+> **Read this first.** §1–§16 specify the *software*. This section specifies the *business the software runs*. The correct mental model is **not "build an app that works" but "build a micro-operating-system for home maintenance in Amman."** The market does not reward the prettiest UI — it rewards whoever turns an unorganized, low-trust service into a reliable, controlled experience (this is exactly what separated managed marketplaces like Urban Company from simple directories). Every requirement below is either **MVP** (ship at launch) or **Phase 2** (built-but-gated / after quality is proven), and is mapped to the concrete system that implements it.
+
+### 17.1 What the customer must notice immediately (the brand's 4 pillars)
+
+A "near-perfect" MVP makes four things obvious to the customer from the first booking. If any is missing, Fixly is just another directory app.
+
+1. **Fixed, transparent pricing** — the price is shown and locked *before* confirmation; increases require in-app approval (§0.2 #3, §17.5).
+2. **Fixly Certified technicians** — vetted, badged, name/photo/rating shown **before** arrival (§17.3).
+3. **A 30-day structured guarantee** — a real, operational warranty with a 2-hour response SLA, not a marketing line (§8.4, guarantee state machine).
+4. **Fast support + a fully digital flow** — 24/7 Arabic human support (first response ≤ 5 min) and payment that never touches cash-to-technician (§17.9, §5 PCI).
+
+**Customer-visible experience requirements (MVP):** technician name + photo + rating before arrival · clear ETA · live order-status updates · support reachable from the order screen · simple invoice summary / e-receipt · one-tap rebooking · a tidy order & maintenance history.
+
+**Technician-visible experience requirements (so good technicians stay — §0.2 #2):** a simple, fast app · **expected earnings shown per offered job** · transparent payout + timing · a fair SLA · protection from abusive customers (`conduct_reports` cut both ways) · a **scorecard the technician can see and understand** · incentives that reward **quality and reliability, not just volume**.
+
+### 17.2 Core service engines (the MVP "engine room")
+
+The platform is six cooperating engines. Most already exist in code (§ references); this table is the authoritative spec of what each must do and where it lives.
+
+| Engine | Responsibility | Inputs → Output | Implementation status |
+|--------|----------------|------------------|-----------------------|
+| **Matching** | Offer a job to the right technicians | zone + specialty + availability + trust tier + distance → ranked offer set | **Built** — `DispatchService` (Redis GEO nearby, per-service filter, probation radius cap §0.2 #1); broadcast-and-accept rounds with timeout expansion (§8.2) |
+| **Pricing** | Compute the amount due | service fixed-scope price + optional callout fee + approved add-ons − promo − subscription − wallet credit → `totalJod` | **Built (core)** — `BookingService.createBooking` + `PromoService` + credit redemption; **callout fee + package pricing = §17.5 (to add)** |
+| **Quality** | Score technicians continuously | rating + lateness + **redo/warranty rate** + **complaint rate** + upheld conduct flags → `trustTier` | **Partial** — `TrustService` recompute uses rating/volume/flags; **redo-rate + complaint-rate inputs = §17.7 (to add)** |
+| **Warranty** | Link a claim to its original job and govern the outcome | completed booking + within window → guarantee ticket → free re-visit / refund | **Built** — `GuaranteeService` state machine (open → under_review → approved/rejected → resolved), 30-day (90 for subscribers), 2-hour SLA (§8.4) |
+| **Fraud / Leakage** | Detect off-platform and abnormal patterns | conduct reports + behavioural signals → flags / tier demotion / suspension | **Partial** — `conduct_reports` + `offPlatformFlags` + auto-suspend; **automated pattern detection = Phase 2** |
+| **Notification** | Reach the right party on the right channel | domain event → Push / in-app / (SMS·WhatsApp fallback) | **Built** — outbox → `NotificationService` + `device_tokens` + Socket.io (§8.6) |
+
+### 17.3 Fixly Certified — technician certification & onboarding program
+
+Vetting is more important than any screen (existential risk #1 + #3). The MVP ships a **real certification pipeline**, even in a lightweight form. Document-screening alone is explicitly *not* sufficient.
+
+**Certification pipeline (gate to `APPROVED` + `trustTier=VERIFIED`):**
+
+| Stage | What happens | System hook |
+|-------|--------------|-------------|
+| 1. KYC + identity | National ID captured (stored encrypted, `national_id_enc` §2.2) + selfie match | onboarding docs (`idDocUrl`, `selfieUrl`) |
+| 2. Professional docs | Trade certificate / references uploaded and reviewed | `certificateUrl`; admin review |
+| 3. Short interview | Ops screens attitude, Arabic communication, reliability | Ops Console note (§17.6) |
+| 4. Practical / video test | Skills demonstrated (in person or by video) → pass recorded | `skillsTestPassedAt` (§2.2) |
+| 5. SOP onboarding | Technician trained on the service SOPs + app + conduct rules | onboarding checklist (Ops) |
+| 6. Background check | Result recorded | `bgCheckStatus` (PENDING → PASSED/FAILED) |
+| 7. **Probation — first 10 orders** | Tighter dispatch radius, closer monitoring, faster suspension on a valid complaint | `trustTier=PROBATION` + `PROBATION_MAX_RADIUS_KM` (§0.2 #1). *Threshold currently first-N by tier policy; the explicit "10-order graduation" rule is the MVP target for `TrustService`.* |
+| 8. Continuous re-evaluation | Nightly recompute; tier can rise or fall; repeat off-platform flags auto-suspend | `trustService.recomputeAll()` job |
+
+**Program parameters to decide before onboarding technicians (open items, surface as NEEDS CONTEXT):** training **duration**, **who** delivers it and **where**, **content** curriculum, how the **practical exam** is administered and scored, **who pays** the training cost, and the exact mapping from exam score → badge/tier. **Formal training + insurance are Phase 2**; the data model already carries `isInsured` and the tier machinery so turning them on is configuration, not a rewrite. **Watch-item:** until formal training exists, quality is enforced *after the fact* (post-complaint filtering), so if the early complaint rate is high the 30-day guarantee can become the platform's biggest cost — monitor guarantee-claim + dispute rate from booking #1 (§0.4, §17.10).
+
+### 17.4 Service SOPs (Standard Operating Procedures) + service scopes
+
+Every service must have a written SOP. SOPs protect the customer (no surprises), the technician (clear boundary), and the guarantee (clear "was this in scope?").
+
+**Each service SOP defines:** the **scope description** · **what the price includes** · **what it explicitly does NOT include** · a **pre-start checklist** · a **pre-close checklist** · **before/after photos** when relevant · **escalation cases** · **the exact trigger for "extra work"** (which routes into the approval gate §0.2 #3).
+
+**Data requirement — `service_scopes` (MVP target, not yet in schema):** a per-service structured scope record (`service_id`, `includes[]`, `excludes[]`, `preStartChecklist[]`, `preCloseChecklist[]`, `photosRequired` bool, `extraWorkTriggers[]`). Until modeled, SOPs live as ops documents referenced by the service; the schema addition is a small additive migration when built.
+
+### 17.5 Pricing model — fixed-scope, not naïvely flat
+
+A flat "any job = one price" is an operational trap. The promise the customer feels is **transparency**, delivered via **fixed-scope** pricing:
+
+- **Fixed-scope package price** per common job type (the `services.base_price_fils` catalogue is the v1 of this; package variants are the MVP target).
+- **Callout / inspection fee** — a clear, disclosed fee for diagnosis/visit, so complex jobs don't lose money and the technician's trip is never free. *(New field target: `services.callout_fee_fils`; disclosed before confirmation.)*
+- **Governed add-ons** — any additional work is proposed by the technician and **must be approved in-app by the customer before it can be billed** — already enforced end-to-end via `AdditionalWorkItem` + the capture gate (§0.2 #3, §8.7). Unapproved extra is **never** captured.
+
+This keeps the "no surprises" promise while staying solvent on hard jobs. Margin-per-service is tracked in the economics KPIs (§17.10).
+
+### 17.6 Ops Console (operations layer — not a cosmetic admin panel)
+
+The MVP must include a real **operations console** — the screen an operator uses to run the city day-to-day. Without it, you cannot see where the system breaks. Beyond the CRUD admin already built (§7 `admin/`), the Ops Console must surface:
+
+- **Open orders** (live, by status) and **available technicians** (live map/list).
+- **Late orders** — arrival past SLA (drives late-compensation, §8.8) and stuck orders.
+- **High-risk orders** — new-customer + probation-tech, high value, prior complaint.
+- **Cancellations** — with reason, and **no-show** tracking.
+- **Complaints & guarantee queue** — the 2-hour SLA queue (§8.4) + complaint taxonomy (§17.7).
+- **Per-technician daily performance** — the scorecard (rating, lateness, redo, complaints, acceptance).
+
+*Status:* the admin app already covers technicians, bookings, guarantee, conduct reports, subscriptions, quality board, quotes, payouts, reports (§7). The **"late / high-risk / daily-performance" operational views** are the MVP target additions.
+
+### 17.7 Data-model additions for operations (current vs target)
+
+Everything must leave an **event trail** — you cannot fix what you cannot see. Current implementation vs target:
+
+| Concept | Target requirement | Current implementation | Gap / action |
+|--------|--------------------|------------------------|--------------|
+| **Order events** | Immutable log of every state change: created, accepted, arrived, started, finished, complained, warranty-returned | `booking_status_history` (from/to/actor/meta/ts) + `arrivedAt`/`startedAt`/`completedAt` timestamps | Broaden history coverage to include complaint + warranty-return events; keep append-only |
+| **Zones** | Named dispatch zones (North/Central Amman) for matching + reporting | Radius-based dispatch (Redis GEO) | Add `zones` + tag bookings/techs with zone (MVP-target refinement; radius works for launch) |
+| **Availability slots** | Technician bookable time slots for scheduled jobs | `scheduledAt` on booking + `isAvailable` toggle | Add `availability_slots` when scheduled-booking depth increases (Phase 2) |
+| **Complaints + taxonomy** | Categorized complaints (quality / lateness / pricing / conduct / safety / other) | `support_tickets` + `conduct_reports` | Add a `category` enum + link to booking; feeds Quality engine complaint-rate |
+| **Technician scorecard** | Rating + lateness + **redo/warranty rate** + **complaint rate** + acceptance | `rating`, `jobsCompleted`, `offPlatformFlags`, `consecutive_rejects` | Add redo-rate + complaint-rate aggregates (feeds §17.2 Quality engine) |
+| **Warranty ↔ original order** | Every warranty ticket links to the job it covers + optional free follow-up | `guarantee_tickets.bookingId` + `followup_booking_id` | **Done** |
+
+These are additive migrations; none block launch, but each is specified so the build order is unambiguous.
+
+### 17.8 Operating policies (part of the UX, not just legal fine print)
+
+Nine policies must exist from day one and be enforced by the system where possible:
+
+| Policy | Rule (MVP default — confirm before launch) | System enforcement |
+|--------|--------------------------------------------|--------------------|
+| **Cancellation** | Free before dispatch/accept; fee window after a technician is en route | `cancel()` transition guards; fee logic = MVP target |
+| **No-show (customer)** | Technician marks no-show; callout fee may apply | Ops + `conduct_reports` (`NO_SHOW`) |
+| **Late arrival** | Technician >30 min past SLA → automatic 20 JOD customer credit | **Done** — `service_credits` `LATE_COMPENSATION`, exactly-once (§8.8) |
+| **Extra-work approval** | No unapproved charge, ever | **Done** — `AdditionalWorkItem` + capture gate (§0.2 #3) |
+| **Refund** | Instant, no-argument refund when the customer is not satisfied within guarantee | `GuaranteeService` + PSP refund/void (§8.3, §8.4) |
+| **Warranty** | 30 days (90 for subscribers); free re-visit if in scope | **Done** — `GuaranteeService` |
+| **Technician misconduct** | Upheld conduct report → flag → tier demotion → suspension | **Done** — `conduct_reports` resolve → `offPlatformFlags` → auto-suspend |
+| **Customer abuse** | Repeated abuse/fraud → block; protects technicians | `users.isActive=false` (admin block) + conduct reports |
+| **Off-platform** | Soliciting off-platform is a violation; guarantee/credit/subscription valid **only** for on-platform jobs | Masked calling + `conduct_reports` (`OFF_PLATFORM_SOLICIT`) (§0.2 #2) |
+
+### 17.9 Support operations
+
+Support is **not optional** in a trust business. MVP support requires: canned **macros** for the common cases · a **decision tree** for complaints · problem **categorization** (feeds the taxonomy §17.7) · an **escalation matrix** (who handles what, when) · and explicit **SLAs — first response ≤ 5 minutes, guarantee decision ≤ 2 hours** (the guarantee SLA is already enforced by `guarantee_tickets.expiresAt`, §8.4). Channels: in-app support thread (built, § `support`), with masked call + WhatsApp deep-link as the human path (full in-app chat is Phase 2).
+
+### 17.10 Week-1 product KPIs (do not launch without this dashboard)
+
+Instrumented via PostHog + backend metrics (§12). If you can't measure it, you can't improve it.
+
+| KPI | Why | Early target (Amman) |
+|-----|-----|----------------------|
+| App-open → booking conversion | Funnel health | trend up |
+| Technician acceptance rate | Supply liquidity | ≥ 70% |
+| Avg time-to-assign | Speed promise | < 5 min |
+| Avg arrival delay | SLA + late-comp cost | < 10 min |
+| Completion rate | Reliability | ≥ 95% |
+| Cancellation rate | Friction / supply gaps | < 10% |
+| **Complaint rate** | Quality (guarantee-cost leading indicator) | < 5% |
+| **Warranty / redo rate** | Quality + guarantee cost | < 5% |
+| **Repeat booking rate** | Retention (the Year-1 north star, §0.4) | ≥ 30% at 60 days |
+| Orders per active technician | Supply efficiency | trend up |
+| On-platform repeat rate | Anti-leakage effectiveness (§0.2 #2) | high |
+| NPS / CSAT | Overall trust | ≥ 50 NPS |
+
+### 17.11 Operating team (the business around the app)
+
+Even with heavy AI-assisted build, the venture needs an operating team — in this business the ops team matters nearly as much as the tech team:
+
+- **Founder / PM** — owns operations end-to-end.
+- **Ops lead** — runs the Ops Console, dispatch exceptions, daily performance.
+- **QA / Support hybrid** — complaints, macros, guarantee SLA.
+- **Technician onboarding manager** (even part-time) — certification pipeline (§17.3).
+- **Part-time legal / accounting** — contracts, payouts, compliance (§17.15).
+
+(This is distinct from the *engineering* team split in the Appendix. **Design-review note:** an external review flagged that this system design is senior/staff-level — hexagonal architecture, outbox, optimistic locking, geo-dispatch, Skip transpiler — so at least one experienced engineer is needed to hit the 14-week target with quality.)
+
+### 17.12 Go-to-market & the chicken-and-egg problem
+
+Not a technical section, but a launch-blocking requirement — the system does not solve supply/demand bootstrapping by itself.
+
+- **Seed supply first, tightly:** recruit and certify **100–200 trusted technicians** in the 3 launch categories before demand marketing (§0.1 competitor data shows the local supply is under-served).
+- **First 100–500 customers:** partnerships with **property-management companies / residential compounds**, targeted digital campaigns in North/Central Amman, and **technician-driven + customer referral** (referral credit funded via `service_credits`).
+- **Two pitches:** to customers — *"fixed price, certified technician, real guarantee, 24/7."* To technicians — *"more, better-paying, reliable jobs; you get paid on time; we protect you from bad customers."*
+- **CAC guardrail:** target customer-acquisition cost ~5–15 JOD (§0.1); rely on word-of-mouth from the guarantee promise to lower it over time.
+
+### 17.13 12-month Amman operational plan (phased, with KPI gates)
+
+Expansion is **gated on quality**, never on calendar alone.
+
+| Phase | Window | Scope | Gate to advance |
+|-------|--------|-------|-----------------|
+| **0. Pilot** | Months 1–2 | 1–2 Amman districts, 3 categories, ~20–30 certified technicians | complaint rate < 5%, completion ≥ 95%, guarantee cost contained |
+| **1. Amman rollout** | Months 3–6 | All North + Central Amman | repeat-booking ≥ 30% @ 60d, acceptance ≥ 70%, NPS ≥ 50 |
+| **2. Category expansion** | Months 6–9 | Add Painting + Furniture (already seeded) | per-category complaint/redo rate within target before switching each on |
+| **3. Depth + loyalty** | Months 9–12 | Turn on Protection subscription + video pre-check (Phase-2 features, already built); iOS depth | MRR from subscription trending; unit economics positive per service |
+
+### 17.14 Regional expansion (high-level, post-Amman)
+
+Designed geographically-neutral (money as integer minor units; no Amman-hardcoding in domain), but **no market is entered until Amman's model is proven**. Per-country entry checklist (high-level): local **PSP** (HyperPay covers KSA/UAE; per-market contract), **labor-law / contractor** rules, **pricing** recalibration, **Arabic dialect / UX** tuning, local **technician supply** seeding, and a **payments/tax** setup. Priority candidate: **KSA** (largest adjacent market, HyperPay/mada supported). This is a **Phase-3+** concern — captured so the architecture stays expansion-ready, not to build now.
+
+### 17.15 Legal & compliance framework (from day one)
+
+Most MVPs skip this and pay later. Required at launch:
+
+- **Terms of Service** + **Privacy Policy** (consent at signup; data export/delete — GDPR-style anonymize-not-delete already specified §5.1).
+- **Technician contractor agreement** — defines the platform-technician relationship (independent contractor/partner), payout terms, conduct + off-platform rules, and suspension grounds. Gig-worker classification is a known regional risk — establish a clean basis early even at small scale.
+- **Refund & warranty policy** (customer-facing version of §17.8).
+- **Dispute-resolution process** — how customer↔technician disputes are adjudicated (ties to guarantee + conduct flows).
+- **Business registration** — Ministry of Industry & Trade (Jordan); confirm the operating entity + the "no cash *to technician*" model (customer pays the platform, never the technician directly).
+
+### 17.16 Final MVP readiness checklist
+
+Ship only when every box is real (not aspirational):
+
+- **Product:** customer app · technician app · Ops/Admin console · payment integration · notifications · review + complaint + warranty flows.
+- **Operations:** technician onboarding SOP · per-service SOPs · scheduling & dispatch rules · escalation playbooks · QA review process.
+- **Trust:** identity verification · certification badge · transparent scope · digital receipts · structured guarantee.
+- **Economics:** fixed-scope pricing · known margin per service · cancellation/callout fees · payout timing · leakage-prevention incentives.
+- **Data:** event logs · KPI dashboards · technician scorecards · complaint taxonomy · warranty analytics.
+- **Legal:** Terms · Privacy · contractor agreement · refund/warranty policy · dispute process.
+
+### 17.17 Explicitly NOT in the MVP (anti-scope-creep)
+
+Do **not** build these for launch (they dilute focus and delay the risk-complete MVP): early VIP subscription push (subscription is **built but Phase-2-gated**), loyalty gamification, a full AI support chatbot, more than 3 categories, a full-depth customer web app if not needed, and iOS + Android + Web at equal depth on day one. Best launch surface: **Android + backend + ops/admin + a simple landing/booking web** (§0.5).
+
+### 17.18 Design-review verdict (external) + top risk
+
+An external review compared this document against the whole business context and scored **the design 88/100** — "a precise, responsible translation of the strategy into an executable system," singling out that the **three existential risks are built into the schema and API, not bolted on**, and that the near-free infrastructure respects the ~$40k budget without sacrificing critical security/operational decisions (idempotency, race conditions, webhook-as-truth, PCI SAQ-A). **Top residual risk to manage:** no **formal technician training** in the MVP means quality is enforced reactively (post-complaint) rather than preventively — so the guarantee's cost is sensitive to early quality; mitigate by keeping launch scope narrow (§0.5), enforcing certification + probation (§17.3), and watching the guarantee/complaint KPIs (§17.10) from the first booking.
+
+---
+
 ## Appendix — Phasing & Open Decisions
 
-**MVP cut-line (14 weeks):** auth, services, immediate booking, hosted-checkout + wallet payment, live tracking, completion, reviews, guarantee tickets, technician onboarding+approval, payouts, admin (approve techs / monitor bookings / handle guarantees / financial CSV).
+**MVP cut-line (14 weeks):** auth; services (fixed price); immediate booking; hosted-checkout + wallet payment; live tracking; completion; bidirectional reviews; guarantee tickets + instant refund; **technician onboarding + multi-stage vetting + trust tiers + probation dispatch** (existential #1); **extra-work customer-approval gate** (existential #3); **masked calling + conduct reports + off-platform flags** (existential #2); **arrival SLA + automatic late-compensation credits**; customer service-credit wallet; payouts; 24/7 support (SLA); admin (approve/vet techs, trust-tier board, monitor bookings, handle guarantees, conduct reports, financial CSV).
 
-**Defer to Phase 2:** scheduled bookings UI polish, in-app chat (start with phone+WhatsApp deep-link), bulk segmented push, multi-city, English UI completeness, card-on-file 1-tap.
+> The **three existential decisions (§0.2) are IN the MVP** — they are make-or-break for trust, not nice-to-haves. The differentiators below are what deepen loyalty once trust is established.
+
+**Defer to Phase 2:** **Protection subscription** (5 JOD plan: recurring billing, priority dispatch, quarterly free inspections, 90-day guarantee, VIP support); **video pre-check firm quotes**; **technician intro videos / video reviews / insurance & formal training program**; scheduled-booking UI polish; in-app chat (start with masked call + WhatsApp deep-link); bulk segmented push; multi-city; English UI completeness; card-on-file 1-tap.
 
 ### Locked decisions (v1.3)
 - **Mobile = Skip** (one Swift/SwiftUI codebase → iOS + Android), **Clean Architecture** (Presentation → Domain → Data). Makes the 2-dev team feasible.
@@ -1792,4 +2285,3 @@ Hard native integrations mostly removed (OTP → REST, payment cards → browser
 **Pre-build lead-time (start week 1 — these gate launch):**
 - **WhatsApp Cloud API** — Meta Business verification + WhatsApp Business number + **authentication-template approval** = days–weeks. SMS fallback must be able to launch standalone if approval slips.
 - **Apple Merchant ID** + domain verification; **Google Maps** API keys (iOS / Android / server, restricted); **HyperPay** contract (Apple/Google Pay tokens + pre-auth hold→capture + signed webhooks).
-```

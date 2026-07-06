@@ -66,6 +66,13 @@ export class TechnicianService {
     return profile;
   }
 
+  /** Set the profile intro/trust video (§0.3). */
+  async setIntroVideo(userId: string, videoUrl: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    return prisma.technicianProfile.update({ where: { userId }, data: { introVideoUrl: videoUrl } });
+  }
+
   private async requireApproved(userId: string) {
     const profile = await prisma.technicianProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundError('TechnicianProfile');

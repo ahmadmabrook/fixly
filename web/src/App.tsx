@@ -24,6 +24,7 @@ const BookingDetail = lazy(() => import('./pages/BookingDetail'));
 const TrackingPage = lazy(() => import('./pages/TrackingPage'));
 const GuaranteePage = lazy(() => import('./pages/GuaranteePage'));
 const Account = lazy(() => import('./pages/Account'));
+const QuotesPage = lazy(() => import('./pages/QuotesPage'));
 const TechPortal = lazy(() => import('./pages/tech/TechPortal'));
 
 /** Centered spinner shown while a lazy route chunk loads. */
@@ -126,6 +127,10 @@ export default function App() {
                 <Route
                   path="/account"
                   element={authed ? <Account /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/quotes"
+                  element={authed ? <QuotesPage /> : <Navigate to="/" replace />}
                 />
                 <Route
                   path="/tech"

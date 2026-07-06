@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut, ShieldCheck, LifeBuoy, BarChart3, Megaphone, Banknote, UserCog } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut, ShieldCheck, LifeBuoy, BarChart3, Megaphone, Banknote, UserCog, Award, Flag, CreditCard, Video } from 'lucide-react';
 import { useAuth, type AdminRole } from '../lib/store';
 import { logout as apiLogout } from '../lib/api';
 
@@ -8,7 +8,11 @@ const NAV: ReadonlyArray<{ to: string; icon: typeof LayoutDashboard; label: stri
   { to: '/dashboard', icon: LayoutDashboard, label: 'لوحة التحكم' },
   { to: '/bookings',  icon: CalendarDays,    label: 'الحجوزات', roles: ['OPS'] },
   { to: '/technicians', icon: Wrench,        label: 'الفنيون', roles: ['OPS'] },
+  { to: '/quality',   icon: Award,           label: 'الجودة والثقة', roles: ['OPS'] },
+  { to: '/conduct',   icon: Flag,            label: 'بلاغات السلوك', roles: ['OPS'] },
+  { to: '/quotes',    icon: Video,           label: 'الفحص المرئي', roles: ['OPS'] },
   { to: '/guarantee', icon: ShieldCheck,     label: 'الضمان', roles: ['OPS'] },
+  { to: '/subscriptions', icon: CreditCard,  label: 'الاشتراكات', roles: ['OPS', 'FINANCE'] },
   { to: '/support',   icon: LifeBuoy,        label: 'الدعم', roles: ['SUPPORT'] },
   { to: '/customers', icon: Users,           label: 'العملاء', roles: ['OPS', 'SUPPORT'] },
   { to: '/payouts',   icon: Wallet,          label: 'المدفوعات', roles: ['FINANCE'] },

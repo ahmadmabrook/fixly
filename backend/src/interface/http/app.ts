@@ -27,6 +27,10 @@ import { devicesRouter } from './routes/devices';
 import { guaranteeRouter } from './routes/guarantee';
 import { supportRouter } from './routes/support';
 import { reviewsPublicRouter } from './routes/reviewsPublic';
+import { subscriptionsRouter } from './routes/subscriptions';
+import { creditsRouter } from './routes/credits';
+import { quotesRouter } from './routes/quotes';
+import { conductRouter } from './routes/conduct';
 import { createWebhookRouter } from './routes/webhooks';
 import { PaymentService } from '../../application/payment/PaymentService';
 import { PaymentProviderFactory } from '../../infrastructure/providers/PaymentProviderFactory';
@@ -150,6 +154,10 @@ export function createApp(): { app: Express; httpServer: http.Server } {
   app.use('/api/v1/devices', devicesRouter);
   app.use('/api/v1/guarantee', guaranteeRouter);
   app.use('/api/v1/support', supportRouter);
+  app.use('/api/v1/subscriptions', subscriptionsRouter);
+  app.use('/api/v1/credits', creditsRouter);
+  app.use('/api/v1/quotes', quotesRouter);
+  app.use('/api/v1/conduct-reports', conductRouter);
   app.use('/api/v1/admin', adminRouter);
 
   app.use(notFoundHandler);

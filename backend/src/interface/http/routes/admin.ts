@@ -7,6 +7,7 @@ import { authenticate, requireRole, requireAdminRole } from '../middleware/auth'
 import { authLimiter, rateLimitEnabled } from '../middleware/rateLimit';
 import { AdminService } from '../../../application/admin/AdminService';
 import { adminOpsRouter } from './adminOps';
+import { adminBusinessRouter } from './adminBusiness';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { UnauthorizedError } from '../../../shared/errors';
 import { ADMIN_REFRESH_COOKIE, setAdminRefreshCookie, clearAdminRefreshCookie } from '../cookies';
@@ -207,3 +208,4 @@ adminRouter.post(
 // withdrawals, admin-user mgmt). Mounted here, AFTER the guard above, so the
 // authenticate + requireActiveAdmin chain runs exactly once per request.
 adminRouter.use(adminOpsRouter);
+adminRouter.use(adminBusinessRouter);

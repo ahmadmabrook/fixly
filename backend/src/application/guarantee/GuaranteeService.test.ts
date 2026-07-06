@@ -6,6 +6,8 @@ jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
     booking: { findMany: jest.fn(), findUnique: jest.fn() },
     guaranteeTicket: { findUnique: jest.fn(), create: jest.fn() },
+    // Guarantee window is subscription-aware (§0.3); no active plan → default 30-day window.
+    subscription: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn(),
   },
 }));
@@ -13,6 +15,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
 const mockedPrisma = prisma as unknown as {
   booking: { findMany: jest.Mock; findUnique: jest.Mock };
   guaranteeTicket: { findUnique: jest.Mock; create: jest.Mock };
+  subscription: { findFirst: jest.Mock };
   $transaction: jest.Mock;
 };
 

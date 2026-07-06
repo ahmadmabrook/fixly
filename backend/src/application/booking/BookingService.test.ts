@@ -1,4 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { BookingService } from './BookingService';
+import type { SubscriptionService } from '../subscription/SubscriptionService';
+import type { ServiceCreditService } from '../credit/ServiceCreditService';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
@@ -40,7 +43,15 @@ describe('BookingService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedHosted.mockReturnValue(false); // default to instant mode; hosted tests opt in
-    service = new BookingService();
+    // Stub the injected subscription + credit services so createBooking's new
+    // benefit/wallet path is a no-op here (no active plan, empty wallet). Their
+    // own behaviour is covered by their dedicated unit tests.
+    const subStub = { activeFor: jest.fn().mockResolvedValue(null) } as unknown as SubscriptionService;
+    const creditStub = {
+      redeem: jest.fn().mockResolvedValue(new Prisma.Decimal(0)),
+      grant: jest.fn().mockResolvedValue(true),
+    } as unknown as ServiceCreditService;
+    service = new BookingService(undefined, subStub, creditStub);
   });
 
   describe('createBooking', () => {

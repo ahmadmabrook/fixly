@@ -103,3 +103,12 @@ technicianRouter.get(
     res.json({ data: await technicianService.listWithdrawals(req.user!.userId) });
   }),
 );
+
+// POST /technician/intro-video — set the profile trust video (§0.3).
+technicianRouter.post(
+  '/intro-video',
+  validate([body('videoUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 })]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.setIntroVideo(req.user!.userId, req.body.videoUrl) });
+  }),
+);

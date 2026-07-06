@@ -4,7 +4,12 @@ import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
 import { paymentRequiresHostedCheckout } from '../../shared/env';
 import { PromoService } from '../promo/PromoService';
+import { SubscriptionService } from '../subscription/SubscriptionService';
+import { ServiceCreditService, LATE_COMPENSATION_JOD, LATE_GRACE_MINUTES } from '../credit/ServiceCreditService';
 import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/metrics';
+
+/** Immediate-booking arrival promise (§0.3): technician within 30 minutes. */
+const SLA_ARRIVE_MINUTES = 30;
 
 const COMPLETABLE_STATUSES: BookingStatus[] = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
@@ -26,12 +31,19 @@ interface CreateBookingInput {
   scheduledAt?: string;
   /** Optional promo/discount code applied to the fixed service price. */
   promoCode?: string;
+  /** Firm price from an accepted video pre-check quote (§0.3); overrides the
+   *  service list price for this booking. */
+  priceOverrideJod?: number | string | Prisma.Decimal;
 }
 
 const LOCK_TTL_SECONDS = 30;
 
 export class BookingService {
-  constructor(private readonly promoService: PromoService = new PromoService()) {}
+  constructor(
+    private readonly promoService: PromoService = new PromoService(),
+    private readonly subscriptionService: SubscriptionService = new SubscriptionService(),
+    private readonly creditService: ServiceCreditService = new ServiceCreditService(),
+  ) {}
 
   async createBooking(input: CreateBookingInput) {
     // Account standing (blocked/deleted) is enforced once by `requireActiveUser`
@@ -40,13 +52,28 @@ export class BookingService {
     if (!service) throw new NotFoundError('Service');
     if (!service.isActive) throw new ValidationError('Service is not available');
 
+    // List price = service price, unless this booking came from an accepted firm
+    // video quote (§0.3), which fixes its own price. Wrap in Decimal so arithmetic
+    // is exact and tolerant of numeric inputs.
+    const listPrice = new Prisma.Decimal(input.priceOverrideJod ?? service.priceJod);
+
+    // Protection subscription (§0.3): members get priority dispatch + a % discount.
+    const subscription = await this.subscriptionService.activeFor(input.customerId);
+    const isPriority = subscription?.priorityDispatch ?? false;
+    const subDiscount = subscription
+      ? listPrice.mul(subscription.discountPercent).div(100)
+      : new Prisma.Decimal(0);
+    const subscriberPrice = listPrice.sub(subDiscount);
+
     // Resolve any promo BEFORE opening the transaction so an invalid code fails
-    // fast with its specific reason; redemption is recorded inside the tx.
+    // fast with its specific reason. Promo stacks on the subscriber price.
     const quote = input.promoCode
-      ? await this.promoService.quote(input.promoCode, input.customerId, service.priceJod)
+      ? await this.promoService.quote(input.promoCode, input.customerId, subscriberPrice)
       : null;
-    const discountJod = quote ? quote.discountJod : new Prisma.Decimal(0);
-    const totalJod = quote ? quote.finalJod : service.priceJod;
+    const postPromo = quote ? quote.finalJod : subscriberPrice;
+    // discountJod records list→charged reductions (subscription + promo). Wallet
+    // credit is a separate REDEMPTION row, not a discount.
+    const discountJod = listPrice.sub(postPromo);
 
     // Hosted-checkout (real PSP): the booking starts in AWAITING_PAYMENT and is NOT yet
     // visible to technicians; it is promoted to PENDING (and booking.created is emitted)
@@ -65,13 +92,21 @@ export class BookingService {
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
           discountJod,
           promoCodeId: quote?.promoCodeId,
-          totalJod,
+          totalJod: postPromo,
+          isPriority,
           status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
         },
       });
 
       if (quote) {
-        await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, discountJod);
+        await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, quote.discountJod);
+      }
+
+      // Apply wallet credit against the amount due (capped, race-safe). The
+      // authorized hold then covers only the net payable.
+      const redeemed = await this.creditService.redeem(tx, input.customerId, postPromo, booking.id);
+      if (redeemed.gt(0)) {
+        await tx.booking.update({ where: { id: booking.id }, data: { totalJod: postPromo.sub(redeemed) } });
       }
 
       if (!hosted) {
@@ -84,7 +119,7 @@ export class BookingService {
         });
       }
 
-      return booking;
+      return redeemed.gt(0) ? { ...booking, totalJod: postPromo.sub(redeemed) } : booking;
     });
   }
 
@@ -206,6 +241,9 @@ export class BookingService {
             technicianId: profile.id,
             status: 'CONFIRMED',
             dispatchExpiresAt: null,
+            // Arrival SLA promise (§0.3): immediate bookings commit to a 30-min
+            // arrival window from acceptance. Scheduled bookings have no live SLA.
+            slaArriveBy: booking.scheduledAt ? null : new Date(now.getTime() + SLA_ARRIVE_MINUTES * 60 * 1000),
             version: { increment: 1 },
           },
         });
@@ -253,9 +291,32 @@ export class BookingService {
         data: {
           status: to,
           version: { increment: 1 },
+          ...(to === 'ARRIVED' ? { arrivedAt: new Date() } : {}),
           ...(to === 'IN_PROGRESS' ? { startedAt: new Date() } : {}),
         },
       });
+
+      // Late-arrival compensation (§0.3): if the technician arrives more than the
+      // grace past the promised SLA window, grant the customer a one-time credit.
+      if (to === 'ARRIVED' && fresh.slaArriveBy) {
+        const arrivedAt = updated.arrivedAt ?? new Date();
+        const deadline = new Date(fresh.slaArriveBy.getTime() + LATE_GRACE_MINUTES * 60 * 1000);
+        if (arrivedAt.getTime() > deadline.getTime()) {
+          const granted = await this.creditService.grant(tx, {
+            customerId: fresh.customerId,
+            amountJod: LATE_COMPENSATION_JOD,
+            reason: 'LATE_COMPENSATION',
+            bookingId,
+            refKey: `latecomp:${bookingId}`,
+          });
+          if (granted) {
+            await tx.booking.update({
+              where: { id: bookingId },
+              data: { lateCompJod: new Prisma.Decimal(LATE_COMPENSATION_JOD) },
+            });
+          }
+        }
+      }
 
       await tx.outboxEvent.create({
         data: {
@@ -294,6 +355,14 @@ export class BookingService {
         where: { id: bookingId, version: fresh.version },
         data: { status: 'COMPLETED', completedAt: new Date(), version: { increment: 1 } },
       });
+
+      // Lifetime completed-job counter feeds the nightly trust-tier recompute (§0.2 #1).
+      if (fresh.technicianId) {
+        await tx.technicianProfile.update({
+          where: { id: fresh.technicianId },
+          data: { jobsCompleted: { increment: 1 } },
+        });
+      }
 
       await tx.outboxEvent.create({
         data: {

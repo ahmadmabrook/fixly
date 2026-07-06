@@ -18,6 +18,8 @@ import { NotificationService } from './application/notification/NotificationServ
 import { AdminService } from './application/admin/AdminService';
 import { BookingService } from './application/booking/BookingService';
 import { DispatchService, setDispatchService, getDispatchService } from './application/dispatch/DispatchService';
+import { SubscriptionService } from './application/subscription/SubscriptionService';
+import { TrustService } from './application/technician/TrustService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
 import {
   outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge,
@@ -27,6 +29,10 @@ import {
 const PENDING_GAUGE_INTERVAL_MS = 15_000;
 const PAYOUT_RECONCILE_INTERVAL_MS = 60_000;
 const CHECKOUT_RECONCILE_INTERVAL_MS = 60_000;
+// Subscription renewals + trust-tier recompute run on coarse cadences (hourly);
+// billing/tier changes don't need finer granularity and this keeps DB load low.
+const SUBSCRIPTION_BILLER_INTERVAL_MS = 60 * 60_000;
+const TRUST_RECOMPUTE_INTERVAL_MS = 60 * 60_000;
 
 async function main() {
   const env = loadEnv(); // fail-fast on missing/unsafe config
@@ -85,11 +91,37 @@ async function main() {
   }, env.DISPATCH_SWEEP_INTERVAL_MS);
   dispatchSweepTimer.unref();
 
+  // Protection subscription renewals (§0.3): charge card-on-file, roll periods,
+  // expire cancelled/past-due plans.
+  const subscriptionService = new SubscriptionService();
+  const subscriptionBillerTimer = setInterval(() => {
+    void subscriptionService
+      .billDueSubscriptions()
+      .then((r) => {
+        if (r.renewed || r.expired) logger.info(r, 'Subscription billing cycle');
+      })
+      .catch((err) => logger.warn({ err }, 'Subscription billing cycle failed'));
+  }, SUBSCRIPTION_BILLER_INTERVAL_MS);
+  subscriptionBillerTimer.unref();
+
+  // Trust-tier recompute (§0.2 #1): recompute technician tiers from rating/volume/
+  // upheld conduct flags; auto-suspend repeat off-platform offenders.
+  const trustService = new TrustService();
+  const trustRecomputeTimer = setInterval(() => {
+    void trustService
+      .recomputeAll()
+      .then((r) => {
+        if (r.changed || r.suspended) logger.info(r, 'Trust-tier recompute');
+      })
+      .catch((err) => logger.warn({ err }, 'Trust-tier recompute failed'));
+  }, TRUST_RECOMPUTE_INTERVAL_MS);
+  trustRecomputeTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
 
-  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer]);
+  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer, subscriptionBillerTimer, trustRecomputeTimer]);
 }
 
 async function refreshPendingGauge(): Promise<void> {

@@ -3,15 +3,26 @@ import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { createUserNotification } from '../notification/notify';
 import { guaranteeTicketsTotal } from '../../shared/metrics';
+import { SubscriptionService } from '../subscription/SubscriptionService';
 
-/** 30-day post-service guarantee window; 2-hour admin response SLA. */
+/** Default post-service guarantee window (days); 2-hour admin response SLA.
+ *  Protection subscribers get an extended window (§0.3, subscription.guaranteeDays). */
 export const GUARANTEE_DAYS = 30;
 const SLA_HOURS = 2;
 
 export class GuaranteeService {
-  /** Bookings still inside the 30-day window that don't yet have a ticket. */
+  constructor(private readonly subscriptionService: SubscriptionService = new SubscriptionService()) {}
+
+  /** Guarantee window for a customer: the subscriber's extended window, else default. */
+  private async windowDays(customerId: string): Promise<number> {
+    const sub = await this.subscriptionService.activeFor(customerId);
+    return sub?.guaranteeDays ?? GUARANTEE_DAYS;
+  }
+
+  /** Bookings still inside the guarantee window that don't yet have a ticket. */
   async eligibleBookings(customerId: string) {
-    const cutoff = new Date(Date.now() - GUARANTEE_DAYS * 24 * 60 * 60 * 1000);
+    const days = await this.windowDays(customerId);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     return prisma.booking.findMany({
       where: {
         customerId,
@@ -32,9 +43,10 @@ export class GuaranteeService {
     if (booking.status !== 'COMPLETED' || !booking.completedAt) {
       throw new ValidationError('Only completed bookings are covered by the guarantee');
     }
+    const days = await this.windowDays(customerId);
     const ageMs = Date.now() - booking.completedAt.getTime();
-    if (ageMs > GUARANTEE_DAYS * 24 * 60 * 60 * 1000) {
-      throw new ValidationError('انتهت فترة الضمان (30 يوماً)');
+    if (ageMs > days * 24 * 60 * 60 * 1000) {
+      throw new ValidationError(`انتهت فترة الضمان (${days} يوماً)`);
     }
     if (booking.guarantee) throw new ConflictError('A guarantee ticket already exists for this booking');
 
