@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFound';
 import { globalLimiter, authLimiter, webhookLimiter, rateLimitEnabled } from './middleware/rateLimit';
 import { healthRouter, livenessRouter, readinessRouter } from './routes/health';
+import { docsRouter } from './routes/docs';
 import { authRouter } from './routes/auth';
 import { servicesRouter } from './routes/services';
 import { bookingsRouter } from './routes/bookings';
@@ -139,6 +140,12 @@ export function createApp(): { app: Express; httpServer: http.Server } {
   // Legacy `/health` keeps the old contract for clients that already poll it.
   // Health endpoints are unmetered so probes don't consume rate-limit budget.
   app.use('/health', healthRouter);
+
+  // Interactive API docs (Swagger UI over docs/openapi.yaml). Unauthenticated
+  // by design — it's a spec browser, not a data endpoint; the "Try it out"
+  // requests it issues still go through this app's normal auth/rate-limit
+  // middleware like any other client call.
+  app.use('/docs', docsRouter);
 
   const limited = rateLimitEnabled();
   if (limited) app.use('/api', globalLimiter);

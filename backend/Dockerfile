@@ -20,6 +20,7 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate \
   && pnpm install --frozen-lockfile --filter backend... --filter ./backend...
 
 COPY backend ./backend
+COPY docs/openapi.yaml ./backend/docs/openapi.yaml
 
 WORKDIR /app/backend
 RUN ./node_modules/.bin/prisma generate
@@ -47,10 +48,13 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate \
 
 WORKDIR /app/backend
 
-# Copy compiled JS, Prisma schema + generated client, and startup script.
+# Copy compiled JS, Prisma schema + generated client, startup script, and the
+# OpenAPI spec served at /docs (swagger-ui-express reads it from ./docs at
+# runtime — see src/interface/http/routes/docs.ts).
 COPY --from=build /app/backend/dist ./dist
 COPY --from=build /app/backend/prisma ./prisma
 COPY --from=build /app/backend/start.sh ./start.sh
+COPY --from=build /app/backend/docs ./docs
 RUN chmod +x ./start.sh
 
 # Re-generate Prisma client in the runtime stage so the query engine matches
