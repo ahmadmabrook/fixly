@@ -25,6 +25,18 @@ tags:
   - name: Devices
   - name: Guarantee
   - name: Support
+  - name: Subscriptions
+    description: Customer "Protection" plan (priority dispatch, discount, extended guarantee, quarterly inspection).
+  - name: Credits
+    description: Customer service-credit wallet (late-arrival compensation, referral, goodwill).
+  - name: Quotes
+    description: Video pre-check quotes — a customer uploads a problem video for a firm price before booking.
+  - name: Conduct
+    description: Customer-filed conduct reports (off-platform solicitation, no-show, quality, safety).
+  - name: Referrals
+    description: Invite-code referral program.
+  - name: Uploads
+    description: Presigned-upload issuance for all media-upload fields in the app.
   - name: Technician
     description: Technician self-service portal (onboarding, availability, jobs, earnings, withdrawals).
   - name: Admin
@@ -88,7 +100,7 @@ components:
         id: { type: string, format: uuid }
         status:
           type: string
-          enum: [AWAITING_PAYMENT, PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED]
+          enum: [AWAITING_PAYMENT, PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED, NO_SHOW]
         scheduledAt: { type: string, format: date-time, nullable: true }
         totalJod: { type: string, example: '50.00' }
         service: { $ref: '#/components/schemas/Service' }
@@ -303,6 +315,83 @@ components:
         name: { type: string }
         role: { type: string, enum: [SUPER_ADMIN, OPS, FINANCE, SUPPORT] }
         isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Subscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, format: uuid }
+        planSlug: { type: string, example: protect }
+        status: { type: string, enum: [ACTIVE, PAST_DUE, CANCELLED, EXPIRED] }
+        priceJod: { type: string, example: '5.000' }
+        discountPercent: { type: integer, example: 15 }
+        guaranteeDays: { type: integer, example: 90 }
+        priorityDispatch: { type: boolean }
+        inspectionEveryDays: { type: integer, example: 90 }
+        nextInspectionAt: { type: string, format: date-time, nullable: true }
+        currentPeriodEnd: { type: string, format: date-time }
+        paymentToken: { type: string, nullable: true, description: PSP card-on-file token — never a PAN. }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    SubscriptionCharge:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        amountJod: { type: string, example: '5.000' }
+        status: { type: string, enum: [PENDING, PRE_AUTHORIZED, CAPTURED, PARTIALLY_REFUNDED, REFUNDED, DISPUTED, CHARGEBACK, FAILED] }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        chargedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    SubscriptionWithCharges:
+      description: The customer's latest subscription (any status) with up to 6 recent charges.
+      allOf:
+        - $ref: '#/components/schemas/Subscription'
+        - type: object
+          properties:
+            charges: { type: array, items: { $ref: '#/components/schemas/SubscriptionCharge' } }
+
+    ServiceCredit:
+      type: object
+      description: A signed wallet ledger row — positive amounts are grants, negative are redemptions.
+      properties:
+        id: { type: string, format: uuid }
+        amountJod: { type: string, example: '20.000' }
+        reason: { type: string, enum: [LATE_COMPENSATION, REFERRAL, GOODWILL, PROMO, ADJUSTMENT, REDEMPTION] }
+        bookingId: { type: string, format: uuid, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    BookingQuote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, format: uuid }
+        serviceId: { type: string }
+        status: { type: string, enum: [PENDING, QUOTED, ACCEPTED, DECLINED, EXPIRED] }
+        videoUrl: { type: string, format: uri }
+        description: { type: string, nullable: true }
+        quotedJod: { type: string, nullable: true, example: '75.000' }
+        addressLine: { type: string, nullable: true }
+        addressLat: { type: number, nullable: true }
+        addressLng: { type: number, nullable: true }
+        bookingId: { type: string, format: uuid, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    ConductReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [OFF_PLATFORM_SOLICIT, NO_SHOW, QUALITY, SAFETY, OTHER] }
+        status: { type: string, enum: [OPEN, REVIEWING, UPHELD, DISMISSED] }
+        subjectTechId: { type: string, format: uuid, nullable: true }
+        bookingId: { type: string, format: uuid, nullable: true }
+        details: { type: string, nullable: true }
+        resolvedById: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
 
 # ---------------------------------------------------------------------------
@@ -732,6 +821,60 @@ paths:
       responses:
         '200':
           description: Paginated bookings.
+  /admin/bookings.csv:
+    get:
+      tags: [Admin]
+      summary: Bookings CSV export (OPS) — same status filter as the list endpoint, capped at 5000 rows
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [AWAITING_PAYMENT, PENDING, CONFIRMED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED, NO_SHOW] }
+      responses:
+        '200': { description: CSV attachment (id, status, customer, technician, service, amounts, timestamps). }
+  /admin/bookings/{id}:
+    get:
+      tags: [Admin]
+      summary: Full booking detail for the admin drawer — booking + status history + additional work + payment (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Detail. Access is audited.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      booking: { $ref: '#/components/schemas/Booking' }
+                      statusHistory:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            status: { type: string }
+                            changedAt: { type: string, format: date-time }
+                      additionalWork:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            description: { type: string }
+                            amountJod: { type: string }
+                            status: { type: string }
+                            createdAt: { type: string, format: date-time }
+                      payment:
+                        type: object
+                        nullable: true
+        '404': { $ref: '#/components/schemas/Error' }
   /admin/payouts:
     get:
       tags: [Admin]
@@ -890,6 +1033,84 @@ paths:
         required: true
         content: { application/json: { schema: { type: object, required: [approve], properties: { approve: { type: boolean } } } } }
       responses: { '200': { description: Updated item (approval adds to the booking total). } }
+  /bookings/{id}/reject:
+    post:
+      tags: [Bookings]
+      summary: Technician rejects a dispatched offer (triggers immediate re-broadcast if none remain)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: 'Rejected: { bookingId, rejected: true }.' } }
+  /bookings/{id}/no-show:
+    post:
+      tags: [Bookings]
+      summary: Technician reports the customer as a no-show (ARRIVED only; charges the callout fee)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Booking marked NO_SHOW. }
+        '409': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/checklist/pre-start:
+    post:
+      tags: [Bookings]
+      summary: Submit the pre-start SOP checklist (server-enforced gate on ARRIVED → IN_PROGRESS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [photoUrls]
+              properties:
+                photoUrls:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { type: string, format: uri, maxLength: 500, description: HTTPS URL only. }
+      responses:
+        '200': { description: Updated booking. }
+        '400': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/checklist/pre-close:
+    post:
+      tags: [Bookings]
+      summary: Submit the pre-close SOP checklist (server-enforced gate on completion)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [photoUrls]
+              properties:
+                photoUrls:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { type: string, format: uri, maxLength: 500, description: HTTPS URL only. }
+      responses:
+        '200': { description: Updated booking. }
+        '400': { $ref: '#/components/schemas/Error' }
+  /bookings/{id}/masked-call:
+    post:
+      tags: [Bookings]
+      summary: Get a masked-calling proxy number for the other party (Twilio Proxy)
+      description: >
+        Either party (customer or the assigned technician) may request a proxy number to
+        dial the other without either side seeing the real number. Only available while
+        the booking is active (not before assignment, not after completion/cancellation).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Proxy session.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { proxyNumber: { type: string } } } } }
+        '403': { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/schemas/Error' }
 
   # ---- Addresses ----
   /addresses:
@@ -1057,7 +1278,27 @@ paths:
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [serviceIds, hourlyRateJod], properties: { serviceIds: { type: array, items: { type: string } }, hourlyRateJod: { type: number, minimum: 40, maximum: 60 }, vehicle: { type: string }, bio: { type: string }, idDocUrl: { type: string }, certificateUrl: { type: string }, selfieUrl: { type: string } } } } }
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serviceIds, hourlyRateJod, agreementAccepted]
+              properties:
+                serviceIds: { type: array, minItems: 1, maxItems: 10, items: { type: string } }
+                hourlyRateJod: { type: number, minimum: 40, maximum: 60 }
+                vehicle: { type: string, maxLength: 120 }
+                bio: { type: string, maxLength: 1000 }
+                idDocUrl: { type: string, format: uri, maxLength: 500 }
+                certificateUrl: { type: string, format: uri, maxLength: 500 }
+                selfieUrl: { type: string, format: uri, maxLength: 500 }
+                introVideoUrl: { type: string, format: uri, maxLength: 500 }
+                agreementAccepted: { type: boolean, description: ToS/SOP consent — must be explicitly accepted. }
+                nationalId:
+                  type: string
+                  minLength: 5
+                  maxLength: 20
+                  pattern: '^\d+$'
+                  description: Jordanian national ID (digits only). Encrypted at rest; never returned by any read path.
       responses: { '201': { description: Profile (status PENDING). } }
   /technician/me:
     get:
@@ -1115,8 +1356,349 @@ paths:
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [amountJod], properties: { amountJod: { type: number, minimum: 20 }, iban: { type: string }, bankName: { type: string } } } } }
+        content: { application/json: { schema: { type: object, required: [amountJod], properties: { amountJod: { type: number, minimum: 20 }, iban: { type: string, description: Jordan IBAN (JO...); falls back to the saved profile IBAN if omitted. }, bankName: { type: string } } } } }
       responses: { '201': { description: Requested. } }
+  /technician/intro-video:
+    post:
+      tags: [Technician]
+      summary: Set the profile trust video
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [videoUrl], properties: { videoUrl: { type: string, format: uri, maxLength: 500 } } } } }
+      responses: { '200': { description: Updated profile. } }
+  /technician/scorecard:
+    get:
+      tags: [Technician]
+      summary: Self quality metrics (on-time / redo / complaint / acceptance rates)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Scorecard.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      onTimeRate: { type: number, example: 92.5 }
+                      redoRate: { type: number, example: 1.2 }
+                      complaintRate: { type: number, example: 0.4 }
+                      acceptanceRate: { type: number, example: 88.1 }
+                      sampleSizes:
+                        type: object
+                        properties:
+                          arrivedBookings: { type: integer }
+                          completedBookings: { type: integer }
+                          totalBookings: { type: integer }
+                          dispatchOffers: { type: integer }
+  /technician/notification-preferences:
+    get:
+      tags: [Technician]
+      summary: Notification toggles (created with all-true defaults on first read)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Preferences.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      newJobRequests: { type: boolean }
+                      reminders: { type: boolean }
+                      earningsUpdates: { type: boolean }
+                      promotions: { type: boolean }
+    patch:
+      tags: [Technician]
+      summary: Partial update of notification toggles
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                newJobRequests: { type: boolean }
+                reminders: { type: boolean }
+                earningsUpdates: { type: boolean }
+                promotions: { type: boolean }
+      responses: { '200': { description: Updated preferences (same shape as GET). } }
+  /technician/bank-account:
+    get:
+      tags: [Technician]
+      summary: Saved payout bank details
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Bank account.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { iban: { type: string, nullable: true }, bankName: { type: string, nullable: true } } } } }
+    patch:
+      tags: [Technician]
+      summary: Persist payout bank details independent of any one withdrawal request
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [iban, bankName]
+              properties:
+                iban: { type: string, description: Jordan IBAN (JO + 28 chars); mod-97 checksum validated. }
+                bankName: { type: string, maxLength: 120 }
+      responses: { '200': { description: Updated (same shape as GET). } }
+  /technician/services-pricing:
+    patch:
+      tags: [Technician]
+      summary: Post-approval edit of services + hourly rate (APPROVED technicians only)
+      description: >
+        Separate from onboarding's apply(), which locks once APPROVED — this is the
+        additive path for an already-approved technician to change their service list
+        or rate.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serviceIds, hourlyRateJod]
+              properties:
+                serviceIds: { type: array, minItems: 1, maxItems: 10, items: { type: string } }
+                hourlyRateJod: { type: number, minimum: 40, maximum: 60 }
+      responses:
+        '200': { description: Updated profile. }
+        '403': { description: Technician is not approved. }
+
+  # ---- Subscriptions (Protection plan) ----
+  /subscriptions/me:
+    get:
+      tags: [Subscriptions]
+      summary: My current Protection subscription + recent charges
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Latest subscription (any status, most recently created), or null if never subscribed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    oneOf:
+                      - $ref: '#/components/schemas/SubscriptionWithCharges'
+                      - type: 'null'
+  /subscriptions:
+    post:
+      tags: [Subscriptions]
+      summary: Start the Protection plan (5 JOD/mo — priority dispatch, 15% off, 90-day guarantee, quarterly inspection)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentToken: { type: string, maxLength: 200, nullable: true, description: PSP card-on-file token for renewals; the first period is billed inline if supplied. }
+      responses:
+        '201':
+          description: Subscription created (status ACTIVE).
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Subscription' } } }
+        '409': { description: Customer already has an ACTIVE subscription. }
+  /subscriptions/cancel:
+    post:
+      tags: [Subscriptions]
+      summary: Cancel at period end (benefits continue until currentPeriodEnd; no renewal after)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Updated subscription.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Subscription' } } }
+        '404': { description: No ACTIVE subscription. }
+
+  # ---- Credits (service-credit wallet) ----
+  /credits/me:
+    get:
+      tags: [Credits]
+      summary: My service-credit wallet balance + ledger history
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Wallet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      balanceJod: { type: string, example: '20.000' }
+                      items: { type: array, items: { $ref: '#/components/schemas/ServiceCredit' } }
+
+  # ---- Quotes (video pre-check) ----
+  /quotes:
+    post:
+      tags: [Quotes]
+      summary: Upload a problem video for a firm price
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serviceId, videoUrl]
+              properties:
+                serviceId: { type: string, format: uuid }
+                videoUrl: { type: string, format: uri, maxLength: 500, description: HTTPS URL only. }
+                description: { type: string, maxLength: 1000 }
+                addressLine: { type: string, maxLength: 500 }
+                addressLat: { type: number, minimum: -90, maximum: 90 }
+                addressLng: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '201':
+          description: Quote created (status PENDING).
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } }
+        '404': { description: Service not found. }
+        '409': { description: Service is not active. }
+    get:
+      tags: [Quotes]
+      summary: My video pre-check quotes
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Quotes.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/BookingQuote' } } } }
+  /quotes/{id}:
+    get:
+      tags: [Quotes]
+      summary: A quote I own
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Quote.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } }
+        '404': { $ref: '#/components/schemas/Error' }
+  /quotes/{id}/accept:
+    post:
+      tags: [Quotes]
+      summary: Accept a firm quote — creates a booking at exactly quotedJod
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '201':
+          description: Booking created at the quoted price.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
+        '403': { $ref: '#/components/schemas/Error' }
+        '409': { description: Quote is not QUOTED, already accepted, or its expiresAt has passed. }
+
+  # ---- Conduct reports (§0.2 #2 — anti-disintermediation + quality) ----
+  /conduct-reports:
+    post:
+      tags: [Conduct]
+      summary: Report off-platform solicitation, no-show, quality, or safety issues
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [OFF_PLATFORM_SOLICIT, NO_SHOW, QUALITY, SAFETY, OTHER] }
+                subjectTechId: { type: string, format: uuid }
+                bookingId: { type: string, format: uuid }
+                details: { type: string, maxLength: 2000 }
+      responses:
+        '201':
+          description: Report created (status OPEN).
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ConductReport' } } }
+        '404': { description: subjectTechId does not exist. }
+
+  # ---- Referrals ----
+  /referrals/me:
+    get:
+      tags: [Referrals]
+      summary: My referral code + lifetime stats (generates the code on first access)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Stats.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      referralCode: { type: string, example: 7K9XPQ }
+                      totalReferred: { type: integer, description: Lifetime count of users who signed up with this code. }
+                      totalCreditEarnedJod: { type: number, example: 15, description: Sum of REFERRAL-reason credit grants. }
+
+  # ---- Uploads ----
+  /uploads/presign:
+    post:
+      tags: [Uploads]
+      summary: Issue a short-lived presigned upload URL (10 min TTL)
+      description: >
+        The client PUTs the file bytes to `uploadUrl`, then submits `publicUrl` as the
+        corresponding field on the consuming endpoint (technician KYC docs/certificate/
+        selfie, intro video, booking checklist photos, guarantee evidence). `contentType`
+        must be on the allow-list for `purpose` (images for kyc_doc/selfie/certificate/
+        checklist_photo/guarantee_evidence; video for intro_video). The object key is
+        derived server-side — never from a client-supplied filename.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, purpose]
+              properties:
+                contentType: { type: string, example: image/jpeg }
+                purpose: { type: string, enum: [kyc_doc, selfie, certificate, intro_video, checklist_photo, guarantee_evidence] }
+      responses:
+        '200':
+          description: Presigned URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      uploadUrl: { type: string, format: uri }
+                      publicUrl: { type: string, format: uri }
+                      expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/schemas/Error' }
 
   # ---- Admin: technicians / customers moderation ----
   /admin/technicians/{id}:
@@ -1142,6 +1724,13 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string } } } } } }
       responses: { '200': { description: Suspended. } }
+  /admin/technicians/{id}/scorecard:
+    get:
+      tags: [Admin]
+      summary: Technician quality scorecard — on-time / redo / complaint / acceptance rates (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Scorecard (same shape as GET /technician/scorecard). } }
   /admin/customers/{id}/bookings:
     get:
       tags: [Admin]
@@ -1163,6 +1752,150 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
       responses: { '200': { description: Unblocked. } }
+
+  # ---- Admin: quality / trust vetting (§0.2 #1) ----
+  /admin/quality/techs:
+    get:
+      tags: [Admin]
+      summary: Trust-tier quality board (vetting state, flags, tier) — paginated
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 100, minimum: 1, maximum: 200 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0, minimum: 0 } }
+      responses: { '200': { description: 'Technicians with trustTier, bgCheckStatus, skillsTestPassedAt, isInsured, offPlatformFlags.' } }
+  /admin/technicians/{id}/trust-tier:
+    post:
+      tags: [Admin]
+      summary: Override a technician's trust tier (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [tier], properties: { tier: { type: string, enum: [PROBATION, VERIFIED, PRO, ELITE] } } } } } }
+      responses: { '200': { description: Updated profile. } }
+  /admin/technicians/{id}/bg-check:
+    post:
+      tags: [Admin]
+      summary: Record a background-check result, then recompute the trust tier (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [result], properties: { result: { type: string, enum: [PASSED, FAILED] } } } } } }
+      responses: { '200': { description: Updated profile. } }
+  /admin/technicians/{id}/skills-test:
+    post:
+      tags: [Admin]
+      summary: Mark the skills test passed, then recompute the trust tier (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated profile. } }
+
+  # ---- Admin: conduct-report moderation (§0.2 #2) ----
+  /admin/conduct-reports:
+    get:
+      tags: [Admin]
+      summary: Conduct-report review queue (oldest first)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [OPEN, REVIEWING, UPHELD, DISMISSED] } }
+        - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0, minimum: 0 } }
+      responses:
+        '200':
+          description: Paginated reports.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ConductReport' } }
+                  - $ref: '#/components/schemas/Meta'
+  /admin/conduct-reports/{id}/resolve:
+    post:
+      tags: [Admin]
+      summary: Resolve a conduct report — UPHELD increments the technician's offPlatformFlags (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [UPHELD, DISMISSED] } } } } } }
+      responses:
+        '200':
+          description: Resolved report.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ConductReport' } } }
+        '409': { description: Report already resolved. }
+
+  # ---- Admin: Protection subscriptions (growth) ----
+  /admin/subscriptions:
+    get:
+      tags: [Admin]
+      summary: Subscription list + active/past-due counts and MRR
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0, minimum: 0 } }
+      responses: { '200': { description: 'Paginated subscriptions; meta adds activeCount, pastDueCount, mrrJod.' } }
+
+  # ---- Admin: video pre-check quote pricing ----
+  /admin/quotes:
+    get:
+      tags: [Admin]
+      summary: Video pre-check quote queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [PENDING, QUOTED, ACCEPTED, DECLINED, EXPIRED] } }
+        - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0, minimum: 0 } }
+      responses: { '200': { description: Paginated quotes. } }
+  /admin/quotes/{id}/quote:
+    post:
+      tags: [Admin]
+      summary: Set a firm price on a pending quote (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quotedJod]
+              properties:
+                quotedJod: { type: string, description: 'Positive amount, max 3 decimal places (fils).' }
+      responses:
+        '200':
+          description: Quoted (status QUOTED); customer notified.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } }
+        '409': { description: Quote is not PENDING. }
+
+  # ---- Admin: operational KPIs ----
+  /admin/stats/operational:
+    get:
+      tags: [Admin]
+      summary: Operational KPIs over a trailing window (OPS)
+      description: >
+        Acceptance rate, avg time-to-assign, avg arrival delay, cancellation rate,
+        upheld-complaint rate, and repeat-booking rate over the last `windowDays` days.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: windowDays, schema: { type: integer, default: 30, minimum: 1, maximum: 90 } }
+      responses: { '200': { description: KPIs. } }
+  /admin/orders/at-risk:
+    get:
+      tags: [Admin]
+      summary: Active bookings that are late (past SLA, not yet arrived) or unassigned too long (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
+      responses: { '200': { description: 'Bookings tagged riskType: late | unassigned.' } }
+  /admin/activity-feed:
+    get:
+      tags: [Admin]
+      summary: Recent notable platform events for the live-activity feed (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 20, minimum: 1, maximum: 100 } }
+      responses: { '200': { description: 'Events (booking status changes, payments captured, guarantees opened, new customers) from the trailing 48h window.' } }
 
   # ---- Admin: guarantee / support ----
   /admin/guarantee:
