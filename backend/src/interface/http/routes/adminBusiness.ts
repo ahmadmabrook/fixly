@@ -8,6 +8,8 @@ import { TrustService } from '../../../application/technician/TrustService';
 import { ConductReportService } from '../../../application/conduct/ConductReportService';
 import { SubscriptionService } from '../../../application/subscription/SubscriptionService';
 import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+import { prisma } from '../../../infrastructure/database/prisma';
+import { audit } from '../../../application/admin/adminAudit';
 
 /**
  * v1.5 admin surface (quality / trust vetting, conduct-report moderation,
@@ -63,7 +65,9 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), body('tier').isIn(TRUST_TIERS)]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await trustService.setTrustTier(req.params.id, req.body.tier as TrustTier) });
+    const data = await trustService.setTrustTier(req.params.id, req.body.tier as TrustTier);
+    await audit(prisma, req.user!.userId, 'technician.trust_tier', { type: 'TechnicianProfile', id: req.params.id }, { tier: req.body.tier }, req.ip);
+    res.json({ data });
   }),
 );
 
@@ -73,7 +77,9 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), body('result').isIn(['PASSED', 'FAILED'])]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await trustService.recordBgCheck(req.params.id, req.body.result) });
+    const data = await trustService.recordBgCheck(req.params.id, req.body.result);
+    await audit(prisma, req.user!.userId, 'technician.bg_check', { type: 'TechnicianProfile', id: req.params.id }, { result: req.body.result }, req.ip);
+    res.json({ data });
   }),
 );
 
@@ -83,7 +89,9 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await trustService.markSkillsTestPassed(req.params.id) });
+    const data = await trustService.markSkillsTestPassed(req.params.id);
+    await audit(prisma, req.user!.userId, 'technician.skills_test', { type: 'TechnicianProfile', id: req.params.id }, undefined, req.ip);
+    res.json({ data });
   }),
 );
 
@@ -111,7 +119,9 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), body('decision').isIn(['UPHELD', 'DISMISSED'])]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await conductService.resolve(req.params.id, req.body.decision, req.user!.userId) });
+    const data = await conductService.resolve(req.params.id, req.body.decision, req.user!.userId);
+    await audit(prisma, req.user!.userId, 'conduct.resolve', { type: 'ConductReport', id: req.params.id }, { decision: req.body.decision }, req.ip);
+    res.json({ data });
   }),
 );
 
@@ -155,6 +165,8 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), moneyBody('quotedJod')]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await quoteService.setQuote(req.params.id, req.user!.userId, req.body.quotedJod as string) });
+    const data = await quoteService.setQuote(req.params.id, req.user!.userId, req.body.quotedJod as string);
+    await audit(prisma, req.user!.userId, 'quote.price', { type: 'BookingQuote', id: req.params.id }, { quotedJod: req.body.quotedJod }, req.ip);
+    res.json({ data });
   }),
 );
