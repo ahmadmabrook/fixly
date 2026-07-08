@@ -1,4 +1,7 @@
+import { readFileSync } from 'fs';
+import { generateKeyPairSync } from 'crypto';
 import { logger } from './logger';
+import type { JwtKeyConfig } from './jwtKeys';
 
 /**
  * Fail-fast environment validation.
@@ -13,8 +16,16 @@ interface Env {
   PORT: number;
   DATABASE_URL: string;
   REDIS_URL: string;
+  /** Legacy HS256 shared secret. No longer used to sign/verify access tokens
+   *  (see JWT_KEYS) — retained only so old deploys don't fail required() until
+   *  every environment has migrated its config. */
   JWT_SECRET: string;
   JWT_ACCESS_EXPIRES_IN: string;
+  /** RS256 signing/verification keys with kid-based rotation (FIXLY_SYSTEM_DESIGN.md §5.1).
+   *  Resolved once at startup: real keys from JWT_PRIVATE_KEY/JWT_PUBLIC_KEY/JWT_KID
+   *  (or their _PATH file-path variants) in production, or an ephemeral in-memory
+   *  keypair generated for local dev/test when unset. */
+  JWT_KEYS: JwtKeyConfig;
   CORS_ORIGIN: string[] | '*';
   OTP_PROVIDER: string;
   PAYMENT_PROVIDER: string;
@@ -53,6 +64,33 @@ interface Env {
   DISPATCH_MAX_RADIUS_KM: number;
   /** ms between dispatch sweep ticks (expire rounds + bootstrap). */
   DISPATCH_SWEEP_INTERVAL_MS: number;
+  /** Hex AES-256-GCM key (32 bytes / 64 hex chars) for encrypting technician_profiles.nationalIdEnc. Required in prod. */
+  NATIONAL_ID_ENCRYPTION_KEY: string;
+  // ── WhatsApp Cloud API (OTP delivery). Only consulted when OTP_PROVIDER=whatsapp. ──
+  /** Meta Graph API access token for the WhatsApp Business account. */
+  WHATSAPP_ACCESS_TOKEN: string;
+  /** WhatsApp Business phone number id the OTP template is sent from. */
+  WHATSAPP_PHONE_NUMBER_ID: string;
+  /** Pre-approved WhatsApp template name used to deliver the OTP code. */
+  WHATSAPP_OTP_TEMPLATE_NAME: string;
+  /** Graph API base URL (versioned). */
+  WHATSAPP_API_BASE_URL: string;
+  // ── Masked calling (Twilio Proxy). Only consulted when MASKED_CALL_PROVIDER=twilio. ──
+  MASKED_CALL_PROVIDER: string;
+  TWILIO_ACCOUNT_SID: string;
+  TWILIO_AUTH_TOKEN: string;
+  TWILIO_PROXY_SERVICE_SID: string;
+  /** Twilio Proxy API base URL. */
+  TWILIO_API_BASE_URL: string;
+  // ── Media uploads (Cloudflare R2, S3-compatible). Only consulted when UPLOADS_PROVIDER=r2. ──
+  UPLOADS_PROVIDER: string;
+  /** Cloudflare account id — used to build the R2 S3-compatible endpoint. */
+  R2_ACCOUNT_ID: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+  R2_BUCKET_NAME: string;
+  /** Public/CDN URL prefix clients read the uploaded object back from after PUT. */
+  R2_PUBLIC_BASE_URL: string;
 }
 
 const MIN_SECRET_LENGTH = 32;
@@ -63,6 +101,20 @@ function required(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+/**
+ * Reads a possibly multi-line PEM secret. Checks `<name>` first — a literal
+ * "\n" sequence is unescaped, the standard way to fit a PEM into a single-line
+ * env var — falling back to `<name>_PATH` (a file path) for setups that mount
+ * credentials as files (e.g. Docker/K8s secrets). Returns '' if neither is set.
+ */
+function readPemSecret(name: string): string {
+  const inline = process.env[name];
+  if (inline && inline.trim() !== '') return inline.replace(/\\n/g, '\n');
+  const path = process.env[`${name}_PATH`];
+  if (path && path.trim() !== '') return readFileSync(path, 'utf8');
+  return '';
 }
 
 let cached: Env | null = null;
@@ -85,6 +137,41 @@ export function loadEnv(): Env {
     );
   }
 
+  // RS256 signing keys + rotation (FIXLY_SYSTEM_DESIGN.md §5.1). Production must
+  // provision real keys; local dev/test falls back to an ephemeral in-memory
+  // keypair generated once per process — the same "just works locally"
+  // convenience as OTP_PROVIDER=mock / PAYMENT_PROVIDER=mock.
+  const jwtPrivateKey = readPemSecret('JWT_PRIVATE_KEY');
+  const jwtPublicKey = readPemSecret('JWT_PUBLIC_KEY');
+  const jwtKid = (process.env.JWT_KID ?? '').trim();
+  const jwtPreviousPublicKey = readPemSecret('JWT_PREVIOUS_PUBLIC_KEY');
+  const jwtPreviousKid = (process.env.JWT_PREVIOUS_KID ?? '').trim();
+
+  let JWT_KEYS: JwtKeyConfig;
+  if (jwtPrivateKey && jwtPublicKey && jwtKid) {
+    JWT_KEYS = {
+      current: { kid: jwtKid, privateKey: jwtPrivateKey, publicKey: jwtPublicKey },
+      previous:
+        jwtPreviousPublicKey && jwtPreviousKid
+          ? { kid: jwtPreviousKid, publicKey: jwtPreviousPublicKey }
+          : undefined,
+    };
+  } else if (isProd) {
+    throw new Error(
+      'JWT_PRIVATE_KEY, JWT_PUBLIC_KEY and JWT_KID (or their _PATH variants) are required in production',
+    );
+  } else {
+    logger.warn(
+      'JWT_PRIVATE_KEY/JWT_PUBLIC_KEY not set — generating an ephemeral RSA keypair (local dev/test only)',
+    );
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+      publicKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    });
+    JWT_KEYS = { current: { kid: 'dev-ephemeral', privateKey, publicKey } };
+  }
+
   const corsRaw = process.env.CORS_ORIGIN;
   const CORS_ORIGIN = corsRaw && corsRaw.trim() !== '' ? corsRaw.split(',').map((s) => s.trim()) : '*';
   if (isProd && CORS_ORIGIN === '*') {
@@ -101,7 +188,41 @@ export function loadEnv(): Env {
     throw new Error('PAYMENT_PROVIDER=mock is not allowed in production');
   }
 
-  const PLATFORM_COMMISSION_PCT = Number(process.env.PLATFORM_COMMISSION_PCT ?? '15');
+  // WhatsApp Cloud API configuration. Required only when it is the selected OTP
+  // provider — a mock/dev deploy needs none of it.
+  const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN ?? '';
+  const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID ?? '';
+  const WHATSAPP_OTP_TEMPLATE_NAME = process.env.WHATSAPP_OTP_TEMPLATE_NAME ?? 'otp_verification';
+  const WHATSAPP_API_BASE_URL = process.env.WHATSAPP_API_BASE_URL ?? 'https://graph.facebook.com/v19.0';
+  if (OTP_PROVIDER === 'whatsapp') {
+    if (WHATSAPP_ACCESS_TOKEN === '') throw new Error('WHATSAPP_ACCESS_TOKEN is required when OTP_PROVIDER=whatsapp');
+    if (WHATSAPP_PHONE_NUMBER_ID === '') throw new Error('WHATSAPP_PHONE_NUMBER_ID is required when OTP_PROVIDER=whatsapp');
+  }
+
+  // Twilio Proxy (masked calling) configuration. Required only when selected.
+  const MASKED_CALL_PROVIDER = process.env.MASKED_CALL_PROVIDER ?? 'mock';
+  const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID ?? '';
+  const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN ?? '';
+  const TWILIO_PROXY_SERVICE_SID = process.env.TWILIO_PROXY_SERVICE_SID ?? '';
+  const TWILIO_API_BASE_URL = process.env.TWILIO_API_BASE_URL ?? 'https://proxy.twilio.com/v1';
+  if (MASKED_CALL_PROVIDER === 'twilio') {
+    if (TWILIO_ACCOUNT_SID === '') throw new Error('TWILIO_ACCOUNT_SID is required when MASKED_CALL_PROVIDER=twilio');
+    if (TWILIO_AUTH_TOKEN === '') throw new Error('TWILIO_AUTH_TOKEN is required when MASKED_CALL_PROVIDER=twilio');
+    if (TWILIO_PROXY_SERVICE_SID === '') throw new Error('TWILIO_PROXY_SERVICE_SID is required when MASKED_CALL_PROVIDER=twilio');
+  }
+
+  // National-ID KYC field encryption key. Required in production (fail-fast, like
+  // JWT_SECRET) so a deploy can never silently write unencrypted/undecryptable data.
+  // Optional in dev/test so a bare checkout still boots without provisioning one.
+  const NATIONAL_ID_ENCRYPTION_KEY = process.env.NATIONAL_ID_ENCRYPTION_KEY ?? '';
+  if (isProd && NATIONAL_ID_ENCRYPTION_KEY === '') {
+    throw new Error('NATIONAL_ID_ENCRYPTION_KEY is required in production');
+  }
+  if (NATIONAL_ID_ENCRYPTION_KEY !== '' && Buffer.from(NATIONAL_ID_ENCRYPTION_KEY, 'hex').length !== 32) {
+    throw new Error('NATIONAL_ID_ENCRYPTION_KEY must be 32 bytes hex-encoded (64 hex characters)');
+  }
+
+  const PLATFORM_COMMISSION_PCT = Number(process.env.PLATFORM_COMMISSION_PCT ?? '20');
   if (!Number.isFinite(PLATFORM_COMMISSION_PCT) || PLATFORM_COMMISSION_PCT < 0 || PLATFORM_COMMISSION_PCT > 100) {
     throw new Error('PLATFORM_COMMISSION_PCT must be a number between 0 and 100');
   }
@@ -153,6 +274,22 @@ export function loadEnv(): Env {
     throw new Error('DISPATCH_SWEEP_INTERVAL_MS must be a positive integer');
   }
 
+  // Cloudflare R2 (S3-compatible) media uploads. Required only when selected —
+  // a mock/dev deploy needs none of it, same mock/real split as the other providers.
+  const UPLOADS_PROVIDER = process.env.UPLOADS_PROVIDER ?? 'mock';
+  const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? '';
+  const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? '';
+  const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? '';
+  const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? '';
+  const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL ?? '';
+  if (UPLOADS_PROVIDER === 'r2') {
+    if (R2_ACCOUNT_ID === '') throw new Error('R2_ACCOUNT_ID is required when UPLOADS_PROVIDER=r2');
+    if (R2_ACCESS_KEY_ID === '') throw new Error('R2_ACCESS_KEY_ID is required when UPLOADS_PROVIDER=r2');
+    if (R2_SECRET_ACCESS_KEY === '') throw new Error('R2_SECRET_ACCESS_KEY is required when UPLOADS_PROVIDER=r2');
+    if (R2_BUCKET_NAME === '') throw new Error('R2_BUCKET_NAME is required when UPLOADS_PROVIDER=r2');
+    if (R2_PUBLIC_BASE_URL === '') throw new Error('R2_PUBLIC_BASE_URL is required when UPLOADS_PROVIDER=r2');
+  }
+
   cached = {
     NODE_ENV,
     PORT: parseInt(process.env.PORT ?? '4000', 10),
@@ -160,6 +297,7 @@ export function loadEnv(): Env {
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     JWT_SECRET,
     JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
+    JWT_KEYS,
     CORS_ORIGIN,
     OTP_PROVIDER,
     PAYMENT_PROVIDER,
@@ -181,6 +319,22 @@ export function loadEnv(): Env {
     DISPATCH_RADIUS_STEP_KM,
     DISPATCH_MAX_RADIUS_KM,
     DISPATCH_SWEEP_INTERVAL_MS,
+    NATIONAL_ID_ENCRYPTION_KEY,
+    WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_OTP_TEMPLATE_NAME,
+    WHATSAPP_API_BASE_URL,
+    MASKED_CALL_PROVIDER,
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN,
+    TWILIO_PROXY_SERVICE_SID,
+    TWILIO_API_BASE_URL,
+    UPLOADS_PROVIDER,
+    R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET_NAME,
+    R2_PUBLIC_BASE_URL,
   };
 
   return cached;

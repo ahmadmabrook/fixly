@@ -1,8 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import AuthModal from './AuthModal';
 import { useAuth } from '../lib/store';
+
+function renderModal(props: { onClose: () => void; onSuccess: () => void }, initialEntry = '/') {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <AuthModal {...props} />
+    </MemoryRouter>,
+  );
+}
 
 // A JWT whose payload base64-decodes to a CUSTOMER role (AuthModal reads it).
 const PAYLOAD = btoa(JSON.stringify({ userId: 'u1', role: 'CUSTOMER' }));
@@ -40,7 +49,7 @@ describe('AuthModal', () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
 
-    render(<AuthModal onClose={onClose} onSuccess={onSuccess} />);
+    renderModal({ onClose, onSuccess });
 
     // Step 1: enter phone, request OTP.
     const phone = screen.getByLabelText('رقم الهاتف');
@@ -60,10 +69,35 @@ describe('AuthModal', () => {
   it('is dismissable via Escape (focus-trapped dialog)', async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
-    render(<AuthModal onClose={onClose} onSuccess={vi.fn()} />);
+    renderModal({ onClose, onSuccess: vi.fn() });
 
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('pre-fills the referral code from a ?ref= deep link and sends it on verify', async () => {
+    const onSuccess = vi.fn();
+    const user = userEvent.setup();
+
+    renderModal({ onClose: vi.fn(), onSuccess }, '/?ref=ABC123');
+
+    expect(screen.getByLabelText('رمز الإحالة')).toHaveValue('ABC123');
+
+    const phone = screen.getByLabelText('رقم الهاتف');
+    await user.type(phone, '799000001');
+    await user.click(screen.getByRole('button', { name: 'إرسال الرمز' }));
+
+    const otp = await screen.findByLabelText('رمز التحقق');
+    await user.type(otp, '000000');
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    await user.click(screen.getByRole('button', { name: 'تحقق والدخول' }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+
+    const verifyCall = fetchMock.mock.calls.find((call: unknown[]) => String(call[0]).endsWith('/auth/otp/verify'));
+    expect(verifyCall).toBeDefined();
+    const body = JSON.parse((verifyCall![1] as RequestInit).body as string);
+    expect(body.referralCode).toBe('ABC123');
   });
 });

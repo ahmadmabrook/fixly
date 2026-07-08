@@ -1,4 +1,5 @@
-import { ChevronLeft, Clock, ShieldCheck, CreditCard } from 'lucide-react';
+import { ChevronLeft, Clock, ShieldCheck, CreditCard, Video, AlertCircle, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useService } from '../hooks/useServices';
 import { Card, ServiceIcon, PriceBadge } from '../components/shared';
 
@@ -8,7 +9,7 @@ interface ServicePageProps {
   onBack: () => void;
 }
 
-const INCLUDES = ['فحص شامل من فني معتمد', 'إصلاح المشكلة الأساسية', 'اختبار التشغيل', 'ضمان 30 يوم'];
+const DEFAULT_INCLUDES = ['فحص شامل من فني معتمد', 'إصلاح المشكلة الأساسية', 'اختبار التشغيل', 'ضمان 30 يوم'];
 
 export default function ServicePage({ serviceId, onBook, onBack }: ServicePageProps) {
   const { data: svc, isLoading, isError, error, refetch } = useService(serviceId);
@@ -49,18 +50,47 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
             </div>
           </div>
           <Card className="mt-5 p-6">
-            <h2 style={{ fontWeight: 700, fontSize: 17 }}>ما يشمله</h2>
+            <h2 style={{ fontWeight: 700, fontSize: 17 }}>ماذا يشمل</h2>
             <ul className="mt-3 grid sm:grid-cols-2 gap-2">
-              {INCLUDES.map((t) => (
-                <li key={t} className="flex items-center gap-2" style={{ fontSize: 14 }}>✅ {t}</li>
+              {(svc.sopIncludes && svc.sopIncludes.length > 0 ? svc.sopIncludes : DEFAULT_INCLUDES).map((t) => (
+                <li key={t} className="flex items-center gap-2" style={{ fontSize: 14 }}>
+                  <ShieldCheck size={15} color="#15803D" aria-hidden="true" /> {t}
+                </li>
               ))}
             </ul>
           </Card>
+          {svc.sopExcludes && svc.sopExcludes.length > 0 && (
+            <Card className="mt-4 p-6">
+              <h2 style={{ fontWeight: 700, fontSize: 17 }}>لا يشمل</h2>
+              <ul className="mt-3 grid sm:grid-cols-2 gap-2">
+                {svc.sopExcludes.map((t) => (
+                  <li key={t} className="flex items-center gap-2" style={{ fontSize: 14, color: '#475569' }}>
+                    <X size={15} color="#B91C1C" aria-hidden="true" /> {t}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          {svc.calloutFeeJod != null && Number(svc.calloutFeeJod) > 0 && (
+            <div className="mt-4 flex items-start gap-2 p-4 rounded-2xl" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+              <AlertCircle size={18} color="#B45309" className="shrink-0 mt-0.5" aria-hidden="true" />
+              <p style={{ color: '#B45309', fontSize: 13, fontWeight: 600 }}>
+                رسوم كشف <span style={{ fontFamily: 'Inter' }}>{Number(svc.calloutFeeJod)}</span> دينار تُخصم من قيمة الإصلاح.
+              </p>
+            </div>
+          )}
           {svc.descriptionAr && (
             <Card className="mt-4 p-6">
               <p style={{ fontSize: 14, color: '#475569' }}>{svc.descriptionAr}</p>
             </Card>
           )}
+          <Link
+            to="/quotes"
+            className="mt-4 flex items-center gap-2 px-4 h-11 rounded-xl w-fit"
+            style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 14 }}
+          >
+            <Video size={16} aria-hidden="true" /> لست متأكداً من المشكلة؟ اطلب فحصاً مرئياً
+          </Link>
         </div>
 
         <Card className="p-6 h-fit sticky top-20">

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
-import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { Prisma, BookingStatus, PayoutStatus, TechnicianStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
@@ -8,8 +8,10 @@ import { hashToken } from '../auth/AuthService';
 import { audit } from './adminAudit';
 import { UnauthorizedError, NotFoundError, ConflictError } from '../../shared/errors';
 import { env } from '../../shared/env';
+import { signJwt } from '../../shared/jwt';
 import { logger } from '../../shared/logger';
 import { payoutReconciledTotal, payoutStuckGauge } from '../../shared/metrics';
+import { omitFields } from '../../shared/sanitize';
 import type { IPayoutProvider } from '../../domain/providers/IPayoutProvider';
 import { PayoutProviderFactory } from '../../infrastructure/providers/PayoutProviderFactory';
 import { PaymentService } from '../payment/PaymentService';
@@ -116,12 +118,10 @@ export class AdminService {
   }
 
   private async issueAdminTokens(adminId: string, adminRole: string, tx: DbClient = prisma) {
-    const accessToken = jwt.sign(
+    const accessToken = signJwt(
       { userId: adminId, role: 'ADMIN', adminRole, typ: 'admin' },
-      env().JWT_SECRET,
       {
-        algorithm: 'HS256',
-        expiresIn: env().JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+        expiresIn: env().JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'],
         issuer: 'fixly',
         audience: 'fixly-admin',
       },
@@ -226,6 +226,58 @@ export class AdminService {
     return { items, total };
   }
 
+  /** Full booking detail for the admin drawer: the booking (customer, technician,
+   *  service, all money fields), its status-change timeline, any additional-work
+   *  items, and payment info. Reading exposes customer/technician PII, so the
+   *  access is audited (mirrors getTechnicianDetail). */
+  async getBookingDetail(id: string, actorId: string, ip?: string) {
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        technician: { select: { id: true, rating: true, hourlyRateJod: true, user: { select: { id: true, name: true, phone: true } } } },
+        service: { select: { id: true, nameAr: true, nameEn: true, priceJod: true, calloutFeeJod: true, durationMin: true } },
+        payment: true,
+      },
+    });
+    if (!booking) throw new NotFoundError('Booking');
+
+    const [statusHistory, additionalWork] = await Promise.all([
+      prisma.bookingStatusHistory.findMany({ where: { bookingId: id }, orderBy: { changedAt: 'asc' } }),
+      prisma.additionalWorkItem.findMany({ where: { bookingId: id }, orderBy: { createdAt: 'asc' } }),
+    ]);
+
+    await audit(prisma, actorId, 'booking.view_detail', { type: 'Booking', id }, undefined, ip);
+
+    const { payment, ...bookingFields } = booking;
+    return { booking: bookingFields, statusHistory, additionalWork, payment: payment ?? null };
+  }
+
+  /** Same filters as listBookings, but uncapped by the list endpoint's 200-row
+   *  page-size ceiling — used by the CSV export, which caps at EXPORT_MAX_ROWS
+   *  instead (bounded memory, not bounded "page"). */
+  async listBookingsForExport(status: BookingStatus | undefined, maxRows: number) {
+    const where = status ? { status } : {};
+    return prisma.booking.findMany({
+      where,
+      take: maxRows,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        scheduledAt: true,
+        totalJod: true,
+        discountJod: true,
+        createdAt: true,
+        completedAt: true,
+        cancelledAt: true,
+        customer: { select: { name: true, phone: true } },
+        service: { select: { nameAr: true, nameEn: true } },
+        technician: { select: { user: { select: { name: true } } } },
+      },
+    });
+  }
+
   async listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0) {
     const where = status ? { status } : {};
     const [items, total] = await prisma.$transaction([
@@ -263,7 +315,9 @@ export class AdminService {
       take: 10,
     });
     await audit(prisma, actorId, 'technician.view_detail', { type: 'TechnicianProfile', id }, undefined, ip);
-    return { ...profile, recentReviews: reviews };
+    // nationalIdEnc is write-only KYC data — never echoed back over the API, even
+    // to the admin panel (readable only via direct DB/admin-tool access).
+    return { ...omitFields(profile, 'nationalIdEnc'), recentReviews: reviews };
   }
 
   /** Approve a pending technician (sets status + back-compat isVerified flag). */
@@ -272,7 +326,7 @@ export class AdminService {
       return await prisma.$transaction(async (tx) => {
         const existing = await tx.technicianProfile.findUnique({ where: { id }, include: { user: true } });
         if (!existing) throw new NotFoundError('TechnicianProfile');
-        if (existing.isVerified && existing.status === 'APPROVED') return existing;
+        if (existing.isVerified && existing.status === 'APPROVED') return omitFields(existing, 'nationalIdEnc');
 
         const profile = await tx.technicianProfile.update({
           where: { id },
@@ -280,7 +334,7 @@ export class AdminService {
           include: { user: true },
         });
         await audit(tx, actorId, 'technician.approve', { type: 'TechnicianProfile', id }, undefined, ip);
-        return profile;
+        return omitFields(profile, 'nationalIdEnc');
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
@@ -301,7 +355,7 @@ export class AdminService {
         include: { user: true },
       });
       await audit(tx, actorId, 'technician.reject', { type: 'TechnicianProfile', id }, { reason }, ip);
-      return profile;
+      return omitFields(profile, 'nationalIdEnc');
     });
   }
 
@@ -316,7 +370,7 @@ export class AdminService {
         include: { user: true },
       });
       await audit(tx, actorId, 'technician.suspend', { type: 'TechnicianProfile', id }, { reason }, ip);
-      return profile;
+      return omitFields(profile, 'nationalIdEnc');
     });
   }
 

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { BookingService } from './BookingService';
 import type { SubscriptionService } from '../subscription/SubscriptionService';
 import type { ServiceCreditService } from '../credit/ServiceCreditService';
+import type { ReferralService } from '../referral/ReferralService';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
@@ -23,6 +24,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     booking: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
     technicianProfile: { findUnique: jest.fn() },
     outboxEvent: { create: jest.fn() },
+    bookingStatusHistory: { create: jest.fn(), createMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -34,6 +36,7 @@ const mockedPrisma = prisma as unknown as {
   booking: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
   technicianProfile: { findUnique: jest.Mock };
   outboxEvent: { create: jest.Mock };
+  bookingStatusHistory: { create: jest.Mock; createMany: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -51,7 +54,10 @@ describe('BookingService', () => {
       redeem: jest.fn().mockResolvedValue(new Prisma.Decimal(0)),
       grant: jest.fn().mockResolvedValue(true),
     } as unknown as ServiceCreditService;
-    service = new BookingService(undefined, subStub, creditStub);
+    // Referral credit-grant is its own concern with its own unit tests
+    // (ReferralService.test.ts) — stub it as a no-op here.
+    const referralStub = { grantCreditIfEligible: jest.fn().mockResolvedValue(undefined) } as unknown as ReferralService;
+    service = new BookingService(undefined, subStub, creditStub, referralStub);
   });
 
   describe('createBooking', () => {
@@ -79,6 +85,7 @@ describe('BookingService', () => {
       const tx = {
         booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
         outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+        bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
       };
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
 
@@ -97,6 +104,7 @@ describe('BookingService', () => {
       const tx = {
         booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
         outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+        bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
       };
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
 
@@ -111,6 +119,7 @@ describe('BookingService', () => {
 
   describe('expireUnpaidBookings', () => {
     it('cancels AWAITING_PAYMENT bookings older than the TTL in one set-based update', async () => {
+      mockedPrisma.booking.findMany.mockResolvedValue([{ id: 'b1' }, { id: 'b2' }]);
       mockedPrisma.booking.updateMany.mockResolvedValue({ count: 2 });
       const cancelled = await service.expireUnpaidBookings(30);
       expect(cancelled).toBe(2);
@@ -120,6 +129,19 @@ describe('BookingService', () => {
           data: expect.objectContaining({ status: 'CANCELLED' }),
         }),
       );
+      expect(mockedPrisma.bookingStatusHistory.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: [
+          { bookingId: 'b1', fromStatus: 'AWAITING_PAYMENT', toStatus: 'CANCELLED' },
+          { bookingId: 'b2', fromStatus: 'AWAITING_PAYMENT', toStatus: 'CANCELLED' },
+        ] }),
+      );
+    });
+
+    it('returns 0 without a bulk update when there are no candidates', async () => {
+      mockedPrisma.booking.findMany.mockResolvedValue([]);
+      const cancelled = await service.expireUnpaidBookings(30);
+      expect(cancelled).toBe(0);
+      expect(mockedPrisma.booking.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -147,14 +169,17 @@ describe('BookingService', () => {
       const offerUpdate = jest.fn().mockResolvedValue({});
       const offerUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
       const outboxCreate = jest.fn().mockResolvedValue({});
+      const technicianProfileUpdate = jest.fn().mockResolvedValue({});
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
         fn({
           booking: { findUnique: jest.fn().mockResolvedValue(fresh), update: bookingUpdate },
           dispatchOffer: { findUnique: jest.fn().mockResolvedValue(offer), update: offerUpdate, updateMany: offerUpdateMany },
+          technicianProfile: { update: technicianProfileUpdate },
           outboxEvent: { create: outboxCreate },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
         }),
       );
-      return { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate };
+      return { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate, technicianProfileUpdate };
     }
 
     it('rejects with ConflictError when the tech has NO offer for this booking', async () => {
@@ -182,12 +207,18 @@ describe('BookingService', () => {
     it('accepts with an active OFFERED offer: marks it ACCEPTED, supersedes siblings, CONFIRMS booking, clears expiry, emits booking.confirmed', async () => {
       mockedRedis.set.mockResolvedValue('OK');
       mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
-      const { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate } = acceptTx(
+      const { bookingUpdate, offerUpdate, offerUpdateMany, outboxCreate, technicianProfileUpdate } = acceptTx(
         { id: 'b1', status: 'PENDING', version: 2, customerId: 'c1' },
         { id: 'o1', status: 'OFFERED', offeredAt: new Date(Date.now() - 30_000) },
       );
 
       const result = await service.accept('b1', 'tech-user');
+
+      // Consecutive-rejection streak resets on any accept.
+      expect(technicianProfileUpdate).toHaveBeenCalledWith({
+        where: { id: 'tp1' },
+        data: { consecutiveRejections: 0 },
+      });
 
       // The winning offer is marked ACCEPTED.
       expect(offerUpdate).toHaveBeenCalledWith(
@@ -240,7 +271,7 @@ describe('BookingService', () => {
       const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'EN_ROUTE' });
       const create = jest.fn().mockResolvedValue({});
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
-        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'CONFIRMED', version: 5, customerId: 'c1' }), update }, outboxEvent: { create } }),
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'CONFIRMED', version: 5, customerId: 'c1' }), update }, outboxEvent: { create }, bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) } }),
       );
 
       await service.advanceStatus('b1', 'u1', 'EN_ROUTE');
@@ -249,6 +280,152 @@ describe('BookingService', () => {
         expect.objectContaining({ where: { id: 'b1', version: 5 }, data: expect.objectContaining({ status: 'EN_ROUTE', version: { increment: 1 } }) }),
       );
       expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.en_route' }) }));
+    });
+
+    it('refuses ARRIVED → IN_PROGRESS when the pre-start SOP checklist has not been submitted', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn();
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 1, customerId: 'c1', preStartChecklistAt: null }), update },
+          outboxEvent: { create: jest.fn() },
+        }),
+      );
+      await expect(service.advanceStatus('b1', 'u1', 'IN_PROGRESS')).rejects.toBeInstanceOf(ValidationError);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('allows ARRIVED → IN_PROGRESS once the pre-start SOP checklist is submitted', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 1, customerId: 'c1', preStartChecklistAt: new Date() }), update },
+          outboxEvent: { create: jest.fn() },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+        }),
+      );
+      await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');
+      expect(update).toHaveBeenCalled();
+    });
+  });
+
+  describe('submitPreStartChecklist', () => {
+    it('rejects a non-technician', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue(null);
+      await expect(service.submitPreStartChecklist('b1', 'u1', ['https://x/1.jpg'])).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects a technician who is not assigned', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp2', status: 'ARRIVED', version: 0 }), update: jest.fn() } }),
+      );
+      await expect(service.submitPreStartChecklist('b1', 'u1', ['https://x/1.jpg'])).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects when the booking is not ARRIVED', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'EN_ROUTE', version: 0 }), update: jest.fn() } }),
+      );
+      await expect(service.submitPreStartChecklist('b1', 'u1', ['https://x/1.jpg'])).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('records the checklist timestamp + photo urls while ARRIVED', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', preStartChecklistAt: new Date() });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 2 }), update } }),
+      );
+      await service.submitPreStartChecklist('b1', 'u1', ['https://x/1.jpg']);
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'b1', version: 2 },
+          data: expect.objectContaining({ preStartPhotoUrls: ['https://x/1.jpg'], version: { increment: 1 } }),
+        }),
+      );
+    });
+  });
+
+  describe('submitPreCloseChecklist', () => {
+    it('rejects when the booking is not IN_PROGRESS', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 0 }), update: jest.fn() } }),
+      );
+      await expect(service.submitPreCloseChecklist('b1', 'u1', ['https://x/2.jpg'])).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('records the checklist timestamp + photo urls while IN_PROGRESS', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', preCloseChecklistAt: new Date() });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'IN_PROGRESS', version: 4 }), update } }),
+      );
+      await service.submitPreCloseChecklist('b1', 'u1', ['https://x/2.jpg']);
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'b1', version: 4 },
+          data: expect.objectContaining({ preClosePhotoUrls: ['https://x/2.jpg'], version: { increment: 1 } }),
+        }),
+      );
+    });
+  });
+
+  describe('noShow', () => {
+    it('rejects a non-technician', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue(null);
+      await expect(service.noShow('b1', 'u1')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects a technician who is not assigned', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp2', status: 'ARRIVED', version: 0 }), update: jest.fn() }, outboxEvent: { create: jest.fn() } }),
+      );
+      await expect(service.noShow('b1', 'u1')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('rejects when the booking is not ARRIVED', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'EN_ROUTE', version: 0 }), update: jest.fn() }, outboxEvent: { create: jest.fn() } }),
+      );
+      await expect(service.noShow('b1', 'u1')).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('transitions to NO_SHOW and emits booking.no_show with the callout fee in the payload (captured by the outbox payment handler)', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn().mockResolvedValue({ id: 'b1', status: 'NO_SHOW' });
+      const outboxCreate = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: {
+            findUnique: jest.fn().mockResolvedValue({
+              technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1',
+              service: { calloutFeeJod: new Prisma.Decimal(5) },
+            }),
+            update,
+          },
+          outboxEvent: { create: outboxCreate },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+        }),
+      );
+      const result = await service.noShow('b1', 'u1');
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'b1', version: 3 }, data: expect.objectContaining({ status: 'NO_SHOW', version: { increment: 1 } }) }),
+      );
+      expect(outboxCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            eventType: 'booking.no_show',
+            payload: expect.objectContaining({ bookingId: 'b1', customerId: 'c1', status: 'NO_SHOW', calloutFeeJod: '5' }),
+          }),
+        }),
+      );
+      expect(result).toMatchObject({ status: 'NO_SHOW' });
     });
   });
 
@@ -262,6 +439,7 @@ describe('BookingService', () => {
         booking: { findUnique: jest.fn().mockResolvedValue(fresh), update },
         payment: { findUnique: jest.fn().mockResolvedValue(payment) },
         outboxEvent: { create },
+        bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
       }),
     );
     return { update, create };
@@ -288,7 +466,7 @@ describe('BookingService', () => {
 
     it('completes from IN_PROGRESS with a version guard + booking.completed outbox event', async () => {
       mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
-      const { update, create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3 });
+      const { update, create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3, preCloseChecklistAt: new Date() });
 
       await service.complete('b1', 'c1');
 
@@ -305,9 +483,26 @@ describe('BookingService', () => {
 
     it('refuses to complete when the payment is not authorized (P-1: no free service)', async () => {
       mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
-      const { create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3 }, null); // no payment row
+      const { create } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3, preCloseChecklistAt: new Date() }, null); // no payment row
       await expect(service.complete('b1', 'c1')).rejects.toBeInstanceOf(ConflictError);
       expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to complete when the pre-close SOP checklist has not been submitted', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
+      const { update } = txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3, preCloseChecklistAt: null });
+      await expect(service.complete('b1', 'c1')).rejects.toBeInstanceOf(ValidationError);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('asks ReferralService to grant a referral credit on completion', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'IN_PROGRESS' });
+      txWith({ id: 'b1', status: 'IN_PROGRESS', version: 3, preCloseChecklistAt: new Date() });
+
+      await service.complete('b1', 'c1');
+
+      const referralStub = (service as unknown as { referralService: { grantCreditIfEligible: jest.Mock } }).referralService;
+      expect(referralStub.grantCreditIfEligible).toHaveBeenCalledWith(expect.anything(), 'c1', 'b1', expect.anything());
     });
   });
 

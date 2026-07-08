@@ -17,6 +17,7 @@ const NOTIFICATION_COPY: Record<string, { titleAr: string; bodyAr: string; statu
   'booking.in_progress': { titleAr: 'بدأت الخدمة', bodyAr: 'بدأ الفني تنفيذ الخدمة.', status: 'IN_PROGRESS' },
   'booking.completed': { titleAr: 'اكتملت الخدمة', bodyAr: 'تم إنجاز طلبك بنجاح. نتمنى أن تكون راضياً.', status: 'COMPLETED' },
   'booking.cancelled': { titleAr: 'تم إلغاء الطلب', bodyAr: 'تم إلغاء طلبك. إن كان لديك استفسار تواصل مع الدعم.', status: 'CANCELLED' },
+  'booking.no_show': { titleAr: 'لم يتم العثور عليك', bodyAr: 'أبلغ الفني بعدم تواجدك في العنوان. تم تحصيل رسوم الزيارة.', status: 'NO_SHOW' },
 };
 
 /**

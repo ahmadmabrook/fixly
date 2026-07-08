@@ -129,6 +129,11 @@ export interface Service {
   durationMinutes?: number;
   isActive: boolean;
   category?: string;
+  /** What the fixed price covers / excludes, shown on the service detail page. */
+  sopIncludes?: string[];
+  sopExcludes?: string[];
+  /** Charged if a technician dispatches out but the job doesn't proceed (no-show, refusal, etc). */
+  calloutFeeJod?: string | number;
 }
 
 export interface Booking {
@@ -275,6 +280,8 @@ export interface AdditionalWorkItem {
   createdAt: string;
 }
 
+export type TrustTier = 'PROBATION' | 'VERIFIED' | 'PRO' | 'ELITE';
+
 export interface TechnicianProfileMe {
   id: string;
   status: string;
@@ -286,7 +293,39 @@ export interface TechnicianProfileMe {
   bio: string | null;
   rating: string | number;
   totalReviews: number;
+  trustTier: TrustTier;
   services: Array<{ id: string; nameAr: string; nameEn?: string }>;
+  /** Consecutive DispatchOffer rejections; resets to 0 on accept. Used to warn
+   *  the technician before repeated rejections affect their acceptance rate / tier. */
+  consecutiveRejections: number;
+}
+
+/** GET /technician/scorecard — rates are percentages (0-100), not 0-1 decimals. */
+export interface TechnicianScorecard {
+  onTimeRate: number;
+  redoRate: number;
+  complaintRate: number;
+  acceptanceRate: number;
+  sampleSizes: {
+    arrivedBookings: number;
+    completedBookings: number;
+    totalBookings: number;
+    dispatchOffers: number;
+  };
+}
+
+/** GET/PATCH /technician/notification-preferences. */
+export interface NotificationPreferences {
+  newJobRequests: boolean;
+  reminders: boolean;
+  earningsUpdates: boolean;
+  promotions: boolean;
+}
+
+/** GET/PATCH /technician/bank-account — payout details, independent of a withdrawal. */
+export interface BankAccount {
+  iban: string | null;
+  bankName: string | null;
 }
 
 export interface TechEarnings {
@@ -307,6 +346,16 @@ export interface Withdrawal {
   bankName: string | null;
   createdAt: string;
 }
+
+/** GET /referrals/me — the caller's own referral code + stats. */
+export interface ReferralStats {
+  referralCode: string;
+  totalReferred: number;
+  totalCreditEarnedJod: number;
+}
+
+/** POST /conduct-reports `kind` enum. */
+export type ConductReportKind = 'OFF_PLATFORM_SOLICIT' | 'NO_SHOW' | 'QUALITY' | 'SAFETY' | 'OTHER';
 
 export interface NearbyJob {
   id: string;

@@ -1,11 +1,19 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
+import { redis, TECH_LOCATIONS_KEY, TECH_HEARTBEAT_KEY } from '../../infrastructure/cache/redis';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { withdrawalsRequestedTotal } from '../../shared/metrics';
 import { haversineKm } from '../../shared/geo';
+import { encryptField } from '../../shared/crypto';
+import { env } from '../../shared/env';
+import { logger } from '../../shared/logger';
+import { omitFields } from '../../shared/sanitize';
 
 const MIN_WITHDRAWAL_JOD = 20;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// §2.4: Postgres is now just the fallback/admin-map snapshot — write-through
+// at most this often per technician rather than on every live-location ping.
+const LOCATION_WRITETHROUGH_COOLDOWN_SECONDS = 10;
 
 
 interface OnboardingInput {
@@ -16,6 +24,12 @@ interface OnboardingInput {
   idDocUrl?: string;
   certificateUrl?: string;
   selfieUrl?: string;
+  introVideoUrl?: string;
+  /** Must be true — onboarding requires explicit ToS/SOP consent. */
+  agreementAccepted: boolean;
+  /** Plaintext national ID (KYC). Encrypted at rest immediately; never stored or
+   *  logged in plaintext, and never returned by any read path. */
+  nationalId?: string;
 }
 
 export class TechnicianService {
@@ -26,9 +40,16 @@ export class TechnicianService {
       throw new ValidationError('السعر بالساعة يجب أن يكون بين 40 و60 ديناراً');
     }
     if (!input.serviceIds.length) throw new ValidationError('اختر خدمة واحدة على الأقل');
+    if (!input.agreementAccepted) throw new ValidationError('يجب الموافقة على الشروط والأحكام');
 
     const validServices = await prisma.service.findMany({ where: { id: { in: input.serviceIds }, isActive: true }, select: { id: true } });
     if (validServices.length !== input.serviceIds.length) throw new ValidationError('خدمة غير صالحة');
+
+    // Encrypt before touching the DB — never persist (or leave sitting in a local
+    // variable longer than necessary) the plaintext national ID.
+    const nationalIdEnc = input.nationalId
+      ? encryptField(input.nationalId, env().NATIONAL_ID_ENCRYPTION_KEY)
+      : undefined;
 
     return prisma.$transaction(async (tx) => {
       const existing = await tx.technicianProfile.findUnique({ where: { userId } });
@@ -46,14 +67,23 @@ export class TechnicianService {
         idDocUrl: input.idDocUrl ?? null,
         certificateUrl: input.certificateUrl ?? null,
         selfieUrl: input.selfieUrl ?? null,
+        introVideoUrl: input.introVideoUrl ?? null,
+        // Preserve a prior acceptance timestamp on resubmit; only set it fresh
+        // if not already recorded (consent, once given, doesn't need re-stamping).
+        agreementAcceptedAt: existing?.agreementAcceptedAt ?? new Date(),
         services: { set: validServices.map((s) => ({ id: s.id })) },
+        // Only overwrite on resubmit if a new value was actually provided —
+        // otherwise keep whatever was encrypted on a prior submission.
+        ...(nationalIdEnc ? { nationalIdEnc } : {}),
       };
-      return tx.technicianProfile.upsert({
+      const profile = await tx.technicianProfile.upsert({
         where: { userId },
         update: data,
         create: { userId, ...data, services: { connect: validServices.map((s) => ({ id: s.id })) } },
         include: { services: { select: { id: true, nameAr: true } } },
       });
+      // Never echo the encrypted KYC field back over the API — write-only.
+      return omitFields(profile, 'nationalIdEnc');
     });
   }
 
@@ -63,7 +93,7 @@ export class TechnicianService {
       include: { services: { select: { id: true, nameAr: true, nameEn: true } } },
     });
     if (!profile) throw new NotFoundError('TechnicianProfile');
-    return profile;
+    return { ...omitFields(profile, 'nationalIdEnc'), platformCommissionPct: env().PLATFORM_COMMISSION_PCT };
   }
 
   /** Set the profile intro/trust video (§0.3). */
@@ -82,15 +112,62 @@ export class TechnicianService {
 
   async setAvailability(userId: string, isAvailable: boolean) {
     const profile = await this.requireApproved(userId);
-    return prisma.technicianProfile.update({ where: { id: profile.id }, data: { isAvailable } });
+    const updated = await prisma.technicianProfile.update({ where: { id: profile.id }, data: { isAvailable } });
+
+    // Going online: refresh the Redis GEO/heartbeat entry from the last-known
+    // Postgres position so dispatch doesn't silently exclude this technician
+    // just because their app hasn't sent a fresh location ping yet (§2.4).
+    if (isAvailable && updated.currentLat != null && updated.currentLng != null) {
+      try {
+        await redis.geoadd(TECH_LOCATIONS_KEY, updated.currentLng, updated.currentLat, profile.id);
+        await redis.zadd(TECH_HEARTBEAT_KEY, Date.now(), profile.id);
+      } catch (err) {
+        logger.warn({ err, technicianId: profile.id }, 'setAvailability: Redis GEO backfill failed');
+      }
+    }
+
+    return updated;
   }
 
+  /** Live-location ping (§2.4). Redis GEO + a companion heartbeat sorted set
+   *  are written on every call (cheap) so dispatch matching always sees a
+   *  fresh position and can prune technicians whose app stopped reporting.
+   *  Postgres — now just the fallback/admin-map snapshot — is write-through
+   *  at a reduced rate rather than on every ping. */
   async updateLocation(userId: string, lat: number, lng: number) {
     const profile = await this.requireApproved(userId);
-    return prisma.technicianProfile.update({
-      where: { id: profile.id },
-      data: { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() },
-    });
+
+    try {
+      await redis.geoadd(TECH_LOCATIONS_KEY, lng, lat, profile.id);
+      await redis.zadd(TECH_HEARTBEAT_KEY, Date.now(), profile.id);
+    } catch (err) {
+      logger.warn({ err, technicianId: profile.id }, 'updateLocation: Redis GEO write failed');
+    }
+
+    // Rate-limited write-through — same SET NX/EX cooldown convention as
+    // AuthService's OTP request cooldown. Fail OPEN (write through anyway) if
+    // the cooldown check itself errors, so Postgres doesn't silently go stale
+    // for the whole duration of a Redis outage.
+    const throttleKey = `loc_writethrough:${profile.id}`;
+    let writeThrough = true;
+    try {
+      writeThrough = (await redis.set(
+        throttleKey, '1', 'EX', LOCATION_WRITETHROUGH_COOLDOWN_SECONDS, 'NX',
+      )) === 'OK';
+    } catch (err) {
+      logger.warn({ err, technicianId: profile.id }, 'updateLocation: write-through cooldown check failed, writing through');
+    }
+
+    if (writeThrough) {
+      return prisma.technicianProfile.update({
+        where: { id: profile.id },
+        data: { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() },
+      });
+    }
+
+    // Throttled — Postgres untouched this call, but the response still
+    // reflects the just-submitted position (API contract unchanged).
+    return { ...profile, currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() };
   }
 
   /** Jobs actively offered to this technician via dispatch. Only bookings with an
@@ -185,6 +262,11 @@ export class TechnicianService {
       throw new ValidationError('المبلغ يتجاوز رصيدك المتاح');
     }
 
+    // Fall back to the saved profile bank details when the request omits them —
+    // existing callers that always pass iban/bankName explicitly are unaffected.
+    const resolvedIban = iban ?? profile.bankIban ?? undefined;
+    const resolvedBankName = bankName ?? profile.bankName ?? undefined;
+
     // The DB has a partial-unique index allowing at most ONE in-flight
     // (REQUESTED/PROCESSING) withdrawal per technician. That closes the
     // balance/cooldown TOCTOU race: two concurrent requests both pass the checks
@@ -192,7 +274,7 @@ export class TechnicianService {
     try {
       const withdrawal = await prisma.$transaction(async (tx) => {
         const created = await tx.withdrawalRequest.create({
-          data: { technicianId: profile.id, amountJod, iban: iban ?? null, bankName: bankName ?? null, status: 'REQUESTED' },
+          data: { technicianId: profile.id, amountJod, iban: resolvedIban ?? null, bankName: resolvedBankName ?? null, status: 'REQUESTED' },
         });
         await tx.technicianProfile.update({ where: { id: profile.id }, data: { lastWithdrawalAt: new Date() } });
         return created;
@@ -211,5 +293,158 @@ export class TechnicianService {
     const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!profile) throw new NotFoundError('TechnicianProfile');
     return prisma.withdrawalRequest.findMany({ where: { technicianId: profile.id }, orderBy: { createdAt: 'desc' }, take: 100 });
+  }
+
+  /** Self-service scorecard (GET /technician/scorecard). Resolves the profile
+   *  id from the authenticated user, then delegates to the shared computation. */
+  async getMyScorecard(userId: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    return this.computeScorecard(profile.id);
+  }
+
+  /** Admin scorecard (GET /admin/technicians/:id/scorecard) — id is the
+   *  TechnicianProfile id, not the userId. */
+  async getScorecardById(technicianId: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { id: technicianId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    return this.computeScorecard(technicianId);
+  }
+
+  /**
+   * Computed quality metrics for a technician (never stored — always derived
+   * from the source rows so they can't drift):
+   *  - onTimeRate: % of ARRIVED+ bookings where arrivedAt <= slaArriveBy
+   *  - redoRate: % of completed bookings with a resolved (non-open) guarantee ticket
+   *  - complaintRate: % of bookings with an UPHELD conduct report against this tech
+   *  - acceptanceRate: % of this tech's dispatch offers that were ACCEPTED
+   */
+  private async computeScorecard(technicianId: string) {
+    const [
+      arrivedTotal,
+      onTimeRows,
+      completedTotal,
+      guaranteeCount,
+      bookingsTotal,
+      upheldComplaintCount,
+      offersTotal,
+      offersAccepted,
+    ] = await Promise.all([
+      prisma.booking.count({ where: { technicianId, arrivedAt: { not: null } } }),
+      // Two-column comparison (arrivedAt <= slaArriveBy) isn't expressible in the
+      // Prisma filter DSL — raw count, mirrors AdminOpsService's raw-query convention.
+      prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count FROM bookings
+        WHERE "technicianId" = ${technicianId}::uuid
+          AND "arrivedAt" IS NOT NULL
+          AND "slaArriveBy" IS NOT NULL
+          AND "arrivedAt" <= "slaArriveBy"
+      `,
+      prisma.booking.count({ where: { technicianId, status: 'COMPLETED' } }),
+      prisma.guaranteeTicket.count({ where: { status: { not: 'OPEN' }, booking: { technicianId } } }),
+      prisma.booking.count({ where: { technicianId } }),
+      prisma.conductReport.count({ where: { status: 'UPHELD', subjectTechId: technicianId } }),
+      prisma.dispatchOffer.count({ where: { technicianId } }),
+      prisma.dispatchOffer.count({ where: { technicianId, status: 'ACCEPTED' } }),
+    ]);
+    const onTimeCount = Number(onTimeRows[0]?.count ?? 0);
+
+    const rate = (n: number, d: number) => (d > 0 ? Number(((n / d) * 100).toFixed(1)) : 0);
+
+    return {
+      onTimeRate: rate(onTimeCount, arrivedTotal),
+      redoRate: rate(guaranteeCount, completedTotal),
+      complaintRate: rate(upheldComplaintCount, bookingsTotal),
+      acceptanceRate: rate(offersAccepted, offersTotal),
+      sampleSizes: {
+        arrivedBookings: arrivedTotal,
+        completedBookings: completedTotal,
+        totalBookings: bookingsTotal,
+        dispatchOffers: offersTotal,
+      },
+    };
+  }
+
+  /** Notification toggles (Figma TechNotifications screen). Row is created
+   *  lazily with all-true defaults on first read. */
+  async getNotificationPrefs(userId: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    const prefs = await prisma.technicianNotificationPrefs.upsert({
+      where: { technicianId: profile.id },
+      update: {},
+      create: { technicianId: profile.id },
+    });
+    return {
+      newJobRequests: prefs.newJobRequests,
+      reminders: prefs.reminders,
+      earningsUpdates: prefs.earningsUpdates,
+      promotions: prefs.promotions,
+    };
+  }
+
+  /** Partial update of notification toggles — only the provided keys change. */
+  async updateNotificationPrefs(userId: string, input: Partial<{
+    newJobRequests: boolean;
+    reminders: boolean;
+    earningsUpdates: boolean;
+    promotions: boolean;
+  }>) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    const prefs = await prisma.technicianNotificationPrefs.upsert({
+      where: { technicianId: profile.id },
+      update: input,
+      create: { technicianId: profile.id, ...input },
+    });
+    return {
+      newJobRequests: prefs.newJobRequests,
+      reminders: prefs.reminders,
+      earningsUpdates: prefs.earningsUpdates,
+      promotions: prefs.promotions,
+    };
+  }
+
+  /** Saved payout bank details (profile-level, independent of any one
+   *  withdrawal request). */
+  async getBankAccount(userId: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { bankIban: true, bankName: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    return { iban: profile.bankIban, bankName: profile.bankName };
+  }
+
+  async updateBankAccount(userId: string, iban: string, bankName: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    const updated = await prisma.technicianProfile.update({
+      where: { id: profile.id },
+      data: { bankIban: iban, bankName },
+      select: { bankIban: true, bankName: true },
+    });
+    return { iban: updated.bankIban, bankName: updated.bankName };
+  }
+
+  /** Post-approval edit of services/hourly-rate — separate from onboarding's
+   *  apply(), which locks once APPROVED. Only usable by already-APPROVED
+   *  technicians (PENDING/REJECTED/SUSPENDED still go through onboarding). */
+  async updateServicesPricing(userId: string, serviceIds: string[], hourlyRateJod: number) {
+    if (hourlyRateJod < 40 || hourlyRateJod > 60) {
+      throw new ValidationError('السعر بالساعة يجب أن يكون بين 40 و60 ديناراً');
+    }
+    if (!serviceIds.length) throw new ValidationError('اختر خدمة واحدة على الأقل');
+
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true, status: true } });
+    if (!profile) throw new NotFoundError('TechnicianProfile');
+    if (profile.status !== 'APPROVED') throw new ForbiddenError('Technician is not approved');
+
+    const validServices = await prisma.service.findMany({ where: { id: { in: serviceIds }, isActive: true }, select: { id: true } });
+    if (validServices.length !== serviceIds.length) throw new ValidationError('خدمة غير صالحة');
+
+    const updated = await prisma.technicianProfile.update({
+      where: { id: profile.id },
+      data: { hourlyRateJod, services: { set: validServices.map((s) => ({ id: s.id })) } },
+      include: { services: { select: { id: true, nameAr: true, nameEn: true } } },
+    });
+    return omitFields(updated, 'nationalIdEnc');
   }
 }

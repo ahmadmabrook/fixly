@@ -6,7 +6,9 @@ import { paymentRequiresHostedCheckout } from '../../shared/env';
 import { PromoService } from '../promo/PromoService';
 import { SubscriptionService } from '../subscription/SubscriptionService';
 import { ServiceCreditService, LATE_COMPENSATION_JOD, LATE_GRACE_MINUTES } from '../credit/ServiceCreditService';
+import { ReferralService } from '../referral/ReferralService';
 import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/metrics';
+import { withDeadlockRetry } from '../../shared/dbRetry';
 
 /** Immediate-booking arrival promise (§0.3): technician within 30 minutes. */
 const SLA_ARRIVE_MINUTES = 30;
@@ -43,7 +45,22 @@ export class BookingService {
     private readonly promoService: PromoService = new PromoService(),
     private readonly subscriptionService: SubscriptionService = new SubscriptionService(),
     private readonly creditService: ServiceCreditService = new ServiceCreditService(),
+    private readonly referralService: ReferralService = new ReferralService(),
   ) {}
+
+  /** Append-only audit row for a booking status transition (§ booking_status_history).
+   *  Called alongside every status write below — never updated/deleted afterwards. */
+  private async recordStatusHistory(
+    tx: Prisma.TransactionClient,
+    bookingId: string,
+    fromStatus: BookingStatus | null,
+    toStatus: BookingStatus,
+    changedBy?: string,
+  ): Promise<void> {
+    await tx.bookingStatusHistory.create({
+      data: { bookingId, fromStatus, toStatus, changedBy: changedBy ?? null },
+    });
+  }
 
   async createBooking(input: CreateBookingInput) {
     // Account standing (blocked/deleted) is enforced once by `requireActiveUser`
@@ -81,46 +98,76 @@ export class BookingService {
     // booking.created, so the booking starts live at PENDING — unchanged behaviour.
     const hosted = paymentRequiresHostedCheckout();
 
-    return prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.create({
-        data: {
-          customerId: input.customerId,
-          serviceId: input.serviceId,
-          addressLine: input.addressLine,
-          addressLat: input.addressLat,
-          addressLng: input.addressLng,
-          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
-          discountJod,
-          promoCodeId: quote?.promoCodeId,
-          totalJod: postPromo,
-          isPriority,
-          status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
-        },
-      });
+    // Concurrent bookings racing the SAME promo code deadlock in Postgres:
+    // each transaction takes `SELECT ... FOR UPDATE` on the promo row plus an
+    // FK-driven lock on the shared customer/promo parent rows, and with 3+
+    // contenders those can queue into a genuine lock cycle (40P01) rather than
+    // a clean serialize. Rather than lean on DB-level retries for something
+    // this frequent, serialize redemption attempts for a given promo code at
+    // the application layer first — same SETNX-lock convention as accept()'s
+    // per-booking lock above — so at most one createBooking with this promo
+    // is ever inside the transaction at a time. The transaction-level retry
+    // stays as a backstop for any deadlock this doesn't fully rule out.
+    const promoLockKey = quote ? `promo_lock:${quote.promoCodeId}` : null;
+    if (promoLockKey) await this.acquirePromoLock(promoLockKey);
 
-      if (quote) {
-        await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, quote.discountJod);
-      }
-
-      // Apply wallet credit against the amount due (capped, race-safe). The
-      // authorized hold then covers only the net payable.
-      const redeemed = await this.creditService.redeem(tx, input.customerId, postPromo, booking.id);
-      if (redeemed.gt(0)) {
-        await tx.booking.update({ where: { id: booking.id }, data: { totalJod: postPromo.sub(redeemed) } });
-      }
-
-      if (!hosted) {
-        await tx.outboxEvent.create({
+    try {
+      return await withDeadlockRetry(() => prisma.$transaction(async (tx) => {
+        const booking = await tx.booking.create({
           data: {
-            bookingId: booking.id,
-            eventType: 'booking.created',
-            payload: { bookingId: booking.id, customerId: input.customerId },
+            customerId: input.customerId,
+            serviceId: input.serviceId,
+            addressLine: input.addressLine,
+            addressLat: input.addressLat,
+            addressLng: input.addressLng,
+            scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+            discountJod,
+            promoCodeId: quote?.promoCodeId,
+            totalJod: postPromo,
+            isPriority,
+            status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
           },
         });
-      }
+        await this.recordStatusHistory(tx, booking.id, null, booking.status, input.customerId);
 
-      return redeemed.gt(0) ? { ...booking, totalJod: postPromo.sub(redeemed) } : booking;
-    });
+        if (quote) {
+          await this.promoService.redeem(tx, quote.promoCodeId, input.customerId, booking.id, quote.discountJod);
+        }
+
+        // Apply wallet credit against the amount due (capped, race-safe). The
+        // authorized hold then covers only the net payable.
+        const redeemed = await this.creditService.redeem(tx, input.customerId, postPromo, booking.id);
+        if (redeemed.gt(0)) {
+          await tx.booking.update({ where: { id: booking.id }, data: { totalJod: postPromo.sub(redeemed) } });
+        }
+
+        if (!hosted) {
+          await tx.outboxEvent.create({
+            data: {
+              bookingId: booking.id,
+              eventType: 'booking.created',
+              payload: { bookingId: booking.id, customerId: input.customerId },
+            },
+          });
+        }
+
+        return redeemed.gt(0) ? { ...booking, totalJod: postPromo.sub(redeemed) } : booking;
+      }));
+    } finally {
+      if (promoLockKey) await redis.del(promoLockKey);
+    }
+  }
+
+  /** Short-lived SETNX lock serializing redemption attempts for one promo
+   *  code. Waits (briefly, with jitter) rather than failing immediately —
+   *  losing this race is normal contention, not an error the customer caused. */
+  private async acquirePromoLock(key: string, maxAttempts = 40): Promise<void> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const acquired = await redis.set(key, '1', 'EX', 10, 'NX');
+      if (acquired) return;
+      await new Promise((resolve) => setTimeout(resolve, 25 + Math.random() * 25));
+    }
+    throw new ConflictError('عذراً، حاول مرة أخرى بعد قليل');
   }
 
   /**
@@ -132,14 +179,25 @@ export class BookingService {
    */
   async expireUnpaidBookings(ttlMinutes: number): Promise<number> {
     const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000);
+    const where = { status: 'AWAITING_PAYMENT' as const, createdAt: { lt: cutoff } };
+    // Snapshot the ids before the bulk update so we can append one status-history
+    // row per booking below (a set-based updateMany can't return affected rows).
+    const candidates = await prisma.booking.findMany({ where, select: { id: true } });
+    if (candidates.length === 0) return 0;
+
     // One set-based update. The `status: AWAITING_PAYMENT` predicate is itself the
     // transition guard: a booking that just got authorized in a race is already PENDING,
     // so it no longer matches and is never cancelled. No money has moved (an authorized
     // hold would have promoted it) — silent cleanup, no outbox/notification.
     const { count } = await prisma.booking.updateMany({
-      where: { status: 'AWAITING_PAYMENT', createdAt: { lt: cutoff } },
+      where,
       data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: 'Payment not completed in time' },
     });
+    if (count > 0) {
+      await prisma.bookingStatusHistory.createMany({
+        data: candidates.map((b) => ({ bookingId: b.id, fromStatus: 'AWAITING_PAYMENT' as const, toStatus: 'CANCELLED' as const })),
+      });
+    }
     return count;
   }
 
@@ -231,6 +289,12 @@ export class BookingService {
         if (superseded.count > 0) dispatchOffersTotal.inc({ result: 'superseded' }, superseded.count);
         dispatchOffersTotal.inc({ result: 'accepted' });
 
+        // Reset the consecutive-rejection streak on any accept.
+        await tx.technicianProfile.update({
+          where: { id: profile.id },
+          data: { consecutiveRejections: 0 },
+        });
+
         // Record accept latency.
         const latencySec = (now.getTime() - offer.offeredAt.getTime()) / 1000;
         dispatchAcceptLatencySeconds.observe(latencySec);
@@ -247,6 +311,7 @@ export class BookingService {
             version: { increment: 1 },
           },
         });
+        await this.recordStatusHistory(tx, bookingId, booking.status, 'CONFIRMED', technicianUserId);
 
         await tx.outboxEvent.create({
           data: {
@@ -286,6 +351,13 @@ export class BookingService {
         throw new ConflictError(`Cannot move booking from ${fresh.status} to ${to}`);
       }
 
+      // Server-enforced pre-start SOP checklist (technician portal): the
+      // technician must submit the pre-start checklist (POST .../checklist/pre-start)
+      // before the job can move from ARRIVED to IN_PROGRESS.
+      if (to === 'IN_PROGRESS' && !fresh.preStartChecklistAt) {
+        throw new ValidationError('Pre-start checklist must be submitted before starting the job');
+      }
+
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
         data: {
@@ -295,6 +367,7 @@ export class BookingService {
           ...(to === 'IN_PROGRESS' ? { startedAt: new Date() } : {}),
         },
       });
+      await this.recordStatusHistory(tx, bookingId, fresh.status, to, technicianUserId);
 
       // Late-arrival compensation (§0.3): if the technician arrives more than the
       // grace past the promised SLA window, grant the customer a one-time credit.
@@ -343,6 +416,12 @@ export class BookingService {
         throw new ConflictError('Booking cannot be completed from its current status');
       }
 
+      // Server-enforced pre-close SOP checklist (technician portal): must be
+      // submitted (POST .../checklist/pre-close) before the job can be completed.
+      if (!fresh.preCloseChecklistAt) {
+        throw new ValidationError('Pre-close checklist must be submitted before completing the job');
+      }
+
       // Money guard: never let a booking complete (→ capture) unless its funds
       // were actually authorized — otherwise a pre-auth failure means delivering
       // the service for free.
@@ -355,6 +434,7 @@ export class BookingService {
         where: { id: bookingId, version: fresh.version },
         data: { status: 'COMPLETED', completedAt: new Date(), version: { increment: 1 } },
       });
+      await this.recordStatusHistory(tx, bookingId, fresh.status, 'COMPLETED', userId);
 
       // Lifetime completed-job counter feeds the nightly trust-tier recompute (§0.2 #1).
       if (fresh.technicianId) {
@@ -364,11 +444,106 @@ export class BookingService {
         });
       }
 
+      // Referral credit (§ referrals): grants once, only on the referred
+      // customer's first completed booking.
+      await this.referralService.grantCreditIfEligible(tx, booking.customerId, bookingId, this.creditService);
+
       await tx.outboxEvent.create({
         data: {
           bookingId,
           eventType: 'booking.completed',
           payload: { bookingId, customerId: booking.customerId },
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  /**
+   * Technician submits the pre-start SOP checklist (photos of the site/equipment
+   * before beginning work). Only the assigned technician, only while ARRIVED —
+   * this gates the ARRIVED→IN_PROGRESS transition in advanceStatus().
+   */
+  async submitPreStartChecklist(bookingId: string, technicianUserId: string, photoUrls: string[]) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId: technicianUserId }, select: { id: true } });
+    if (!profile) throw new ForbiddenError('Not a technician');
+
+    return prisma.$transaction(async (tx) => {
+      const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!fresh) throw new NotFoundError('Booking');
+      if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
+      if (fresh.status !== 'ARRIVED') {
+        throw new ConflictError('Pre-start checklist can only be submitted while ARRIVED');
+      }
+      return tx.booking.update({
+        where: { id: bookingId, version: fresh.version },
+        data: { preStartChecklistAt: new Date(), preStartPhotoUrls: photoUrls, version: { increment: 1 } },
+      });
+    });
+  }
+
+  /**
+   * Technician submits the pre-close SOP checklist (photos of completed work).
+   * Only the assigned technician, only while IN_PROGRESS — this gates
+   * completion in complete().
+   */
+  async submitPreCloseChecklist(bookingId: string, technicianUserId: string, photoUrls: string[]) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId: technicianUserId }, select: { id: true } });
+    if (!profile) throw new ForbiddenError('Not a technician');
+
+    return prisma.$transaction(async (tx) => {
+      const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
+      if (!fresh) throw new NotFoundError('Booking');
+      if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
+      if (fresh.status !== 'IN_PROGRESS') {
+        throw new ConflictError('Pre-close checklist can only be submitted while IN_PROGRESS');
+      }
+      return tx.booking.update({
+        where: { id: bookingId, version: fresh.version },
+        data: { preCloseChecklistAt: new Date(), preClosePhotoUrls: photoUrls, version: { increment: 1 } },
+      });
+    });
+  }
+
+  /**
+   * Technician reports the customer as a no-show after arriving (§ NO_SHOW).
+   * Only the assigned technician, only from ARRIVED. Emits booking.no_show
+   * with the callout fee in its payload; the outbox worker's payment handler
+   * (registered in main.ts, same as booking.completed) captures that amount
+   * out of the booking's existing pre-authorized hold — reusing
+   * PaymentService.captureForBooking's normal, retry-safe, transition-guarded
+   * capture path rather than calling the PSP synchronously here (a PSP outage
+   * would otherwise strand the charge with no automatic retry).
+   */
+  async noShow(bookingId: string, technicianUserId: string) {
+    const profile = await prisma.technicianProfile.findUnique({ where: { userId: technicianUserId }, select: { id: true } });
+    if (!profile) throw new ForbiddenError('Not a technician');
+
+    return prisma.$transaction(async (tx) => {
+      const fresh = await tx.booking.findUnique({ where: { id: bookingId }, include: { service: { select: { calloutFeeJod: true } } } });
+      if (!fresh) throw new NotFoundError('Booking');
+      if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
+      if (fresh.status !== 'ARRIVED') {
+        throw new ConflictError('No-show can only be reported while ARRIVED');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: bookingId, version: fresh.version },
+        data: { status: 'NO_SHOW', cancelledAt: new Date(), cancelReason: 'Customer no-show', version: { increment: 1 } },
+      });
+      await this.recordStatusHistory(tx, bookingId, fresh.status, 'NO_SHOW', technicianUserId);
+
+      await tx.outboxEvent.create({
+        data: {
+          bookingId,
+          eventType: 'booking.no_show',
+          payload: {
+            bookingId,
+            customerId: fresh.customerId,
+            status: 'NO_SHOW',
+            calloutFeeJod: fresh.service.calloutFeeJod.toString(),
+          },
         },
       });
 
@@ -390,6 +565,7 @@ export class BookingService {
         where: { id: bookingId, version: fresh.version },
         data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason, version: { increment: 1 } },
       });
+      await this.recordStatusHistory(tx, bookingId, fresh.status, 'CANCELLED', userId);
 
       await tx.outboxEvent.create({
         data: {

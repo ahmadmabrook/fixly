@@ -1,13 +1,15 @@
 import { randomInt, createHash } from 'crypto';
-import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { UnauthorizedError, NotFoundError, ValidationError } from '../../shared/errors';
 import { env } from '../../shared/env';
+import { signJwt } from '../../shared/jwt';
 import { logger } from '../../shared/logger';
 import type { IOtpProvider } from '../../domain/providers/IOtpProvider';
+import { ReferralService } from '../referral/ReferralService';
 
 const REFRESH_EXPIRES_DAYS = 30;
 const OTP_TTL_SECONDS = 300;
@@ -25,7 +27,10 @@ export function hashToken(raw: string): string {
 }
 
 export class AuthService {
-  constructor(private readonly otpProvider: IOtpProvider) {}
+  constructor(
+    private readonly otpProvider: IOtpProvider,
+    private readonly referralService: ReferralService = new ReferralService(),
+  ) {}
 
   async requestOtp(phone: string): Promise<void> {
     const cooldownKey = `otp_cooldown:${phone}`;
@@ -47,7 +52,7 @@ export class AuthService {
     }
   }
 
-  async verifyOtp(phone: string, code: string) {
+  async verifyOtp(phone: string, code: string, referralCode?: string) {
     const attemptsKey = `otp_attempts:${phone}`;
     const attempts = await redis.incr(attemptsKey);
     if (attempts === 1) await redis.expire(attemptsKey, OTP_TTL_SECONDS);
@@ -62,10 +67,15 @@ export class AuthService {
     await redis.del(`otp:${phone}`);
     await redis.del(attemptsKey);
 
-    const user = await prisma.user.upsert({
-      where: { phone },
-      update: {},
-      create: { phone },
+    // Distinguish first-time signup from a returning user so a referral code
+    // is only ever captured once, at account creation.
+    const existing = await prisma.user.findUnique({ where: { phone } });
+    const user = existing ?? await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({ data: { phone } });
+      if (referralCode) {
+        await this.referralService.captureAtSignup(tx, created.id, referralCode);
+      }
+      return created;
     });
     if (!user.isActive) throw new UnauthorizedError('Account is disabled');
 
@@ -158,12 +168,14 @@ export class AuthService {
     role: string,
     tx: Prisma.TransactionClient | typeof prisma = prisma,
   ) {
-    const accessToken = jwt.sign({ userId, role, typ: 'user' }, env().JWT_SECRET, {
-      algorithm: 'HS256',
-      expiresIn: env().JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE_USER,
-    });
+    const accessToken = signJwt(
+      { userId, role, typ: 'user' },
+      {
+        expiresIn: env().JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'],
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE_USER,
+      },
+    );
 
     const refreshToken = uuidv4();
     const expiresAt = new Date();

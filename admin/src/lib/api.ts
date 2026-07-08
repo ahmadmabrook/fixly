@@ -186,6 +186,39 @@ export interface AdminStats {
   bookingsByService?: Array<{ serviceId: string; nameAr: string; count: number }>;
 }
 
+export interface OperationalStats {
+  windowDays: number;
+  acceptanceRate: number;
+  // null when the window has no matching rows (no assignments / no late arrivals).
+  avgTimeToAssignSeconds: number | null;
+  avgArrivalDelaySeconds: number | null;
+  cancellationRate: number;
+  complaintRate: number;
+  repeatBookingRate: number;
+  sampleSizes: Record<string, number>;
+}
+
+/** A single entry in the admin dashboard's live-activity feed (GET /admin/activity-feed). */
+export interface ActivityFeedItem {
+  type: 'booking_status' | 'payment_captured' | 'guarantee_opened' | 'new_customer';
+  message: string;
+  at: string;
+}
+
+/** An open booking that is late (past SLA arrival, tech assigned) or unassigned
+ *  for too long (GET /admin/orders/at-risk). */
+export interface AtRiskOrder {
+  id: string;
+  status: string;
+  addressLine: string | null;
+  totalJod: string | number;
+  createdAt: string;
+  slaArriveBy: string | null;
+  riskType: 'late' | 'unassigned';
+  customer: { id: string; name: string; phone?: string | null } | null;
+  technician: { id: string; user?: { name: string; phone?: string | null } | null } | null;
+}
+
 export interface BookingItem {
   id: string;
   status: string;
@@ -196,6 +229,74 @@ export interface BookingItem {
   customer?: { id: string; name: string; phone?: string } | null;
   service?: { nameAr: string; nameEn: string } | null;
   technician?: { user?: { name: string } } | null;
+}
+
+/** One entry in a booking's append-only status-change audit trail
+ *  (GET /admin/bookings/:id -> data.statusHistory), oldest first. */
+export interface BookingStatusHistoryItem {
+  id: string;
+  fromStatus: string | null;
+  toStatus: string;
+  changedAt: string;
+  changedBy: string | null;
+}
+
+/** A technician-proposed extra work item on a booking (GET /admin/bookings/:id -> data.additionalWork). */
+export interface AdditionalWorkItem {
+  id: string;
+  description: string;
+  amountJod: string | number;
+  status: string;
+  createdAt: string;
+}
+
+/** Payment row for a booking (GET /admin/bookings/:id -> data.payment), or null if
+ *  no payment has been created yet (e.g. a still-pending mock-provider booking). */
+export interface PaymentSummary {
+  id: string;
+  status: string;
+  provider: string;
+  method?: string | null;
+  currency: string;
+  amountJod: string | number;
+  capturedAmountJod?: string | number | null;
+  refundedAmountJod: string | number;
+  feeJod?: string | number | null;
+  preAuthorizedAt?: string | null;
+  capturedAt?: string | null;
+  refundedAt?: string | null;
+  disputedAt?: string | null;
+}
+
+/** Full booking detail for the admin drawer (GET /admin/bookings/:id). */
+export interface BookingDetail {
+  booking: {
+    id: string;
+    status: string;
+    addressLine: string;
+    addressLat?: number | null;
+    addressLng?: number | null;
+    scheduledAt: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    cancelledAt: string | null;
+    cancelReason: string | null;
+    discountJod: string | number;
+    totalJod: string | number;
+    lateCompJod: string | number;
+    createdAt: string;
+    customer?: { id: string; name: string; phone?: string } | null;
+    technician?: {
+      id: string;
+      rating?: string | number | null;
+      hourlyRateJod?: string | number | null;
+      user?: { id: string; name: string; phone?: string } | null;
+    } | null;
+    service?: { nameAr: string; nameEn: string; priceJod: string | number; calloutFeeJod?: string | number; durationMin?: number } | null;
+  };
+  statusHistory: BookingStatusHistoryItem[];
+  additionalWork: AdditionalWorkItem[];
+  payment: PaymentSummary | null;
 }
 
 export interface TechnicianItem {
@@ -214,9 +315,18 @@ export interface TechnicianDetail extends TechnicianItem {
   idDocUrl?: string | null;
   certificateUrl?: string | null;
   selfieUrl?: string | null;
+  introVideoUrl?: string | null;
   rejectionReason?: string | null;
   services: Array<{ id: string; nameAr: string; nameEn?: string }>;
   recentReviews: Array<{ id: string; rating: number; comment: string | null; reviewer: { name: string | null } }>;
+}
+
+export interface TechnicianScorecard {
+  onTimeRate: number;
+  redoRate: number;
+  complaintRate: number;
+  acceptanceRate: number;
+  sampleSizes: Record<string, number>;
 }
 
 export interface GuaranteeAdminItem {

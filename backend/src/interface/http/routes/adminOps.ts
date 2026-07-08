@@ -8,6 +8,7 @@ import { AdminService } from '../../../application/admin/AdminService';
 import { AdminOpsService } from '../../../application/admin/AdminOpsService';
 import { GuaranteeService } from '../../../application/guarantee/GuaranteeService';
 import { SupportService } from '../../../application/support/SupportService';
+import { TechnicianService } from '../../../application/technician/TechnicianService';
 
 const GUARANTEE_STATUSES = Object.values(GuaranteeStatus);
 const SUPPORT_STATUSES = Object.values(SupportStatus);
@@ -25,6 +26,7 @@ const adminService = new AdminService();
 const adminOpsService = new AdminOpsService();
 const guaranteeService = new GuaranteeService();
 const supportService = new SupportService();
+const technicianService = new TechnicianService();
 
 // ── Technician moderation (OPS) ───────────────────────────
 adminOpsRouter.get(
@@ -51,6 +53,16 @@ adminOpsRouter.post(
   validate([param('id').isUUID(), body('reason').isString().trim().isLength({ min: 1, max: 500 })]),
   asyncHandler(async (req, res) => {
     res.json({ data: await adminService.suspendTechnician(req.params.id, req.body.reason, req.user!.userId, req.ip) });
+  }),
+);
+
+// GET /admin/technicians/:id/scorecard (OPS) — id is the TechnicianProfile id.
+adminOpsRouter.get(
+  '/technicians/:id/scorecard',
+  requireAdminRole('OPS'),
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.getScorecardById(req.params.id) });
   }),
 );
 
@@ -230,6 +242,40 @@ adminOpsRouter.post(
   validate([param('id').isUUID(), body('isActive').isBoolean().toBoolean()]),
   asyncHandler(async (req, res) => {
     res.json({ data: await adminOpsService.setAdminActive(req.params.id, req.body.isActive, req.user!.userId, req.ip) });
+  }),
+);
+
+// ── Operational KPIs (OPS) ────────────────────────────────
+adminOpsRouter.get(
+  '/stats/operational',
+  requireAdminRole('OPS'),
+  validate([query('windowDays').optional().isInt({ min: 1, max: 90 }).toInt()]),
+  asyncHandler(async (req, res) => {
+    const windowDays = (req.query.windowDays as unknown as number | undefined) ?? 30;
+    res.json({ data: await adminOpsService.getOperationalStats(windowDays) });
+  }),
+);
+
+// GET /admin/orders/at-risk (OPS) — open bookings that are late or unassigned.
+adminOpsRouter.get(
+  '/orders/at-risk',
+  requireAdminRole('OPS'),
+  validate([query('limit').optional().isInt({ min: 1, max: 200 }).toInt()]),
+  asyncHandler(async (req, res) => {
+    const limit = (req.query.limit as unknown as number | undefined) ?? 50;
+    const { items, total } = await adminOpsService.getAtRiskOrders(limit);
+    res.json({ data: items, meta: { total } });
+  }),
+);
+
+// GET /admin/activity-feed (OPS) — recent notable platform events.
+adminOpsRouter.get(
+  '/activity-feed',
+  requireAdminRole('OPS'),
+  validate([query('limit').optional().isInt({ min: 1, max: 100 }).toInt()]),
+  asyncHandler(async (req, res) => {
+    const limit = (req.query.limit as unknown as number | undefined) ?? 20;
+    res.json({ data: await adminOpsService.getActivityFeed(limit) });
   }),
 );
 

@@ -161,12 +161,16 @@ function buildOutboxWorker(
     .register('booking.created', (p) => payment.preAuthorizeForBooking(bookingId(p)))
     .register('booking.completed', (p) => payment.captureForBooking(bookingId(p)))
     // Cancellation releases money: void an uncaptured hold, or refund a capture.
-    .register('booking.cancelled', (p) => payment.handleCancellation(bookingId(p)));
+    .register('booking.cancelled', (p) => payment.handleCancellation(bookingId(p)))
+    // No-show charges the flat callout fee by capturing it out of the existing
+    // pre-authorized hold (same retry-safe capture path as booking.completed).
+    .register('booking.no_show', (p) => payment.captureForBooking(bookingId(p), (p as { calloutFeeJod: string }).calloutFeeJod));
 
   // Every lifecycle event notifies the customer (idempotent handler).
   for (const eventType of [
     'booking.created', 'booking.confirmed', 'booking.en_route',
     'booking.arrived', 'booking.in_progress', 'booking.completed', 'booking.cancelled',
+    'booking.no_show',
   ]) {
     worker.register(eventType, (p) => notification.handleBookingEvent(eventType, p as { bookingId: string }));
   }

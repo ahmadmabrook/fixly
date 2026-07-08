@@ -1,7 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PriceBadge, StatusBadge, ServiceIcon, Modal } from './shared';
+import {
+  PriceBadge, StatusBadge, ServiceIcon, Modal,
+  ReportTechnicianModal, CancelBookingModal, FaqAccordion, OfflineBanner,
+} from './shared';
 
 describe('PriceBadge', () => {
   it('renders the amount with the JOD label', () => {
@@ -62,5 +65,90 @@ describe('Modal', () => {
     // The backdrop is the dialog's parent element.
     await user.click(screen.getByRole('dialog').parentElement!);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReportTechnicianModal', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => (
+      { ok: true, status: 201, json: async () => ({ data: { id: 'r1' } }) } as Response
+    )));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it('requires a reason before the submit button is enabled', async () => {
+    render(<ReportTechnicianModal bookingId="b1" technicianId="t1" onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'إرسال البلاغ' })).toBeDisabled();
+  });
+
+  it('submits the selected reason and details, then closes', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<ReportTechnicianModal bookingId="b1" technicianId="t1" onClose={onClose} />);
+
+    await user.click(screen.getByRole('radio', { name: 'لم يحضر' }));
+    await user.type(screen.getByLabelText('تفاصيل إضافية (اختياري)'), 'لم يصل الفني في الموعد');
+    await user.click(screen.getByRole('button', { name: 'إرسال البلاغ' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const call = fetchMock.mock.calls.find((c: unknown[]) => String(c[0]).endsWith('/conduct-reports'));
+    expect(call).toBeDefined();
+    const body = JSON.parse((call![1] as RequestInit).body as string);
+    expect(body).toMatchObject({ kind: 'NO_SHOW', bookingId: 'b1', subjectTechId: 't1', details: 'لم يصل الفني في الموعد' });
+  });
+});
+
+describe('CancelBookingModal', () => {
+  it('shows the refund breakdown only after a reason is picked, then confirms with the Arabic label', async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup();
+    render(<CancelBookingModal priceJod={50} discountJod={5} totalJod={45} onConfirm={onConfirm} onCancel={vi.fn()} />);
+
+    expect(screen.queryByText('المبلغ المسترد')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'تأخر الفني' }));
+
+    expect(screen.getByText('المبلغ المسترد')).toBeInTheDocument();
+    expect(screen.getByText('45 دينار')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تأكيد الإلغاء' }));
+    expect(onConfirm).toHaveBeenCalledWith('تأخر الفني');
+  });
+});
+
+describe('FaqAccordion', () => {
+  it('expands and collapses an item on click', async () => {
+    const user = userEvent.setup();
+    render(<FaqAccordion items={[['سؤال؟', 'الجواب هنا']]} />);
+    expect(screen.queryByText('الجواب هنا')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'سؤال؟' }));
+    expect(screen.getByText('الجواب هنا')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'سؤال؟' }));
+    expect(screen.queryByText('الجواب هنا')).not.toBeInTheDocument();
+  });
+});
+
+describe('OfflineBanner', () => {
+  const originalOnLine = window.navigator.onLine;
+  afterEach(() => {
+    Object.defineProperty(window.navigator, 'onLine', { value: originalOnLine, configurable: true });
+  });
+
+  it('renders nothing while online', () => {
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    const { container } = render(<OfflineBanner />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows the offline message when the browser goes offline', () => {
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    render(<OfflineBanner />);
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    expect(screen.getByText('لا يوجد اتصال بالإنترنت')).toBeInTheDocument();
   });
 });

@@ -1,9 +1,10 @@
-import { GuaranteeStatus } from '@prisma/client';
+import { GuaranteeStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { createUserNotification } from '../notification/notify';
 import { guaranteeTicketsTotal } from '../../shared/metrics';
 import { SubscriptionService } from '../subscription/SubscriptionService';
+import { env } from '../../shared/env';
 
 /** Default post-service guarantee window (days); 2-hour admin response SLA.
  *  Protection subscribers get an extended window (§0.3, subscription.guaranteeDays). */
@@ -98,19 +99,75 @@ export class GuaranteeService {
   async review(id: string, decision: 'APPROVED' | 'REJECTED', adminNote?: string, scheduledVisitAt?: string) {
     const ticket = await prisma.guaranteeTicket.findUnique({
       where: { id },
-      include: { booking: { select: { customerId: true } } },
+      include: {
+        booking: {
+          select: {
+            customerId: true, technicianId: true, serviceId: true,
+            addressLine: true, addressLat: true, addressLng: true,
+          },
+        },
+      },
     });
     if (!ticket) throw new NotFoundError('GuaranteeTicket');
     if (ticket.status === 'RESOLVED' || ticket.status === 'REJECTED') {
       throw new ConflictError('Ticket already finalised');
     }
+    const scheduleFollowup = decision === 'APPROVED' && !!scheduledVisitAt;
+
     const updated = await prisma.$transaction(async (tx) => {
+      let followupBookingId: string | undefined;
+      if (scheduleFollowup) {
+        // Free re-visit: same customer/technician/service, zero cost. Created directly
+        // (not via BookingService.createBooking) since it bypasses pricing/promo/dispatch
+        // entirely — it's already assigned to the same technician who did the original job.
+        const followup = await tx.booking.create({
+          data: {
+            customerId: ticket.booking.customerId,
+            technicianId: ticket.booking.technicianId,
+            serviceId: ticket.booking.serviceId,
+            addressLine: ticket.booking.addressLine,
+            addressLat: ticket.booking.addressLat,
+            addressLng: ticket.booking.addressLng,
+            scheduledAt: new Date(scheduledVisitAt as string),
+            totalJod: 0,
+            status: ticket.booking.technicianId ? 'CONFIRMED' : 'PENDING',
+          },
+        });
+        followupBookingId = followup.id;
+        await tx.bookingStatusHistory.create({
+          data: { bookingId: followup.id, fromStatus: null, toStatus: followup.status },
+        });
+        // Zero-cost booking: create its Payment row directly as already-authorized so
+        // BookingService.complete()'s money guard passes without ever calling the PSP
+        // (preAuthorize refuses non-positive amounts) — nothing is held or captured.
+        await tx.payment.create({
+          data: {
+            bookingId: followup.id,
+            status: 'PRE_AUTHORIZED',
+            provider: 'none',
+            currency: env().CURRENCY,
+            amountJod: new Prisma.Decimal(0),
+            preAuthorizedAt: new Date(),
+          },
+        });
+        // Reuse the existing booking.created notification fan-out (the outbox worker's
+        // payment handler no-ops: a payment already exists in a non-PENDING state).
+        await tx.outboxEvent.create({
+          data: {
+            bookingId: followup.id,
+            eventType: 'booking.created',
+            payload: { bookingId: followup.id, customerId: ticket.booking.customerId },
+          },
+        });
+      }
+
       const result = await tx.guaranteeTicket.update({
         where: { id },
         data: {
           status: decision === 'APPROVED' ? 'RESOLVED' : 'REJECTED',
           adminNote: adminNote?.trim() || null,
           scheduledVisitAt: decision === 'APPROVED' && scheduledVisitAt ? new Date(scheduledVisitAt) : null,
+          followupBookingId,
           resolvedAt: new Date(),
         },
       });

@@ -1,9 +1,35 @@
 import bcrypt from 'bcryptjs';
-import { Prisma, AdminRole, BroadcastSegment, WithdrawalStatus } from '@prisma/client';
+import { Prisma, AdminRole, BookingStatus, BroadcastSegment, WithdrawalStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ConflictError } from '../../shared/errors';
 import { audit } from './adminAudit';
 import { broadcastsSentTotal, withdrawalsProcessedTotal } from '../../shared/metrics';
+
+// A booking with no technician assigned this long past creation is flagged
+// "high-risk" on the at-risk panel (Figma admin Dashboard).
+const HIGH_RISK_UNASSIGNED_MINUTES = 15;
+// Activity-feed lookback window — bounded so the query never scans the full
+// history (mirrors the getOperationalStats windowing convention).
+const ACTIVITY_FEED_WINDOW_HOURS = 48;
+
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
+
+const BOOKING_ACTIVITY_MESSAGE: Partial<Record<BookingStatus, string>> = {
+  CONFIRMED: 'تم قبول الحجز',
+  EN_ROUTE: 'الفني في الطريق',
+  ARRIVED: 'وصل الفني إلى الموقع',
+  IN_PROGRESS: 'بدأت الخدمة',
+  COMPLETED: 'تم إكمال الخدمة',
+  CANCELLED: 'تم إلغاء الحجز',
+  DISPUTED: 'تم فتح نزاع على الحجز',
+  NO_SHOW: 'الفني سجّل عدم تواجد العميل',
+};
+
+interface ActivityEvent {
+  type: 'booking_status' | 'payment_captured' | 'guarantee_opened' | 'new_customer';
+  message: string;
+  at: Date;
+}
 
 /** Show only the last 4 of an IBAN in list views; full value stays on the
  *  detail/process path where it's operationally needed. */
@@ -132,6 +158,84 @@ export class AdminOpsService {
     return { series, totals };
   }
 
+  // ── Operational KPIs ────────────────────────────────────
+
+  /**
+   * Platform-wide operational health over a trailing window (default 30 days,
+   * capped at 90) — bounded scope so this never becomes an unbounded full-table
+   * scan (mirrors the from/to windowing convention already used by
+   * getFinancialReport). All rates are computed on read, never stored.
+   */
+  async getOperationalStats(windowDays = 30) {
+    const days = Math.min(Math.max(windowDays, 1), 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const [
+      offersTotal,
+      offersAccepted,
+      timeToAssignRows,
+      arrivalDelayRows,
+      bookingsTotal,
+      bookingsCancelled,
+      completedTotal,
+      upheldComplaints,
+      repeatCustomerRows,
+    ] = await Promise.all([
+      prisma.dispatchOffer.count({ where: { offeredAt: { gte: since } } }),
+      prisma.dispatchOffer.count({ where: { offeredAt: { gte: since }, status: 'ACCEPTED' } }),
+      // Avg time from booking creation to first CONFIRMED (dispatch acceptance).
+      // Booking has no separate "confirmedAt" column, so we use the accepted
+      // DispatchOffer's respondedAt as the assignment moment.
+      prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
+        SELECT AVG(EXTRACT(EPOCH FROM (o."respondedAt" - b."createdAt")))::float AS avg_seconds
+        FROM bookings b
+        JOIN dispatch_offers o ON o."bookingId" = b.id AND o.status = 'ACCEPTED'
+        WHERE b."createdAt" >= ${since}
+      `,
+      prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
+        SELECT AVG(EXTRACT(EPOCH FROM ("arrivedAt" - "slaArriveBy")))::float AS avg_seconds
+        FROM bookings
+        WHERE "createdAt" >= ${since}
+          AND "arrivedAt" IS NOT NULL AND "slaArriveBy" IS NOT NULL
+          AND "arrivedAt" > "slaArriveBy"
+      `,
+      prisma.booking.count({ where: { createdAt: { gte: since } } }),
+      prisma.booking.count({ where: { createdAt: { gte: since }, status: 'CANCELLED' } }),
+      prisma.booking.count({ where: { createdAt: { gte: since }, status: 'COMPLETED' } }),
+      prisma.conductReport.count({ where: { status: 'UPHELD', createdAt: { gte: since } } }),
+      // Repeat-booking rate: % of customers (among those with >=1 completed booking
+      // in the window) who have more than one completed booking in the window.
+      prisma.$queryRaw<Array<{ total: bigint; repeat: bigint }>>`
+        SELECT COUNT(*)::bigint AS total, COUNT(*) FILTER (WHERE cnt > 1)::bigint AS repeat
+        FROM (
+          SELECT "customerId", COUNT(*) AS cnt
+          FROM bookings
+          WHERE status = 'COMPLETED' AND "completedAt" >= ${since}
+          GROUP BY "customerId"
+        ) per_customer
+      `,
+    ]);
+
+    const rate = (n: number, d: number) => (d > 0 ? Number(((n / d) * 100).toFixed(1)) : 0);
+    const repeatTotal = Number(repeatCustomerRows[0]?.total ?? 0);
+    const repeatCount = Number(repeatCustomerRows[0]?.repeat ?? 0);
+
+    return {
+      windowDays: days,
+      acceptanceRate: rate(offersAccepted, offersTotal),
+      avgTimeToAssignSeconds: timeToAssignRows[0]?.avg_seconds != null ? Math.round(timeToAssignRows[0].avg_seconds) : null,
+      avgArrivalDelaySeconds: arrivalDelayRows[0]?.avg_seconds != null ? Math.round(arrivalDelayRows[0].avg_seconds) : null,
+      cancellationRate: rate(bookingsCancelled, bookingsTotal),
+      complaintRate: rate(upheldComplaints, completedTotal),
+      repeatBookingRate: rate(repeatCount, repeatTotal),
+      sampleSizes: {
+        bookings: bookingsTotal,
+        dispatchOffers: offersTotal,
+        completedBookings: completedTotal,
+      },
+    };
+  }
+
   // ── Broadcast notifications ────────────────────────────
 
   async sendBroadcast(adminId: string, titleAr: string, bodyAr: string, segment: BroadcastSegment, ip?: string) {
@@ -216,5 +320,123 @@ export class AdminOpsService {
     });
     withdrawalsProcessedTotal.inc({ decision }, 1);
     return updated;
+  }
+
+  // ── At-risk orders & activity feed (OPS dashboard) ────────
+
+  /**
+   * Open bookings needing admin attention: "late" (technician assigned, past
+   * the arrival SLA, not yet arrived) and "unassigned" (still PENDING with no
+   * technician past a short grace period). A bounded, pragmatic multi-query —
+   * no new event-sourcing system, matching this codebase's existing style
+   * (see getOperationalStats).
+   */
+  async getAtRiskOrders(limit = 50) {
+    const boundedLimit = Math.min(Math.max(limit, 1), 200);
+    const now = new Date();
+    const unassignedCutoff = new Date(now.getTime() - HIGH_RISK_UNASSIGNED_MINUTES * 60 * 1000);
+
+    const bookingSelect = {
+      id: true,
+      status: true,
+      addressLine: true,
+      totalJod: true,
+      createdAt: true,
+      slaArriveBy: true,
+      customer: { select: { id: true, name: true, phone: true } },
+      technician: { select: { id: true, user: { select: { name: true, phone: true } } } },
+    } satisfies Prisma.BookingSelect;
+
+    const [late, unassigned] = await Promise.all([
+      prisma.booking.findMany({
+        where: {
+          status: { in: ACTIVE_BOOKING_STATUSES },
+          technicianId: { not: null },
+          slaArriveBy: { lt: now },
+          arrivedAt: null,
+        },
+        orderBy: { slaArriveBy: 'asc' },
+        take: boundedLimit,
+        select: bookingSelect,
+      }),
+      prisma.booking.findMany({
+        where: { status: 'PENDING', technicianId: null, createdAt: { lt: unassignedCutoff } },
+        orderBy: { createdAt: 'asc' },
+        take: boundedLimit,
+        select: bookingSelect,
+      }),
+    ]);
+
+    const items = [
+      ...late.map((b) => ({ ...b, riskType: 'late' as const })),
+      ...unassigned.map((b) => ({ ...b, riskType: 'unassigned' as const })),
+    ];
+    return { items, total: items.length };
+  }
+
+  /**
+   * Recent notable platform events for the admin live-activity feed. Bounded
+   * multi-table query (booking status changes, payment captures, guarantee
+   * tickets opened, new customers) within a trailing window — deliberately NOT
+   * a dedicated event-sourcing table, matching this codebase's pragmatic style.
+   */
+  async getActivityFeed(limit = 20): Promise<ActivityEvent[]> {
+    const boundedLimit = Math.min(Math.max(limit, 1), 100);
+    const since = new Date(Date.now() - ACTIVITY_FEED_WINDOW_HOURS * 60 * 60 * 1000);
+
+    const [bookings, payments, guarantees, customers] = await Promise.all([
+      prisma.booking.findMany({
+        where: { updatedAt: { gte: since } },
+        orderBy: { updatedAt: 'desc' },
+        take: boundedLimit,
+        select: { id: true, status: true, updatedAt: true },
+      }),
+      prisma.payment.findMany({
+        where: { capturedAt: { gte: since } },
+        orderBy: { capturedAt: 'desc' },
+        take: boundedLimit,
+        select: { id: true, bookingId: true, capturedAt: true },
+      }),
+      prisma.guaranteeTicket.findMany({
+        where: { createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: boundedLimit,
+        select: { id: true, createdAt: true },
+      }),
+      prisma.user.findMany({
+        where: { role: 'CUSTOMER', createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: boundedLimit,
+        select: { id: true, name: true, createdAt: true },
+      }),
+    ]);
+
+    const events: ActivityEvent[] = [
+      ...bookings
+        .filter((b) => BOOKING_ACTIVITY_MESSAGE[b.status])
+        .map((b) => ({
+          type: 'booking_status' as const,
+          message: `${BOOKING_ACTIVITY_MESSAGE[b.status]} — #${b.id.slice(0, 8)}`,
+          at: b.updatedAt,
+        })),
+      ...payments.map((p) => ({
+        type: 'payment_captured' as const,
+        message: `تم استلام الدفع — #${p.bookingId.slice(0, 8)}`,
+        at: p.capturedAt!,
+      })),
+      ...guarantees.map((g) => ({
+        type: 'guarantee_opened' as const,
+        message: `تم فتح طلب ضمان — #${g.id.slice(0, 8)}`,
+        at: g.createdAt,
+      })),
+      ...customers.map((c) => ({
+        type: 'new_customer' as const,
+        message: `عميل جديد${c.name ? `: ${c.name}` : ''}`,
+        at: c.createdAt,
+      })),
+    ];
+
+    events.sort((a, b) => b.at.getTime() - a.at.getTime());
+    return events.slice(0, boundedLimit);
   }
 }

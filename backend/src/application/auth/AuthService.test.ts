@@ -17,22 +17,44 @@ jest.mock('../../infrastructure/cache/redis', () => ({
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
-    user: { upsert: jest.fn() },
+    user: { findUnique: jest.fn(), create: jest.fn() },
     refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
 
-jest.mock('../../shared/env', () => ({
-  env: () => ({ OTP_PROVIDER: 'mock', JWT_SECRET: 'test-secret-at-least-32-chars-long!!', JWT_ACCESS_EXPIRES_IN: '15m' }),
-}));
+jest.mock('../../shared/env', () => {
+  const { generateKeyPairSync } = require('crypto');
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    publicKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
+  return {
+    env: () => ({
+      OTP_PROVIDER: 'mock',
+      JWT_SECRET: 'test-secret-at-least-32-chars-long!!',
+      JWT_ACCESS_EXPIRES_IN: '15m',
+      JWT_KEYS: { current: { kid: 'test-kid', privateKey, publicKey } },
+    }),
+  };
+});
 
 const mockedRedis = redis as jest.Mocked<typeof redis>;
 const mockedPrisma = prisma as unknown as {
-  user: { upsert: jest.Mock };
+  user: { findUnique: jest.Mock; create: jest.Mock };
   refreshToken: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
   $transaction: jest.Mock;
 };
+
+/** New-user signup path: no existing user, $transaction hands back a tx whose
+ *  user.create resolves to the freshly created row. */
+function mockNewUserSignup(user: { id: string; role: string; isActive: boolean }) {
+  mockedPrisma.user.findUnique.mockResolvedValue(null);
+  mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+    fn({ user: { create: jest.fn().mockResolvedValue(user) } }),
+  );
+}
 
 describe('AuthService', () => {
   let otp: jest.Mocked<IOtpProvider>;
@@ -84,7 +106,7 @@ describe('AuthService', () => {
     it('sets attempt TTL only on the first attempt', async () => {
       mockedRedis.incr.mockResolvedValue(1);
       mockedRedis.get.mockResolvedValue('000000');
-      mockedPrisma.user.upsert.mockResolvedValue({ id: 'u1', role: 'CUSTOMER', isActive: true });
+      mockNewUserSignup({ id: 'u1', role: 'CUSTOMER', isActive: true });
       mockedPrisma.refreshToken.create.mockResolvedValue({});
 
       await service.verifyOtp('+962799000001', '000000');
@@ -94,7 +116,7 @@ describe('AuthService', () => {
     it('issues tokens and clears OTP state on success', async () => {
       mockedRedis.incr.mockResolvedValue(2);
       mockedRedis.get.mockResolvedValue('000000');
-      mockedPrisma.user.upsert.mockResolvedValue({ id: 'u1', role: 'CUSTOMER', isActive: true });
+      mockNewUserSignup({ id: 'u1', role: 'CUSTOMER', isActive: true });
       mockedPrisma.refreshToken.create.mockResolvedValue({});
 
       const result = await service.verifyOtp('+962799000001', '000000');
@@ -102,6 +124,43 @@ describe('AuthService', () => {
       expect(result.refreshToken).toEqual(expect.any(String));
       expect(mockedRedis.del).toHaveBeenCalledWith('otp:+962799000001');
       expect(mockedRedis.del).toHaveBeenCalledWith('otp_attempts:+962799000001');
+    });
+
+    it('reuses an existing user (no $transaction) for a returning customer', async () => {
+      mockedRedis.incr.mockResolvedValue(1);
+      mockedRedis.get.mockResolvedValue('000000');
+      mockedPrisma.user.findUnique.mockResolvedValue({ id: 'u1', role: 'CUSTOMER', isActive: true });
+      mockedPrisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.verifyOtp('+962799000001', '000000');
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(mockedPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockedPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('captures a referral code only for a brand-new signup', async () => {
+      mockedRedis.incr.mockResolvedValue(1);
+      mockedRedis.get.mockResolvedValue('000000');
+      mockedPrisma.refreshToken.create.mockResolvedValue({});
+
+      const referredUser = { id: 'u2', role: 'CUSTOMER', isActive: true };
+      mockedPrisma.user.findUnique.mockResolvedValue(null);
+      const txReferrerFindUnique = jest.fn().mockResolvedValue({ id: 'referrer-1' });
+      const txReferralCreate = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+        fn({
+          user: { create: jest.fn().mockResolvedValue(referredUser), findUnique: txReferrerFindUnique },
+          referralRedemption: { create: txReferralCreate },
+        }),
+      );
+
+      await service.verifyOtp('+962799000002', '000000', 'AHMED5');
+      expect(txReferrerFindUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { referralCode: 'AHMED5' } }),
+      );
+      expect(txReferralCreate).toHaveBeenCalledWith({
+        data: { referrerId: 'referrer-1', referredUserId: 'u2' },
+      });
     });
   });
 

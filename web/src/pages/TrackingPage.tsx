@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Phone, MessageCircle, Star } from 'lucide-react';
+import { ChevronLeft, Phone, MessageCircle, Star, Search } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
-import { Card, StatusBadge, Stars, Avatar, ConfirmDialog, Modal, notify } from '../components/shared';
+import {
+  Card, StatusBadge, Stars, Avatar, Modal, notify,
+  ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
+} from '../components/shared';
 import TrackingMap from '../components/TrackingMap';
 
 const STEPS: ReadonlyArray<readonly [string, string]> = [
@@ -20,10 +23,14 @@ export default function TrackingPage() {
   const navigate = useNavigate();
   const [cancelling, setCancelling] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const { data: booking, isLoading, refetch } = useQuery({
     queryKey: ['booking', id],
-    queryFn: () => api.get<Booking & { technicianId: string | null; addressLat: number; addressLng: number }>(`/bookings/${id}`),
+    queryFn: () =>
+      api.get<Booking & { technicianId: string | null; addressLat: number; addressLng: number; discountJod?: string | number }>(
+        `/bookings/${id}`,
+      ),
   });
   const liveStatus = useBookingSocket(id);
   const location = useBookingLocation(id);
@@ -37,10 +44,10 @@ export default function TrackingPage() {
 
   const activeIdx = STEPS.findIndex(([s]) => s === status);
 
-  async function doCancel() {
+  async function doCancel(reason: string) {
     setCancelling(false);
     try {
-      await api.post(`/bookings/${id}/cancel`, { reason: 'تم الإلغاء من التطبيق' });
+      await api.post(`/bookings/${id}/cancel`, { reason });
       notify('تم إلغاء الحجز وإصدار المبلغ المسترد', 'success');
       void refetch();
     } catch (e) {
@@ -77,6 +84,18 @@ export default function TrackingPage() {
         )}
       </div>
 
+      {/* Dispatch-in-progress: no technician assigned yet */}
+      {status === 'CONFIRMED' && !booking.technicianId && (
+        <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl" style={{ background: '#E8F1FE' }}>
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ background: '#1366D6' }} />
+            <span className="relative inline-flex rounded-full h-3 w-3" style={{ background: '#1366D6' }} />
+          </span>
+          <Search size={18} color="#0E4FA8" />
+          <span style={{ color: '#0E4FA8', fontWeight: 700, fontSize: 14 }}>نبحث عن أقرب فني…</span>
+        </div>
+      )}
+
       {/* Status stepper */}
       <div className="mt-4 flex items-center justify-between" role="list" aria-label="مراحل الطلب">
         {STEPS.map(([s, label], i) => (
@@ -106,7 +125,7 @@ export default function TrackingPage() {
               {tech.vehicle && <div style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>{tech.vehicle}</div>}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button onClick={() => notify('جارٍ الاتصال (رقم مُقنّع)')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600, fontSize: 13 }}>
               <Phone size={16} /> اتصال
             </button>
@@ -116,6 +135,7 @@ export default function TrackingPage() {
             <button onClick={() => setShowReviews(true)} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600, fontSize: 13 }}>
               <Star size={16} /> التقييمات
             </button>
+            <ReportTechnicianButton onClick={() => setShowReport(true)} />
           </div>
         </Card>
       )}
@@ -130,18 +150,20 @@ export default function TrackingPage() {
           عرض الإيصال وتقييم الخدمة
         </button>
       )}
-
       {cancelling && (
-        <ConfirmDialog
-          title="هل أنت متأكد من إلغاء الحجز؟"
-          body="سيتم إصدار المبلغ المسترد وفق سياسة الاسترجاع."
-          confirmLabel="تأكيد الإلغاء"
-          onConfirm={() => void doCancel()}
+        <CancelBookingModal
+          priceJod={Number(booking.service?.priceJod ?? booking.totalJod)}
+          discountJod={Number(booking.discountJod ?? 0)}
+          totalJod={Number(booking.totalJod)}
+          onConfirm={(reason) => void doCancel(reason)}
           onCancel={() => setCancelling(false)}
         />
       )}
       {showReviews && booking.technicianId && (
         <TechReviewsModal technicianId={booking.technicianId} onClose={() => setShowReviews(false)} />
+      )}
+      {showReport && (
+        <ReportTechnicianModal bookingId={id} technicianId={booking.technicianId} onClose={() => setShowReport(false)} />
       )}
     </main>
   );

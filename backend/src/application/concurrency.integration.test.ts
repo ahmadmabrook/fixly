@@ -18,6 +18,7 @@ afterAll(async () => {
   // Children first (FK order), then parents.
   await prisma.promoRedemption.deleteMany({ where: { userId: { in: created.userIds } } });
   await prisma.outboxEvent.deleteMany({ where: { booking: { customerId: { in: created.userIds } } } });
+  await prisma.bookingStatusHistory.deleteMany({ where: { booking: { customerId: { in: created.userIds } } } });
   await prisma.booking.deleteMany({ where: { customerId: { in: created.userIds } } });
   await prisma.withdrawalRequest.deleteMany({ where: { technicianId: { in: created.techProfileIds } } });
   await prisma.payout.deleteMany({ where: { technicianId: { in: created.techProfileIds } } });
@@ -29,8 +30,6 @@ afterAll(async () => {
 
 describe('promo redemption cap under concurrency', () => {
   it('lets exactly ONE of many parallel bookings redeem a one-use code', async () => {
-    // CI runners can be slow under load — extend from the default 5s.
-    jest.setTimeout(15_000);
     const user = await prisma.user.create({ data: { phone: `+962799${String(tag).slice(-6)}`, name: 'Race C', role: 'CUSTOMER' } });
     created.userIds.push(user.id);
     const promo = await prisma.promoCode.create({
@@ -58,7 +57,7 @@ describe('promo redemption cap under concurrency', () => {
     expect(redemptions).toBe(1);
     expect(fresh.timesRedeemed).toBe(1);
     expect(fulfilled.filter((r) => Number((r as PromiseFulfilledResult<{ discountJod: unknown }>).value.discountJod) > 0)).toHaveLength(1);
-  });
+  }, 15_000);
 });
 
 describe('withdrawal one-pending guard under concurrency', () => {

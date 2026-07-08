@@ -97,3 +97,46 @@ describe('Technicians page (verify flow with confirm)', () => {
     });
   });
 });
+
+describe('Technicians page (detail drawer scorecard + intro video)', () => {
+  it('shows the intro-video link and scorecard metrics once the drawer loads', async () => {
+    loginAsAdmin();
+    const listPayload = {
+      data: [{ id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1', name: 'علي' }, rating: 4.5, totalReviews: 10 }],
+      meta: { total: 1, limit: 50, offset: 0 },
+    };
+    const detailPayload = { data: {
+      id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1', name: 'علي', phone: '0790000000' },
+      rating: 4.5, totalReviews: 10, bio: null, vehicle: null,
+      idDocUrl: null, certificateUrl: null, selfieUrl: null, introVideoUrl: 'https://example.com/video.mp4',
+      services: [], recentReviews: [],
+    } };
+    const scorecardPayload = { data: {
+      onTimeRate: 90, redoRate: 5, complaintRate: 2, acceptanceRate: 88, sampleSizes: {},
+    } };
+
+    const fn = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/scorecard')) {
+        return { ok: true, status: 200, json: async () => scorecardPayload } as Response;
+      }
+      if (typeof url === 'string' && /\/technicians\/tp1$/.test(url)) {
+        return { ok: true, status: 200, json: async () => detailPayload } as Response;
+      }
+      return { ok: true, status: 200, json: async () => listPayload } as Response;
+    });
+    Object.defineProperty(globalThis, 'fetch', { value: fn as unknown as typeof fetch, writable: true, configurable: true });
+
+    const user = userEvent.setup();
+    renderWithProviders(<Technicians />);
+
+    await waitFor(() => expect(screen.getByText('علي')).toBeInTheDocument());
+    await user.click(screen.getByText('تفاصيل'));
+
+    await waitFor(() => expect(screen.getByText('الفيديو التعريفي:')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'عرض' })).toHaveAttribute('href', 'https://example.com/video.mp4');
+
+    await waitFor(() => expect(screen.getByText('بطاقة الأداء')).toBeInTheDocument());
+    expect(screen.getByText('90%')).toBeInTheDocument();
+    expect(screen.getByText('88%')).toBeInTheDocument();
+  });
+});

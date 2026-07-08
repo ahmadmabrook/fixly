@@ -7,6 +7,31 @@ import { logger } from '../../shared/logger';
 async function seed() {
   logger.info('Seeding database...');
 
+  // Customer-facing SOP scope per category (Figma "Data reference", CustomerWeb.tsx
+  // SOP record): what the fixed price includes vs. explicitly excludes.
+  const SOP_BY_CATEGORY: Record<string, { sopIncludes: string[]; sopExcludes: string[] }> = {
+    ELECTRICAL: {
+      sopIncludes: ['فحص شامل من فني معتمد', 'إصلاح الأعطال الكهربائية', 'استبدال المفاتيح والقواطع', 'اختبار التشغيل والسلامة'],
+      sopExcludes: ['أعمال التمديد الكامل للمبنى', 'قطع الغيار النادرة (تُسعّر منفصلة)', 'الأعمال خارج الشقة'],
+    },
+    PLUMBING: {
+      sopIncludes: ['كشف التسريبات', 'إصلاح الحنفيات والصمامات', 'فك وتركيب السيفون', 'اختبار الضغط'],
+      sopExcludes: ['تكسير البلاط والجدران', 'استبدال الخزانات الكاملة', 'شبكات الصرف الرئيسية'],
+    },
+    HVAC: {
+      sopIncludes: ['تنظيف الفلاتر والوحدة الداخلية', 'فحص غاز التبريد', 'تنظيف مصرف المياه', 'اختبار كفاءة التبريد'],
+      sopExcludes: ['شحن الغاز (يُسعّر منفصلاً)', 'تركيب وحدات جديدة', 'تمديدات النحاس'],
+    },
+    PAINTING: {
+      sopIncludes: ['تجهيز السطح', 'طبقتان من الدهان', 'حماية الأرضيات والأثاث'],
+      sopExcludes: ['أعمال الجبس والديكور', 'الترميم الإنشائي'],
+    },
+    CARPENTRY: {
+      sopIncludes: ['تجميع القطعة', 'التثبيت على الجدار', 'التخلص من مواد التغليف'],
+      sopExcludes: ['أعمال النجارة المخصصة', 'نقل الأثاث الثقيل بين الطوابق'],
+    },
+  };
+
   // Services catalog (fixed-price). Prices/names match the product spec exactly
   // (Figma "Data reference"): the catalogue the customer sees upfront.
   const SERVICE_CATALOG = [
@@ -18,14 +43,15 @@ async function seed() {
   ];
 
   const services = await Promise.all(
-    SERVICE_CATALOG.map((s) =>
-      prisma.service.upsert({
+    SERVICE_CATALOG.map((s) => {
+      const sop = SOP_BY_CATEGORY[s.category] ?? { sopIncludes: [], sopExcludes: [] };
+      return prisma.service.upsert({
         where: { id: s.id },
         // Keep the catalogue authoritative: re-running the seed corrects prices.
-        update: { nameAr: s.nameAr, nameEn: s.nameEn, category: s.category, priceJod: s.priceJod, durationMin: s.durationMin },
-        create: s,
-      }),
-    ),
+        update: { nameAr: s.nameAr, nameEn: s.nameEn, category: s.category, priceJod: s.priceJod, durationMin: s.durationMin, ...sop },
+        create: { ...s, ...sop },
+      });
+    }),
   );
 
   logger.info({ count: services.length }, 'Services seeded');

@@ -1,10 +1,9 @@
 import http from 'http';
 import type { AddressInfo } from 'net';
-import jwt from 'jsonwebtoken';
 import { io as ioClient } from 'socket.io-client';
 import type { Server as SocketServer } from 'socket.io';
 import { createSocketServer } from './server';
-import { env } from '../../shared/env';
+import { signJwt } from '../../shared/jwt';
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
@@ -14,10 +13,9 @@ jest.mock('../../infrastructure/database/prisma', () => ({
 }));
 
 function sign(claims: { typ: 'user' | 'admin'; audience: string }): string {
-  return jwt.sign(
+  return signJwt(
     { userId: 'u1', role: claims.typ === 'admin' ? 'ADMIN' : 'CUSTOMER', typ: claims.typ },
-    env().JWT_SECRET,
-    { algorithm: 'HS256', issuer: 'fixly', audience: claims.audience, expiresIn: '5m' },
+    { issuer: 'fixly', audience: claims.audience, expiresIn: '5m' },
   );
 }
 

@@ -432,6 +432,13 @@ export class PaymentService {
   private async finalizeCapture(paymentId: string, bookingId: string, captured: Prisma.Decimal, captureProviderRef?: string): Promise<boolean> {
     const { fee, net } = splitCommission(captured, env().PLATFORM_COMMISSION_PCT);
     return prisma.$transaction(async (tx) => {
+      // Explicit row lock on the payment before the CAS-guarded update below. Postgres's
+      // UPDATE ... WHERE already takes an implicit row lock (a concurrent capture/webhook
+      // blocks until this transaction commits, then re-evaluates the WHERE and sees 0 rows),
+      // so this is defense-in-depth rather than a behavior change — it makes the ledger's
+      // single-writer-per-payment invariant explicit rather than relying on that implicit
+      // semantic, and ensures the ledger-entry writes below are covered by the same lock.
+      await tx.$queryRaw`SELECT id FROM payments WHERE id = ${paymentId}::uuid FOR UPDATE`;
       const claim = await tx.payment.updateMany({
         where: { id: paymentId, status: 'PRE_AUTHORIZED' },
         // Persist the capture transaction id (when the PSP mints a new one) so later

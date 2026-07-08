@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { Prisma } from '@prisma/client';
 import { authenticate, requireActiveUser, requireRole } from '../middleware/auth';
+import { idempotency } from '../middleware/idempotency';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { BookingService, ADVANCEABLE_TO } from '../../../application/booking/BookingService';
 import { ReviewService } from '../../../application/review/ReviewService';
 import { PaymentService } from '../../../application/payment/PaymentService';
 import { PaymentProviderFactory } from '../../../infrastructure/providers/PaymentProviderFactory';
+import { MaskedCallService } from '../../../application/booking/MaskedCallService';
 import { getDispatchService } from '../../../application/dispatch/DispatchService';
 import { ForbiddenError } from '../../../shared/errors';
 import { env } from '../../../shared/env';
@@ -18,11 +20,16 @@ export const bookingsRouter: Router = Router();
 const bookingService = new BookingService();
 const reviewService = new ReviewService();
 const paymentService = new PaymentService(PaymentProviderFactory.create(), env().PAYMENT_PROVIDER);
+const maskedCallService = new MaskedCallService();
 
 bookingsRouter.use(authenticate, requireActiveUser);
 
 bookingsRouter.post(
   '/',
+  // Money-moving, client-originated creation (§3.1/§3.2/§5.1): an optional
+  // Idempotency-Key header dedupes retries so a network-level retry never
+  // creates a second booking. No-op when the header is absent.
+  idempotency('bookings.create'),
   validate([
     // NOTE: not .isUUID() — seeded service IDs use a non-conformant version nibble (0).
     body('serviceId').isString().trim().notEmpty(),
@@ -158,6 +165,47 @@ bookingsRouter.post(
   }),
 );
 
+// Technician reports the customer as a no-show after arriving. Only valid from
+// ARRIVED; charges the service's callout fee to the customer.
+bookingsRouter.post(
+  '/:id/no-show',
+  requireRole('TECHNICIAN'),
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.noShow(req.params.id, req.user!.userId);
+    res.json({ data: booking });
+  }),
+);
+
+const photoUrlsValidator = body('photoUrls')
+  .isArray({ min: 1, max: 10 })
+  .withMessage('photoUrls must contain 1-10 items');
+const photoUrlValidator = body('photoUrls.*')
+  .isURL({ protocols: ['https'], require_protocol: true })
+  .isLength({ max: 500 });
+
+// Pre-start SOP checklist (server-enforced gate on ARRIVED → IN_PROGRESS).
+bookingsRouter.post(
+  '/:id/checklist/pre-start',
+  requireRole('TECHNICIAN'),
+  validate([param('id').isUUID(), photoUrlsValidator, photoUrlValidator]),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.submitPreStartChecklist(req.params.id, req.user!.userId, req.body.photoUrls);
+    res.json({ data: booking });
+  }),
+);
+
+// Pre-close SOP checklist (server-enforced gate on completion).
+bookingsRouter.post(
+  '/:id/checklist/pre-close',
+  requireRole('TECHNICIAN'),
+  validate([param('id').isUUID(), photoUrlsValidator, photoUrlValidator]),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.submitPreCloseChecklist(req.params.id, req.user!.userId, req.body.photoUrls);
+    res.json({ data: booking });
+  }),
+);
+
 bookingsRouter.post(
   '/:id/complete',
   validate([param('id').isUUID()]),
@@ -234,6 +282,17 @@ bookingsRouter.get(
   asyncHandler(async (req, res) => {
     const items = await bookingService.listAdditionalWork(req.params.id, req.user!.userId);
     res.json({ data: items });
+  }),
+);
+
+// Masked calling (Twilio Proxy): either party (customer or the assigned technician)
+// gets a proxy number to dial the other without either side seeing the real number.
+bookingsRouter.post(
+  '/:id/masked-call',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const result = await maskedCallService.createSession(req.params.id, req.user!.userId);
+    res.json({ data: result });
   }),
 );
 

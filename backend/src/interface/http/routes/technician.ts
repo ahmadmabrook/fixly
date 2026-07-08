@@ -25,6 +25,12 @@ technicianRouter.post(
     body('idDocUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
     body('certificateUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
     body('selfieUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('introVideoUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    // Onboarding consent (ToS/SOP agreement) — must be explicitly accepted.
+    body('agreementAccepted').isBoolean().toBoolean(),
+    // Jordanian national ID: digits only. Encrypted at rest (TechnicianProfile.nationalIdEnc);
+    // never returned by any read path.
+    body('nationalId').optional({ nullable: true }).isString().trim().isLength({ min: 5, max: 20 }).matches(/^\d+$/),
   ]),
   asyncHandler(async (req, res) => {
     const profile = await technicianService.apply(req.user!.userId, {
@@ -35,6 +41,9 @@ technicianRouter.post(
       idDocUrl: req.body.idDocUrl ?? undefined,
       certificateUrl: req.body.certificateUrl ?? undefined,
       selfieUrl: req.body.selfieUrl ?? undefined,
+      introVideoUrl: req.body.introVideoUrl ?? undefined,
+      agreementAccepted: req.body.agreementAccepted,
+      nationalId: req.body.nationalId ?? undefined,
     });
     res.status(201).json({ data: profile });
   }),
@@ -87,7 +96,14 @@ technicianRouter.post(
   '/withdrawals',
   validate([
     body('amountJod').isFloat({ min: 20 }).toFloat(),
-    body('iban').optional({ nullable: true }).isString().trim().isLength({ max: 40 }),
+    // Optional here (falls back to the saved profile IBAN), but when supplied it
+    // must be a valid Jordan IBAN — same money-destination check as bank-account.
+    body('iban')
+      .optional({ nullable: true })
+      .isString()
+      .customSanitizer((v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, '').toUpperCase() : v))
+      .isIBAN({ whitelist: ['JO'] })
+      .withMessage('رقم IBAN غير صالح'),
     body('bankName').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
   ]),
   asyncHandler(async (req, res) => {
@@ -110,5 +126,84 @@ technicianRouter.post(
   validate([body('videoUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 })]),
   asyncHandler(async (req, res) => {
     res.json({ data: await technicianService.setIntroVideo(req.user!.userId, req.body.videoUrl) });
+  }),
+);
+
+// GET /technician/scorecard — self quality metrics (on-time/redo/complaint/acceptance rates).
+technicianRouter.get(
+  '/scorecard',
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.getMyScorecard(req.user!.userId) });
+  }),
+);
+
+// GET /technician/notification-preferences — 4 toggles (Figma TechNotifications).
+technicianRouter.get(
+  '/notification-preferences',
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.getNotificationPrefs(req.user!.userId) });
+  }),
+);
+
+// PATCH /technician/notification-preferences — partial update.
+technicianRouter.patch(
+  '/notification-preferences',
+  validate([
+    body('newJobRequests').optional().isBoolean().toBoolean(),
+    body('reminders').optional().isBoolean().toBoolean(),
+    body('earningsUpdates').optional().isBoolean().toBoolean(),
+    body('promotions').optional().isBoolean().toBoolean(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const input: Partial<{ newJobRequests: boolean; reminders: boolean; earningsUpdates: boolean; promotions: boolean }> = {};
+    if (req.body.newJobRequests !== undefined) input.newJobRequests = req.body.newJobRequests;
+    if (req.body.reminders !== undefined) input.reminders = req.body.reminders;
+    if (req.body.earningsUpdates !== undefined) input.earningsUpdates = req.body.earningsUpdates;
+    if (req.body.promotions !== undefined) input.promotions = req.body.promotions;
+    res.json({ data: await technicianService.updateNotificationPrefs(req.user!.userId, input) });
+  }),
+);
+
+// GET /technician/bank-account — saved payout bank details.
+technicianRouter.get(
+  '/bank-account',
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.getBankAccount(req.user!.userId) });
+  }),
+);
+
+// PATCH /technician/bank-account — persist bank details independent of a withdrawal.
+technicianRouter.patch(
+  '/bank-account',
+  validate([
+    // Real payout destination — validate format + mod-97 checksum (not just a
+    // non-empty string), restricted to Jordan IBANs (JO + 28 chars). Normalise
+    // whitespace/case first so the persisted value is canonical regardless of
+    // how the technician typed it (e.g. spaced groups, lowercase).
+    body('iban')
+      .isString()
+      .customSanitizer((v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, '').toUpperCase() : v))
+      .notEmpty()
+      .isIBAN({ whitelist: ['JO'] })
+      .withMessage('رقم IBAN غير صالح'),
+    body('bankName').isString().trim().notEmpty().isLength({ max: 120 }),
+  ]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await technicianService.updateBankAccount(req.user!.userId, req.body.iban, req.body.bankName) });
+  }),
+);
+
+// PATCH /technician/services-pricing — post-approval edit of services + hourly rate.
+// Onboarding's apply() locks once APPROVED; this is the separate, additive path.
+technicianRouter.patch(
+  '/services-pricing',
+  validate([
+    body('serviceIds').isArray({ min: 1, max: 10 }),
+    body('serviceIds.*').isString().trim().notEmpty(),
+    body('hourlyRateJod').isFloat({ min: 40, max: 60 }).toFloat(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const profile = await technicianService.updateServicesPricing(req.user!.userId, req.body.serviceIds, req.body.hourlyRateJod);
+    res.json({ data: profile });
   }),
 );

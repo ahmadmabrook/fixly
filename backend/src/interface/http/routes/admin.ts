@@ -31,6 +31,25 @@ const BOOKING_STATUSES = Object.values(BookingStatus);
 const PAYOUT_STATUSES = Object.values(PayoutStatus);
 const TECHNICIAN_STATUSES = Object.values(TechnicianStatus);
 
+// Hard cap for the bookings CSV export — bounds memory regardless of filters
+// (unlike the paginated list endpoint, this isn't capped at a "page size").
+const BOOKINGS_CSV_MAX_ROWS = 5000;
+
+/** Serialise a CSV field safely. Two concerns for free-text columns (names,
+ *  phones) that the numeric-only financial.csv report doesn't have:
+ *   1. CSV quoting — quote if the value contains a comma, quote, or newline and
+ *      double any embedded quotes (RFC 4180).
+ *   2. Formula-injection neutralisation — a cell beginning with =, +, -, @ or a
+ *      leading control char (tab/CR) is interpreted as a formula by Excel/Sheets
+ *      and can exfiltrate data or run commands when the export is opened. Prefix
+ *      such values with a single quote so they render as literal text. (A phone
+ *      like "+9627..." is exactly this vector and is correctly neutralised.) */
+export function csvField(value: unknown): string {
+  let s = value == null ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export const adminRouter: Router = Router();
 
 const adminService = new AdminService();
@@ -97,6 +116,50 @@ adminRouter.get(
     const status = req.query.status as BookingStatus | undefined;
     const { items, total } = await adminService.listBookings(status, limit, offset);
     res.json({ data: items, meta: { total, limit, offset } });
+  }),
+);
+
+// GET /bookings.csv?status= — server-side CSV export (OPS), same filter as the
+// list endpoint above but capped at BOOKINGS_CSV_MAX_ROWS instead of 200.
+adminRouter.get(
+  '/bookings.csv',
+  requireAdminRole('OPS'),
+  validate([query('status').optional().isIn(BOOKING_STATUSES)]),
+  asyncHandler(async (req, res) => {
+    const status = req.query.status as BookingStatus | undefined;
+    const rows = await adminService.listBookingsForExport(status, BOOKINGS_CSV_MAX_ROWS);
+    const header = 'id,status,customer_name,customer_phone,technician_name,service,total_jod,discount_jod,scheduled_at,completed_at,cancelled_at,created_at';
+    const lines = rows.map((b) =>
+      [
+        b.id,
+        b.status,
+        csvField(b.customer.name ?? ''),
+        csvField(b.customer.phone),
+        csvField(b.technician?.user.name ?? ''),
+        csvField(b.service.nameAr),
+        b.totalJod,
+        b.discountJod,
+        b.scheduledAt?.toISOString() ?? '',
+        b.completedAt?.toISOString() ?? '',
+        b.cancelledAt?.toISOString() ?? '',
+        b.createdAt.toISOString(),
+      ].join(','),
+    );
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="bookings-${status ?? 'all'}.csv"`);
+    res.send([header, ...lines].join('\n'));
+  }),
+);
+
+// GET /bookings/:id — full booking detail for the admin drawer (status history,
+// additional work, payment).
+adminRouter.get(
+  '/bookings/:id',
+  requireAdminRole('OPS'),
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const detail = await adminService.getBookingDetail(req.params.id, req.user!.userId, req.ip);
+    res.json({ data: detail });
   }),
 );
 

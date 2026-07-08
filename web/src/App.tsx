@@ -12,6 +12,7 @@ import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import OnboardingSplash from './components/OnboardingSplash';
+import { OfflineBanner } from './components/shared';
 
 /* ── Route-level code splitting ─────────────────────────────────────────────── */
 const Landing = lazy(() => import('./pages/Landing'));
@@ -24,6 +25,7 @@ const BookingDetail = lazy(() => import('./pages/BookingDetail'));
 const TrackingPage = lazy(() => import('./pages/TrackingPage'));
 const GuaranteePage = lazy(() => import('./pages/GuaranteePage'));
 const Account = lazy(() => import('./pages/Account'));
+const ReferralPage = lazy(() => import('./pages/ReferralPage'));
 const QuotesPage = lazy(() => import('./pages/QuotesPage'));
 const TechPortal = lazy(() => import('./pages/tech/TechPortal'));
 
@@ -88,6 +90,7 @@ export default function App() {
     <BrowserRouter>
       <BookingSocketProvider>
         <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
+          <OfflineBanner />
           <OnboardingSplash />
           <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
 
@@ -127,6 +130,10 @@ export default function App() {
                 <Route
                   path="/account"
                   element={authed ? <Account /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/referral"
+                  element={authed ? <ReferralPage /> : <Navigate to="/" replace />}
                 />
                 <Route
                   path="/quotes"

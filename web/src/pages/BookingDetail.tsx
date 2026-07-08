@@ -3,7 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Star, Navigation, ShieldCheck, Download } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, AdditionalWorkItem } from '../lib/api';
-import { Card, ServiceIcon, StatusBadge, InlineRow, ConfirmDialog, Modal, notify } from '../components/shared';
+import {
+  Card, ServiceIcon, StatusBadge, InlineRow, Modal, notify,
+  ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
+} from '../components/shared';
 
 const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
 const TIME_SLOTS = Array.from({ length: 13 }, (_, i) => {
@@ -100,7 +103,7 @@ ${rows}
 </body></html>`;
 }
 
-function downloadReceipt(b: FullBooking, extras: AdditionalWorkItem[]) {
+export function downloadReceipt(b: FullBooking, extras: AdditionalWorkItem[]) {
   const html = generateReceiptHtml(b, extras);
   const w = window.open('', '_blank');
   if (!w) {
@@ -130,6 +133,7 @@ export default function BookingDetail() {
   const [comment, setComment] = useState('');
   const [showRate, setShowRate] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [reschedule, setReschedule] = useState('');
 
   const { data: b, isLoading, refetch } = useQuery({
@@ -187,10 +191,10 @@ export default function BookingDetail() {
     }
   }
 
-  async function doCancel() {
+  async function doCancel(reason: string) {
     setCancelling(false);
     try {
-      await api.post(`/bookings/${id}/cancel`, { reason: 'تم الإلغاء من التطبيق' });
+      await api.post(`/bookings/${id}/cancel`, { reason });
       notify('تم إلغاء الحجز وإصدار المبلغ المسترد', 'success');
       void qc.invalidateQueries({ queryKey: ['bookings'] });
       void refetch();
@@ -270,6 +274,9 @@ export default function BookingDetail() {
             <ShieldCheck size={18} /> فتح تذكرة ضمان
           </button>
         )}
+        {b.status === 'COMPLETED' && (
+          <ReportTechnicianButton onClick={() => setShowReport(true)} className="w-full h-12" label="الإبلاغ عن الفني" />
+        )}
         {isScheduled && (
           <Card className="p-4">
             <label className="block" style={{ fontSize: 13, color: '#475569' }}>تغيير الموعد</label>
@@ -321,13 +328,16 @@ export default function BookingDetail() {
       )}
 
       {cancelling && (
-        <ConfirmDialog
-          title="هل أنت متأكد من إلغاء الحجز؟"
-          body="سيتم إصدار المبلغ المسترد وفق سياسة الاسترجاع."
-          confirmLabel="تأكيد الإلغاء"
-          onConfirm={() => void doCancel()}
+        <CancelBookingModal
+          priceJod={price}
+          discountJod={discount}
+          totalJod={Number(b.totalJod)}
+          onConfirm={(reason) => void doCancel(reason)}
           onCancel={() => setCancelling(false)}
         />
+      )}
+      {showReport && (
+        <ReportTechnicianModal bookingId={id} technicianId={b.technicianId} onClose={() => setShowReport(false)} />
       )}
     </main>
   );

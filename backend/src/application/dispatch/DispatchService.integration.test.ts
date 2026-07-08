@@ -31,6 +31,7 @@ afterAll(async () => {
   await prisma.notification.deleteMany({ where: { userId: { in: created.userIds } } }).catch(() => undefined);
   await prisma.outboxEvent.deleteMany({ where: { bookingId: { in: created.bookingIds } } }).catch(() => undefined);
   await prisma.payment.deleteMany({ where: { bookingId: { in: created.bookingIds } } }).catch(() => undefined);
+  await prisma.bookingStatusHistory.deleteMany({ where: { bookingId: { in: created.bookingIds } } }).catch(() => undefined);
   await prisma.booking.deleteMany({ where: { id: { in: created.bookingIds } } }).catch(() => undefined);
   await prisma.technicianProfile.deleteMany({ where: { id: { in: created.techProfileIds } } }).catch(() => undefined);
   await prisma.user.deleteMany({ where: { id: { in: created.userIds } } }).catch(() => undefined);

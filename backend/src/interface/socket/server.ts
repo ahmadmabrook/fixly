@@ -1,8 +1,8 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
+import { verifyJwt } from '../../shared/jwt';
 import { prisma } from '../../infrastructure/database/prisma';
 import type { AuthPayload } from '../http/middleware/auth';
 
@@ -45,11 +45,10 @@ export function createSocketServer(httpServer: HttpServer) {
     try {
       // Mirror the HTTP verifier exactly: pin alg + issuer + audience, and only
       // accept user-class tokens (admins have no socket surface).
-      const payload = jwt.verify(token, env().JWT_SECRET, {
-        algorithms: ['HS256'],
+      const payload = verifyJwt<AuthPayload>(token, {
         issuer: 'fixly',
         audience: 'fixly-app',
-      }) as AuthPayload;
+      });
       if (payload.typ !== 'user') return next(new Error('Unauthorized'));
       socket.data.user = payload;
       next();

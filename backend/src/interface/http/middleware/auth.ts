@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { UnauthorizedError, ForbiddenError } from '../../../shared/errors';
-import { env } from '../../../shared/env';
+import { verifyJwt } from '../../../shared/jwt';
 import { prisma } from '../../../infrastructure/database/prisma';
 
 export interface AuthPayload {
@@ -27,11 +26,10 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
 
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, env().JWT_SECRET, {
-      algorithms: ['HS256'],
+    const payload = verifyJwt<AuthPayload>(token, {
       issuer: 'fixly',
       audience: ['fixly-app', 'fixly-admin'], // reject tokens without a known audience
-    }) as AuthPayload;
+    });
     req.user = payload;
     next();
   } catch {

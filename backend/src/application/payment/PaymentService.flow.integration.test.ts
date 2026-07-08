@@ -14,7 +14,7 @@ import { splitCommission, toDecimal } from '../../shared/money';
  */
 const bookingService = new BookingService();
 const payment = new PaymentService(new MockPaymentProvider());
-const COMMISSION = 15;
+const COMMISSION = 20;
 
 let customerId: string;
 let techUserId: string;
@@ -45,6 +45,7 @@ afterAll(async () => {
   await prisma.payment.deleteMany({ where: { bookingId: { in: createdBookingIds } } });
   await prisma.outboxEvent.deleteMany({ where: { bookingId: { in: createdBookingIds } } });
   await prisma.notification.deleteMany({ where: { bookingId: { in: createdBookingIds } } });
+  await prisma.bookingStatusHistory.deleteMany({ where: { bookingId: { in: createdBookingIds } } });
   await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
   await prisma.technicianProfile.deleteMany({ where: { id: techProfileId } });
   await prisma.user.deleteMany({ where: { id: { in: [customerId, techUserId] } } });

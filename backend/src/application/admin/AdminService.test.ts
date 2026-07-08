@@ -10,16 +10,31 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     adminAuditLog: { create: jest.fn() },
     adminUser: { findUnique: jest.fn() },
     technicianProfile: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn(), aggregate: jest.fn() },
-    booking: { count: jest.fn(), aggregate: jest.fn(), groupBy: jest.fn() },
+    booking: { count: jest.fn(), aggregate: jest.fn(), groupBy: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+    bookingStatusHistory: { findMany: jest.fn() },
+    additionalWorkItem: { findMany: jest.fn() },
     service: { findMany: jest.fn() },
     guaranteeTicket: { count: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
 
-jest.mock('../../shared/env', () => ({
-  env: () => ({ PAYMENT_PROVIDER: 'mock', JWT_SECRET: 'x'.repeat(32), JWT_ACCESS_EXPIRES_IN: '15m' }),
-}));
+jest.mock('../../shared/env', () => {
+  const { generateKeyPairSync } = require('crypto');
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    publicKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
+  return {
+    env: () => ({
+      PAYMENT_PROVIDER: 'mock',
+      JWT_SECRET: 'x'.repeat(32),
+      JWT_ACCESS_EXPIRES_IN: '15m',
+      JWT_KEYS: { current: { kid: 'test-kid', privateKey, publicKey } },
+    }),
+  };
+});
 
 const mockedPrisma = prisma as unknown as {
   payout: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; update: jest.Mock; count: jest.Mock };
@@ -27,7 +42,9 @@ const mockedPrisma = prisma as unknown as {
   adminAuditLog: { create: jest.Mock };
   adminUser: { findUnique: jest.Mock };
   technicianProfile: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock; aggregate: jest.Mock };
-  booking: { count: jest.Mock; aggregate: jest.Mock; groupBy: jest.Mock };
+  booking: { count: jest.Mock; aggregate: jest.Mock; groupBy: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
+  bookingStatusHistory: { findMany: jest.Mock };
+  additionalWorkItem: { findMany: jest.Mock };
   service: { findMany: jest.Mock };
   guaranteeTicket: { count: jest.Mock };
   $transaction: jest.Mock;
@@ -375,6 +392,77 @@ describe('AdminService.getStats (bookingsByService)', () => {
     expect(stats.bookingsByService).toEqual([]);
     expect(mockedPrisma.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: { in: [] } } }),
+    );
+  });
+});
+
+describe('AdminService.getBookingDetail', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AdminService({ disburse: jest.fn(), getStatus: jest.fn() } as unknown as IPayoutProvider);
+  });
+
+  it('throws NotFoundError when the booking does not exist', async () => {
+    mockedPrisma.booking.findUnique.mockResolvedValue(null);
+    await expect(service.getBookingDetail('missing', 'admin1')).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('returns a consolidated shape and audits the read', async () => {
+    mockedPrisma.booking.findUnique.mockResolvedValue({
+      id: 'bk1',
+      status: 'COMPLETED',
+      totalJod: 50,
+      customer: { id: 'c1', name: 'Sara', phone: '0790000000' },
+      technician: { id: 't1', rating: 4.8, hourlyRateJod: 45, user: { id: 'u1', name: 'Omar', phone: '0791111111' } },
+      service: { id: 's1', nameAr: 'كهرباء', nameEn: 'Electrical', priceJod: 50, calloutFeeJod: 5, durationMin: 60 },
+      payment: { id: 'pay1', status: 'CAPTURED' },
+    });
+    mockedPrisma.bookingStatusHistory.findMany.mockResolvedValue([{ id: 'h1', toStatus: 'CONFIRMED' }]);
+    mockedPrisma.additionalWorkItem.findMany.mockResolvedValue([{ id: 'aw1', description: 'extra part', amountJod: 10 }]);
+
+    const detail = await service.getBookingDetail('bk1', 'admin1', '1.2.3.4');
+
+    expect(detail.booking.id).toBe('bk1');
+    expect(detail.booking).not.toHaveProperty('payment');
+    expect(detail.statusHistory).toEqual([{ id: 'h1', toStatus: 'CONFIRMED' }]);
+    expect(detail.additionalWork).toEqual([{ id: 'aw1', description: 'extra part', amountJod: 10 }]);
+    expect(detail.payment).toEqual({ id: 'pay1', status: 'CAPTURED' });
+    expect(mockedPrisma.adminAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'booking.view_detail', targetId: 'bk1', actorId: 'admin1' }) }),
+    );
+  });
+
+  it('returns payment: null when the booking has no payment row', async () => {
+    mockedPrisma.booking.findUnique.mockResolvedValue({
+      id: 'bk2', status: 'PENDING', customer: {}, technician: null, service: {}, payment: null,
+    });
+    mockedPrisma.bookingStatusHistory.findMany.mockResolvedValue([]);
+    mockedPrisma.additionalWorkItem.findMany.mockResolvedValue([]);
+
+    const detail = await service.getBookingDetail('bk2', 'admin1');
+    expect(detail.payment).toBeNull();
+  });
+});
+
+describe('AdminService.listBookingsForExport', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AdminService({ disburse: jest.fn(), getStatus: jest.fn() } as unknown as IPayoutProvider);
+  });
+
+  it('passes the status filter and row cap through to the query', async () => {
+    mockedPrisma.booking.findMany.mockResolvedValue([]);
+    await service.listBookingsForExport('COMPLETED', 5000);
+    expect(mockedPrisma.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'COMPLETED' }, take: 5000 }),
+    );
+  });
+
+  it('omits the status filter when none is given', async () => {
+    mockedPrisma.booking.findMany.mockResolvedValue([]);
+    await service.listBookingsForExport(undefined, 5000);
+    expect(mockedPrisma.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, take: 5000 }),
     );
   });
 });

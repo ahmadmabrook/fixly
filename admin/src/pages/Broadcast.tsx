@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Send } from 'lucide-react';
 import { api, BroadcastItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify } from '../components/shared';
 
 const SEGMENTS: ReadonlyArray<readonly [string, string]> = [
   ['ALL', 'الجميع'], ['CUSTOMERS', 'العملاء'], ['TECHNICIANS', 'الفنيون'],
@@ -13,6 +13,7 @@ export default function Broadcast() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [segment, setSegment] = useState('ALL');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-broadcasts'],
@@ -46,12 +47,12 @@ export default function Broadcast() {
           </div>
         </div>
         <div>
-          <label className="block" style={{ fontSize: 13, color: '#64748B' }}>العنوان</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
+          <label htmlFor="broadcast-title" className="block" style={{ fontSize: 13, color: '#64748B' }}>العنوان</label>
+          <input id="broadcast-title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
         </div>
         <div>
-          <label className="block" style={{ fontSize: 13, color: '#64748B' }}>النص</label>
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
+          <label htmlFor="broadcast-body" className="block" style={{ fontSize: 13, color: '#64748B' }}>النص</label>
+          <textarea id="broadcast-body" value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
         </div>
         {/* Preview */}
         {(title || body) && (
@@ -60,7 +61,7 @@ export default function Broadcast() {
             <div style={{ color: '#475569', fontSize: 13 }}>{body || 'النص'}</div>
           </div>
         )}
-        <ActionBtn onClick={() => send.mutate()} disabled={!title.trim() || !body.trim() || send.isPending}>
+        <ActionBtn onClick={() => setConfirmOpen(true)} disabled={!title.trim() || !body.trim() || send.isPending}>
           <span className="inline-flex items-center gap-1"><Send size={14} /> إرسال</span>
         </ActionBtn>
       </Card>
@@ -85,6 +86,20 @@ export default function Broadcast() {
           </TableWrapper>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="إرسال الإشعار؟"
+        body={`لا يمكن التراجع عن هذا الإجراء. سيتم إرسال "${title.trim()}" إلى شريحة ${SEGMENTS.find(([k]) => k === segment)?.[1] ?? segment}.`}
+        confirmLabel="إرسال"
+        cancelLabel="إلغاء"
+        confirmVariant="danger"
+        onConfirm={() => {
+          send.mutate();
+          setConfirmOpen(false);
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

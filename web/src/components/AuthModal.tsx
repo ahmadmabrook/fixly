@@ -1,5 +1,6 @@
 import { useState, useId } from 'react';
-import { Phone, KeyRound } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Phone, KeyRound, Gift } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { useDialog } from '../hooks/useDialog';
@@ -34,10 +35,14 @@ function errorMessage(e: unknown, fallback = 'حدث خطأ'): string {
 }
 
 export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
+  const [params] = useSearchParams();
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('+962');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  // Pre-filled from a `?ref=CODE` deep link (e.g. a shared referral link), but
+  // still editable — the backend only applies it on first-time signup.
+  const [referralCode, setReferralCode] = useState(() => params.get('ref') ?? '');
   const { setTokens } = useAuth();
   const ref = useDialog<HTMLDivElement>(onClose);
   const titleId = useId();
@@ -62,7 +67,11 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       // /auth/refresh), so it's never JS-readable. The access token is kept in
       // memory only. We deliberately do NOT persist any token to localStorage —
       // doing so would re-expose it to XSS, defeating the whole token model.
-      const { accessToken } = await api.post<{ accessToken: string }>('/auth/otp/verify', { phone, code: otp });
+      const { accessToken } = await api.post<{ accessToken: string }>('/auth/otp/verify', {
+        phone,
+        code: otp,
+        referralCode: referralCode.trim() || undefined,
+      });
       setTokens(accessToken, roleFromJwt(accessToken));
       notify('تم تسجيل الدخول بنجاح', 'success');
       onSuccess();
@@ -108,6 +117,19 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                 dir="ltr"
                 aria-label="رقم الهاتف"
                 autoComplete="tel"
+              />
+            </div>
+            <div className="flex items-center gap-2 h-12 px-4 rounded-xl border border-slate-200 bg-slate-50">
+              <Gift size={18} color="#94A3B8" />
+              <input
+                type="text"
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                className="flex-1 bg-transparent outline-none"
+                style={{ fontSize: 14, direction: 'ltr' }}
+                placeholder="رمز الإحالة (اختياري)"
+                dir="ltr"
+                aria-label="رمز الإحالة"
               />
             </div>
             <button

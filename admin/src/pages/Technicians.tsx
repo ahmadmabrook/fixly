@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck } from 'lucide-react';
-import { api, TechnicianItem, TechnicianDetail } from '../lib/api';
+import { api, TechnicianItem, TechnicianDetail, TechnicianScorecard } from '../lib/api';
 import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
@@ -126,6 +126,11 @@ export default function Technicians() {
 
 function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { data: t, isLoading } = useQuery({ queryKey: ['admin-technician', id], queryFn: () => api.get<TechnicianDetail>(`/technicians/${id}`) });
+  const { data: scorecard } = useQuery({
+    queryKey: ['admin-technician-scorecard', id],
+    queryFn: () => api.get<TechnicianScorecard>(`/technicians/${id}/scorecard`),
+    enabled: !!t,
+  });
   const [reason, setReason] = useState('');
   // Pending confirmation for a destructive technician action (reject / suspend).
   const [confirmAction, setConfirmAction] = useState<'reject' | 'suspend' | null>(null);
@@ -139,7 +144,9 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     onSuccess: () => { notify('تم إيقاف الفني', 'success'); onChanged(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
-  const docs: Array<[string, string | null | undefined]> = t ? [['الهوية', t.idDocUrl], ['الشهادة', t.certificateUrl], ['صورة شخصية', t.selfieUrl]] : [];
+  const docs: Array<[string, string | null | undefined]> = t
+    ? [['الهوية', t.idDocUrl], ['الشهادة', t.certificateUrl], ['صورة شخصية', t.selfieUrl], ['الفيديو التعريفي', t.introVideoUrl]]
+    : [];
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
       <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
@@ -158,6 +165,17 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
               <div><span style={{ color: '#64748B' }}>المركبة:</span> {t.vehicle ?? '—'}</div>
               <div><span style={{ color: '#64748B' }}>التقييم:</span> {Number(t.rating).toFixed(1)} ({t.totalReviews})</div>
             </div>
+            {scorecard && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>بطاقة الأداء</div>
+                <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1" style={{ fontSize: 13 }}>
+                  <div><span style={{ color: '#64748B' }}>الالتزام بالوقت:</span> {Math.round(scorecard.onTimeRate)}%</div>
+                  <div><span style={{ color: '#64748B' }}>إعادة/ضمان:</span> {Math.round(scorecard.redoRate)}%</div>
+                  <div><span style={{ color: '#64748B' }}>الشكاوى:</span> {Math.round(scorecard.complaintRate)}%</div>
+                  <div><span style={{ color: '#64748B' }}>معدل القبول:</span> {Math.round(scorecard.acceptanceRate)}%</div>
+                </div>
+              </div>
+            )}
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>الخدمات</div>
               <div className="mt-1 flex flex-wrap gap-1">

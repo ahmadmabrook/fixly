@@ -50,7 +50,7 @@ jest.mock('../../../application/payment/PaymentService', () => ({ PaymentService
 jest.mock('../../../infrastructure/providers/PaymentProviderFactory', () => ({
   PaymentProviderFactory: { create: jest.fn(() => ({})), requiresHostedCheckout: jest.fn(() => false) },
 }));
-jest.mock('../../../shared/env', () => ({ env: () => ({ PAYMENT_PROVIDER: 'mock' }) }));
+jest.mock('../../../shared/env', () => ({ env: () => ({ PAYMENT_PROVIDER: 'mock', MASKED_CALL_PROVIDER: 'mock' }) }));
 
 const { bookingsRouter } = require('./bookings');
 

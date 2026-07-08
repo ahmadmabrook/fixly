@@ -1165,7 +1165,7 @@ Same envelopes, auth, and error codes as §3.1–§3.2; `Idempotency-Key` requir
 - [x] **XSS:** React auto-escaping; CSP header; sanitize user HTML (DOMPurify) in admin views.
 - [x] **CORS:** allowlist (`app.fixly.jo`, `admin.fixly.jo`); credentials gated.
 - [x] **Rate limiting:** Redis token-bucket per IP + per user (see API table). OTP endpoints hard-capped (10/min/IP, 5/hr/phone).
-- [x] **CSRF:** API calls use the Bearer access token (immune). The refresh cookie is `SameSite=Strict` + a double-submit CSRF token guards `/auth/refresh`. Admin panel = same pattern.
+- [x] **CSRF:** API calls use the Bearer access token (immune). The refresh cookie is `httpOnly` + `SameSite=Strict`, which alone blocks cross-site submission — no separate double-submit token is issued. Admin panel = same pattern.
 - [x] **File uploads:** **R2 presigned PUT** (S3-compatible), content-type + size validated, private bucket, served via Cloudflare signed URLs. (AV scanning deferred to scale-up — not required at MVP volume.)
 - [x] **Secrets:** **SSM Parameter Store (SecureString, free)** + IAM role; injected at container start, not baked into images; `.env` git-ignored. JWT private key (PEM) loaded from Parameter Store as a file, not an env var.
 - [x] **WAF / DDoS:** Cloudflare (free) managed rules + rate limiting + DDoS + bot mitigation at the edge — sheds abuse before it reaches the origin.

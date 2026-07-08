@@ -181,6 +181,72 @@ describe('admin refund route', () => {
   });
 });
 
+describe('GET /admin/bookings/:id', () => {
+  const SOME_UUID = '99999999-9999-4999-8999-999999999999';
+
+  it('rejects an unauthenticated request (401)', async () => {
+    await request(app).get(`/api/v1/admin/bookings/${SOME_UUID}`).expect(401);
+  });
+
+  it('returns 404 for a booking that does not exist', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get(`/api/v1/admin/bookings/${SOME_UUID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns the consolidated booking/statusHistory/additionalWork/payment shape for a real booking', async () => {
+    const token = await adminLogin();
+    const list = await request(app)
+      .get('/api/v1/admin/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(list.body.data.length).toBeGreaterThan(0);
+    const bookingId = list.body.data[0].id;
+
+    const res = await request(app)
+      .get(`/api/v1/admin/bookings/${bookingId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.booking.id).toBe(bookingId);
+    expect(Array.isArray(res.body.data.statusHistory)).toBe(true);
+    expect(Array.isArray(res.body.data.additionalWork)).toBe(true);
+    expect(res.body.data).toHaveProperty('payment');
+  });
+});
+
+describe('GET /admin/bookings.csv', () => {
+  it('rejects an unauthenticated request (401)', async () => {
+    await request(app).get('/api/v1/admin/bookings.csv').expect(401);
+  });
+
+  it('returns a CSV with a header row and Content-Disposition attachment', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/bookings.csv')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="bookings-all\.csv"/);
+    expect(res.text.split('\n')[0]).toBe(
+      'id,status,customer_name,customer_phone,technician_name,service,total_jod,discount_jod,scheduled_at,completed_at,cancelled_at,created_at',
+    );
+  });
+
+  it('honors the status filter', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/bookings.csv?status=COMPLETED')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.headers['content-disposition']).toMatch(/bookings-COMPLETED\.csv/);
+  });
+});
+
 describe('admin actions', () => {
   it('verifies a technician via POST /technicians/:id/verify', async () => {
     const token = await adminLogin();

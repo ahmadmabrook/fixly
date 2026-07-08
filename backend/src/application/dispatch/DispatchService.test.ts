@@ -1,12 +1,14 @@
 import { DispatchService } from './DispatchService';
 import { prisma } from '../../infrastructure/database/prisma';
-import { redis } from '../../infrastructure/cache/redis';
+import { redis, pruneStaleTechnicians } from '../../infrastructure/cache/redis';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 jest.mock('../../infrastructure/cache/redis', () => ({
-  redis: { set: jest.fn(), del: jest.fn() },
+  redis: { set: jest.fn(), del: jest.fn(), geosearch: jest.fn() },
+  pruneStaleTechnicians: jest.fn(),
+  TECH_LOCATIONS_KEY: 'tech:locations',
 }));
 
 // Fixed, deterministic dispatch params so radius maths are predictable:
@@ -23,7 +25,7 @@ jest.mock('../../shared/env', () => ({
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
-    technicianProfile: { findMany: jest.fn(), findUnique: jest.fn() },
+    technicianProfile: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     booking: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     payment: { findUnique: jest.fn() },
     dispatchOffer: { findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn(), create: jest.fn(), createMany: jest.fn() },
@@ -34,8 +36,9 @@ jest.mock('../../infrastructure/database/prisma', () => ({
 }));
 
 const mockedRedis = redis as jest.Mocked<typeof redis>;
+const mockedPruneStaleTechnicians = pruneStaleTechnicians as jest.Mock;
 const mockedPrisma = prisma as unknown as {
-  technicianProfile: { findMany: jest.Mock; findUnique: jest.Mock };
+  technicianProfile: { findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
   booking: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
   payment: { findUnique: jest.Mock };
   dispatchOffer: { findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock; create: jest.Mock; createMany: jest.Mock };
@@ -71,6 +74,13 @@ describe('DispatchService', () => {
     jest.clearAllMocks();
     mockedRedis.set.mockResolvedValue('OK');
     mockedRedis.del.mockResolvedValue(1 as unknown as number);
+    // Default: Redis GEO "unavailable" so qualifiedTechs falls back to the
+    // Postgres+haversine scan — matches the pre-GEO behaviour the rest of this
+    // suite (startDispatch/advanceRound/reject/exhaustion) was written against.
+    // The dedicated 'qualifiedTechs — Redis GEO' block below overrides this to
+    // exercise the Redis-available path instead.
+    mockedPruneStaleTechnicians.mockResolvedValue(undefined);
+    mockedRedis.geosearch.mockRejectedValue(new Error('ECONNREFUSED'));
     mockedPrisma.notification.create.mockResolvedValue({});
     mockedPrisma.dispatchOffer.create.mockResolvedValue({});
     mockedPrisma.dispatchOffer.updateMany.mockResolvedValue({ count: 0 });
@@ -81,8 +91,8 @@ describe('DispatchService', () => {
     svc = new DispatchService(io.io);
   });
 
-  // ── 1. qualifiedTechs filter ───────────────────────────────────────────────
-  describe('qualifiedTechs', () => {
+  // ── 1. qualifiedTechs filter (Postgres fallback path — Redis GEO down) ──────
+  describe('qualifiedTechs — Postgres fallback (Redis unavailable)', () => {
     it('queries APPROVED + isAvailable + offers serviceId + has location, then filters by radius', async () => {
       mockedPrisma.technicianProfile.findMany.mockResolvedValue([
         { id: 'tp-near', userId: 'u-near', ...NEAR },
@@ -129,6 +139,99 @@ describe('DispatchService', () => {
       ]);
       const at15 = await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 15, []);
       expect(at15.map((t) => t.id)).toEqual(['tp-mid']); // FAR (~60km) excluded
+    });
+  });
+
+  // ── 1b. qualifiedTechs — Redis GEO available (the live path per §2.4) ───────
+  describe('qualifiedTechs — Redis GEO', () => {
+    it('prunes stale technicians, GEOSEARCHes, then resolves candidates by id via Postgres', async () => {
+      mockedRedis.geosearch.mockResolvedValue(['tp-near', 'tp-mid']);
+      mockedPrisma.technicianProfile.findMany.mockResolvedValue([
+        { id: 'tp-near', userId: 'u-near', trustTier: 'STANDARD', ...NEAR },
+        { id: 'tp-mid', userId: 'u-mid', trustTier: 'STANDARD', ...MID },
+      ]);
+
+      // MID (~13km) needs the wider 15km radius to be in range; NEAR (~2km) is in range either way.
+      const result = await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 15, []);
+
+      // Stale technicians pruned before every GEOSEARCH.
+      expect(mockedPruneStaleTechnicians).toHaveBeenCalled();
+      expect(mockedRedis.geosearch).toHaveBeenCalledWith(
+        'tech:locations', 'FROMLONLAT', ORIGIN.lng, ORIGIN.lat, 'BYRADIUS', 15, 'km', 'ASC',
+      );
+      // Cheap by-id lookup, not the old full-table scan.
+      expect(mockedPrisma.technicianProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: { in: ['tp-near', 'tp-mid'] },
+            status: 'APPROVED',
+            isAvailable: true,
+            services: { some: { id: 'svc-1' } },
+          }),
+        }),
+      );
+      expect(result.map((t) => t.id)).toEqual(['tp-near', 'tp-mid']);
+    });
+
+    it('filters out already-offered technician ids from the GEO candidates before querying Postgres', async () => {
+      mockedRedis.geosearch.mockResolvedValue(['tp-near', 'tp-offered']);
+      mockedPrisma.technicianProfile.findMany.mockResolvedValue([
+        { id: 'tp-near', userId: 'u-near', trustTier: 'STANDARD', ...NEAR },
+      ]);
+
+      await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 10, ['tp-offered']);
+
+      expect(mockedPrisma.technicianProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: { in: ['tp-near'] } }) }),
+      );
+    });
+
+    it('short-circuits without a Postgres query when every GEO candidate was already offered', async () => {
+      mockedRedis.geosearch.mockResolvedValue(['tp-offered']);
+      const result = await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 10, ['tp-offered']);
+      expect(result).toEqual([]);
+      expect(mockedPrisma.technicianProfile.findMany).not.toHaveBeenCalled();
+    });
+
+    it('still caps a PROBATION tech to the tighter radius even though GEOSEARCH already bounded by the wider radius', async () => {
+      mockedRedis.geosearch.mockResolvedValue(['tp-mid']);
+      // MID is ~13km out — inside the requested 20km GEOSEARCH radius, but
+      // outside the PROBATION cap (5km, per TrustService.PROBATION_MAX_RADIUS_KM).
+      mockedPrisma.technicianProfile.findMany.mockResolvedValue([
+        { id: 'tp-mid', userId: 'u-mid', trustTier: 'PROBATION', ...MID },
+      ]);
+      const result = await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 20, []);
+      expect(result).toEqual([]);
+    });
+
+    it('falls back to the Postgres scan when GEOSEARCH itself throws (Redis outage)', async () => {
+      mockedRedis.geosearch.mockRejectedValue(new Error('connection lost'));
+      mockedPrisma.technicianProfile.findMany.mockResolvedValue([
+        { id: 'tp-near', userId: 'u-near', trustTier: 'STANDARD', ...NEAR },
+      ]);
+
+      const result = await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 10, []);
+
+      // Fallback query shape: no id-in filter, full eligibility predicate instead.
+      expect(mockedPrisma.technicianProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'APPROVED', isAvailable: true, currentLat: { not: null } }),
+        }),
+      );
+      const where = mockedPrisma.technicianProfile.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('id');
+      expect(result.map((t) => t.id)).toEqual(['tp-near']);
+    });
+
+    it('falls back to the Postgres scan when pruneStaleTechnicians itself throws', async () => {
+      mockedPruneStaleTechnicians.mockRejectedValue(new Error('redis down'));
+      mockedPrisma.technicianProfile.findMany.mockResolvedValue([]);
+
+      await svc.qualifiedTechs('svc-1', ORIGIN.lat, ORIGIN.lng, 10, []);
+
+      expect(mockedRedis.geosearch).not.toHaveBeenCalled();
+      const where = mockedPrisma.technicianProfile.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('id');
     });
   });
 
@@ -377,6 +480,12 @@ describe('DispatchService', () => {
         }),
       );
       expect(advanceSpy).not.toHaveBeenCalled();
+
+      // Consecutive-rejection streak increments on every reject.
+      expect(mockedPrisma.technicianProfile.update).toHaveBeenCalledWith({
+        where: { id: 'tp-1' },
+        data: { consecutiveRejections: { increment: 1 } },
+      });
     });
 
     it('advances immediately when the last OFFERED offer is rejected (zero remain)', async () => {

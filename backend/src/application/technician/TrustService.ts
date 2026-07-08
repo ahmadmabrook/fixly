@@ -4,8 +4,8 @@ import { NotFoundError } from '../../shared/errors';
 
 /** Probation technicians are dispatched only within this radius (§0.2 #1). */
 export const PROBATION_MAX_RADIUS_KM = 5;
-/** Upheld off-platform flags at/above this auto-suspend the technician. */
-export const SUSPEND_FLAG_THRESHOLD = 3;
+/** Upheld off-platform flags at/above this auto-suspend the technician (§0.2 #1: "2 upheld complaints"). */
+export const SUSPEND_FLAG_THRESHOLD = 2;
 
 interface TierInputs {
   rating: { toString(): string } | number;

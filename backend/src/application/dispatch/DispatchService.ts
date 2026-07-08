@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../../infrastructure/database/prisma';
-import { redis } from '../../infrastructure/cache/redis';
+import { redis, pruneStaleTechnicians, TECH_LOCATIONS_KEY } from '../../infrastructure/cache/redis';
 import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
 import { haversineKm } from '../../shared/geo';
@@ -31,8 +31,47 @@ export class DispatchService {
 
   /** APPROVED + available techs offering the service within radiusKm, excluding already-offered.
    *  PROBATION techs (§0.2 #1) are gated to a tighter radius so unproven technicians only
-   *  take nearby jobs while they build a track record — bounding guarantee liability. */
+   *  take nearby jobs while they build a track record — bounding guarantee liability.
+   *
+   *  Live matching reads Redis GEO (§2.4) — candidate IDs from GEOSEARCH, resolved
+   *  against Postgres by id (cheap) rather than the old full-table distance scan.
+   *  Falls back to the Postgres+haversine scan if Redis is unavailable so a Redis
+   *  outage degrades dispatch instead of hard-failing it (mirrors the idempotency
+   *  middleware's fail-open convention). */
   async qualifiedTechs(
+    serviceId: string, lat: number, lng: number,
+    radiusKm: number, excludeTechIds: string[],
+  ) {
+    const redisIds = await this.redisNearbyTechIds(lat, lng, radiusKm);
+    if (redisIds === null) {
+      return this.qualifiedTechsFallback(serviceId, lat, lng, radiusKm, excludeTechIds);
+    }
+
+    const candidateIds = redisIds.filter((id) => !excludeTechIds.includes(id));
+    if (candidateIds.length === 0) return [];
+
+    const techs = await prisma.technicianProfile.findMany({
+      where: {
+        id: { in: candidateIds },
+        status: 'APPROVED',
+        isAvailable: true,
+        services: { some: { id: serviceId } },
+        currentLat: { not: null },
+        currentLng: { not: null },
+      },
+      select: { id: true, userId: true, currentLat: true, currentLng: true, trustTier: true },
+    });
+    // GEOSEARCH already bounded candidates by radiusKm; PROBATION still needs
+    // the tighter cap, which requires the actual distance.
+    return techs.filter((t) => {
+      const cap = t.trustTier === 'PROBATION' ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
+      return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
+    });
+  }
+
+  /** Pre-Redis-GEO implementation — full Postgres scan + in-memory haversine
+   *  filter. Kept as the fallback path for when Redis GEO is unavailable. */
+  private async qualifiedTechsFallback(
     serviceId: string, lat: number, lng: number,
     radiusKm: number, excludeTechIds: string[],
   ) {
@@ -51,6 +90,25 @@ export class DispatchService {
       const cap = t.trustTier === 'PROBATION' ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
       return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
     });
+  }
+
+  /** GEOSEARCH candidate technician ids within radiusKm of (lat,lng), after
+   *  pruning stale (missing heartbeat >30s) technicians (§2.4). Returns null
+   *  if Redis is unavailable so the caller can fall back to Postgres. */
+  private async redisNearbyTechIds(lat: number, lng: number, radiusKm: number): Promise<string[] | null> {
+    try {
+      await pruneStaleTechnicians();
+      const ids = await redis.geosearch(
+        TECH_LOCATIONS_KEY,
+        'FROMLONLAT', lng, lat,
+        'BYRADIUS', radiusKm, 'km',
+        'ASC',
+      );
+      return ids as string[];
+    } catch (err) {
+      logger.warn({ err }, 'qualifiedTechs: Redis GEO search unavailable, falling back to Postgres scan');
+      return null;
+    }
   }
 
   /** Kick off dispatching for a freshly-authorized PENDING booking. */
@@ -192,6 +250,13 @@ export class DispatchService {
     });
     if (updated.count === 0) throw new ConflictError('No active offer for this booking');
     dispatchOffersTotal.inc({ result: 'rejected' });
+
+    // Consecutive-rejection streak (technician app warns at 3+ in a row);
+    // reset to 0 on any accept in BookingService.accept().
+    await prisma.technicianProfile.update({
+      where: { id: profile.id },
+      data: { consecutiveRejections: { increment: 1 } },
+    });
 
     // If zero OFFERED offers remain, advance immediately.
     const remaining = await prisma.dispatchOffer.count({

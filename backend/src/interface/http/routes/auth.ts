@@ -25,9 +25,11 @@ authRouter.post(
   validate([
     body('phone').isMobilePhone('any'),
     body('code').isLength({ min: 6, max: 6 }).isNumeric(),
+    // Optional invite code captured only at signup (ignored for a returning user).
+    body('referralCode').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 20 }),
   ]),
   asyncHandler(async (req, res) => {
-    const { accessToken, refreshToken } = await authService.verifyOtp(req.body.phone, req.body.code);
+    const { accessToken, refreshToken } = await authService.verifyOtp(req.body.phone, req.body.code, req.body.referralCode ?? undefined);
     // Refresh token → httpOnly cookie (never exposed to JS); access token → body.
     setUserRefreshCookie(res, refreshToken);
     res.json({ data: { accessToken } });

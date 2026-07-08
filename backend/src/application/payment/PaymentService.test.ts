@@ -28,6 +28,7 @@ type Tx = {
   dispute: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
   booking: { findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
   outboxEvent: { create: jest.Mock };
+  $queryRaw: jest.Mock;
 };
 
 function makeTx(over: Partial<Record<string, unknown>> = {}): Tx {
@@ -38,6 +39,9 @@ function makeTx(over: Partial<Record<string, unknown>> = {}): Tx {
     dispute: { create: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ id: 'd1', amountJod: new Prisma.Decimal(25) }), update: jest.fn().mockResolvedValue({}) },
     booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1' }), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+    // Explicit row lock taken at the top of finalizeCapture (defense-in-depth
+    // alongside the CAS-guarded updateMany) — a tagged-template no-op here.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     ...over,
   } as Tx;
 }

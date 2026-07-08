@@ -14,30 +14,37 @@ datasource db {
 // ─────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  phone     String   @unique
-  role      UserRole @default(CUSTOMER)
-  name      String?
-  avatarUrl String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone        String   @unique
+  role         UserRole @default(CUSTOMER)
+  name         String?
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  // Short, unique, shareable invite code (§ referrals). Lazily generated on
+  // first access via GET /referrals/me — null until then.
+  referralCode String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   refreshTokens     RefreshToken[]
   deviceTokens      DeviceToken[]
   technicianProfile TechnicianProfile?
-  customerBookings  Booking[]          @relation("CustomerBookings")
+  customerBookings  Booking[]            @relation("CustomerBookings")
   notifications     Notification[]
-  reviewsGiven      Review[]           @relation("ReviewsGiven")
-  reviewsReceived   Review[]           @relation("ReviewsReceived")
+  reviewsGiven      Review[]             @relation("ReviewsGiven")
+  reviewsReceived   Review[]             @relation("ReviewsReceived")
   supportTickets    SupportTicket[]
   addresses         Address[]
   paymentMethods    PaymentMethod[]
   promoRedemptions  PromoRedemption[]
   subscriptions     Subscription[]
   serviceCredits    ServiceCredit[]
-  quotes            BookingQuote[]     @relation("CustomerQuotes")
-  conductReports    ConductReport[]    @relation("ConductReporter")
+  quotes            BookingQuote[]       @relation("CustomerQuotes")
+  conductReports    ConductReport[]      @relation("ConductReporter")
+  // Referrals this user made (as the referrer) / the single redemption row
+  // recording who referred this user in (as the referred new signup).
+  referralsGiven    ReferralRedemption[] @relation("ReferralsGiven")
+  referredBy        ReferralRedemption?  @relation("ReferralsReceived")
 
   // Admin customer list filters by role.
   @@index([role])
@@ -145,15 +152,22 @@ model AdminAuditLog {
 // ─────────────────────────────────────────────
 
 model Service {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nameAr      String
-  nameEn      String
-  category    String
-  priceJod    Decimal  @db.Decimal(10, 3)
-  durationMin Int
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nameAr        String
+  nameEn        String
+  category      String
+  priceJod      Decimal  @db.Decimal(10, 3)
+  // Flat callout/dispatch fee charged to the customer on a technician-initiated
+  // no-show (§ NO_SHOW booking status). Matches the client-side CALLOUT constant.
+  calloutFeeJod Decimal  @default(5.000) @db.Decimal(10, 3)
+  durationMin   Int
+  // Customer-facing SOP scope shown on the service-detail screen: what the
+  // fixed price includes vs. explicitly excludes (Arabic bullet strings).
+  sopIncludes   String[] @default([])
+  sopExcludes   String[] @default([])
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   bookings    Booking[]
   technicians TechnicianProfile[] @relation("TechnicianServices")
@@ -169,48 +183,63 @@ model Service {
 // ─────────────────────────────────────────────
 
 model TechnicianProfile {
-  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId             String           @unique @db.Uuid
-  bio                String?
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String           @unique @db.Uuid
+  bio                   String?
   // Onboarding lifecycle. isVerified is kept (== status APPROVED) for back-compat
   // with existing queries/tests; new code should read `status`.
-  status             TechnicianStatus @default(PENDING)
-  rejectionReason    String?
-  approvedAt         DateTime?
-  isAvailable        Boolean          @default(false)
-  isVerified         Boolean          @default(false)
+  status                TechnicianStatus @default(PENDING)
+  rejectionReason       String?
+  approvedAt            DateTime?
+  isAvailable           Boolean          @default(false)
+  isVerified            Boolean          @default(false)
   // Onboarding documents (uploaded to object storage; URLs only here).
-  idDocUrl           String?
-  certificateUrl     String?
-  selfieUrl          String?
-  vehicle            String?
-  hourlyRateJod      Decimal?         @db.Decimal(10, 3)
-  currentLat         Float?
-  currentLng         Float?
-  locationUpdatedAt  DateTime?
+  idDocUrl              String?
+  certificateUrl        String?
+  selfieUrl             String?
+  vehicle               String?
+  hourlyRateJod         Decimal?         @db.Decimal(10, 3)
+  // AES-256-GCM ciphertext (iv + authTag + ciphertext, see shared/crypto.ts) of the
+  // technician's national ID. Write-only from the API's perspective — no endpoint
+  // ever decrypts and returns this to a client (KYC data never round-trips).
+  nationalIdEnc         Bytes?
+  currentLat            Float?
+  currentLng            Float?
+  locationUpdatedAt     DateTime?
   // Earnings cash-out cooldown (spec: withdraw at most once / 24h).
-  lastWithdrawalAt   DateTime?
-  rating             Decimal          @default(0) @db.Decimal(3, 2)
-  totalReviews       Int              @default(0)
+  lastWithdrawalAt      DateTime?
+  rating                Decimal          @default(0) @db.Decimal(3, 2)
+  totalReviews          Int              @default(0)
   // v1.5 trust & vetting (§0.2 #1). trustTier drives dispatch priority + bounds
   // guarantee liability; recomputed nightly from rating/volume/upheld reports.
-  trustTier          TrustTier        @default(PROBATION)
-  bgCheckStatus      BgCheckStatus    @default(PENDING)
-  skillsTestPassedAt DateTime?
-  isInsured          Boolean          @default(false)
-  introVideoUrl      String?
-  jobsCompleted      Int              @default(0)
-  offPlatformFlags   Int              @default(0)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  trustTier             TrustTier        @default(PROBATION)
+  bgCheckStatus         BgCheckStatus    @default(PENDING)
+  skillsTestPassedAt    DateTime?
+  isInsured             Boolean          @default(false)
+  introVideoUrl         String?
+  jobsCompleted         Int              @default(0)
+  offPlatformFlags      Int              @default(0)
+  // Consecutive dispatch-offer rejections (resets to 0 on any accept). Surfaced
+  // to the technician app so it can warn at 3+ in a row (§ technician app).
+  consecutiveRejections Int              @default(0)
+  // Onboarding consent (ToS/SOP agreement) timestamp; null = not yet accepted.
+  agreementAcceptedAt   DateTime?
+  // Saved payout bank details (profile-level, independent of any single withdrawal
+  // request). PATCH /technician/bank-account persists here; requestWithdrawal falls
+  // back to these when the request body omits iban/bankName.
+  bankIban              String?
+  bankName              String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  techBookings   Booking[]           @relation("TechnicianBookings")
-  payouts        Payout[]
-  withdrawals    WithdrawalRequest[]
-  services       Service[]           @relation("TechnicianServices")
-  dispatchOffers DispatchOffer[]
-  conductReports ConductReport[]
+  user              User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  techBookings      Booking[]                    @relation("TechnicianBookings")
+  payouts           Payout[]
+  withdrawals       WithdrawalRequest[]
+  services          Service[]                    @relation("TechnicianServices")
+  dispatchOffers    DispatchOffer[]
+  conductReports    ConductReport[]
+  notificationPrefs TechnicianNotificationPrefs?
 
   // getStats counts verified technicians; admin list orders by createdAt.
   @@index([isVerified])
@@ -219,6 +248,23 @@ model TechnicianProfile {
   // Dispatch/quality queries filter by tier (e.g. exclude PROBATION from priority).
   @@index([trustTier])
   @@map("technician_profiles")
+}
+
+/// Technician-portal notification toggles (Figma TechNotifications screen).
+/// One row per technician, created lazily on first read/write.
+model TechnicianNotificationPrefs {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  technicianId    String   @unique @db.Uuid
+  newJobRequests  Boolean  @default(true)
+  reminders       Boolean  @default(true)
+  earningsUpdates Boolean  @default(true)
+  promotions      Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  technician TechnicianProfile @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
+  @@map("technician_notification_prefs")
 }
 
 enum TechnicianStatus {
@@ -233,53 +279,66 @@ enum TechnicianStatus {
 // ─────────────────────────────────────────────
 
 model Booking {
-  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId        String        @db.Uuid
-  technicianId      String?       @db.Uuid
-  serviceId         String        @db.Uuid
-  status            BookingStatus @default(PENDING)
-  addressLine       String
-  addressLat        Float
-  addressLng        Float
-  scheduledAt       DateTime?
-  rescheduledAt     DateTime?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  cancelledAt       DateTime?
-  cancelReason      String?
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId          String        @db.Uuid
+  technicianId        String?       @db.Uuid
+  serviceId           String        @db.Uuid
+  status              BookingStatus @default(PENDING)
+  addressLine         String
+  addressLat          Float
+  addressLng          Float
+  scheduledAt         DateTime?
+  rescheduledAt       DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String?
   // Pricing: totalJod is the amount charged (service price − discount). discountJod
   // records any promo applied so receipts/reports can show the breakdown.
-  discountJod       Decimal       @default(0) @db.Decimal(10, 3)
-  promoCodeId       String?       @db.Uuid
-  totalJod          Decimal       @db.Decimal(10, 3)
-  version           Int           @default(0)
+  discountJod         Decimal       @default(0) @db.Decimal(10, 3)
+  promoCodeId         String?       @db.Uuid
+  totalJod            Decimal       @db.Decimal(10, 3)
+  version             Int           @default(0)
   // Dispatch state: round counter, current radius, and when the round expires.
-  dispatchRound     Int           @default(0)
-  dispatchRadiusKm  Int?
-  dispatchExpiresAt DateTime?
+  dispatchRound       Int           @default(0)
+  dispatchRadiusKm    Int?
+  dispatchExpiresAt   DateTime?
   // v1.5 SLA + subscriber priority (§0.3). isPriority = subscriber fast-lane;
   // slaArriveBy = arrival promise; arrivedAt set by /arrive; lateCompJod = auto credit.
-  isPriority        Boolean       @default(false)
-  slaArriveBy       DateTime?
-  arrivedAt         DateTime?
-  lateCompJod       Decimal       @default(0) @db.Decimal(10, 3)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  isPriority          Boolean       @default(false)
+  slaArriveBy         DateTime?
+  arrivedAt           DateTime?
+  lateCompJod         Decimal       @default(0) @db.Decimal(10, 3)
+  // Server-enforced pre-start/pre-close SOP checklist (technician portal). Gating
+  // logic lives in BookingService: ARRIVED→IN_PROGRESS requires preStartChecklistAt,
+  // complete() requires preCloseChecklistAt.
+  preStartChecklistAt DateTime?
+  preStartPhotoUrls   String[]      @default([])
+  preCloseChecklistAt DateTime?
+  preClosePhotoUrls   String[]      @default([])
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
-  customer        User                 @relation("CustomerBookings", fields: [customerId], references: [id])
-  technician      TechnicianProfile?   @relation("TechnicianBookings", fields: [technicianId], references: [id])
-  service         Service              @relation(fields: [serviceId], references: [id])
-  promoCode       PromoCode?           @relation(fields: [promoCodeId], references: [id])
-  payment         Payment?
-  outboxEvents    OutboxEvent[]
-  reviews         Review[]
-  guarantee       GuaranteeTicket?
-  notifications   Notification[]
-  additionalWork  AdditionalWorkItem[]
-  promoRedemption PromoRedemption?
-  offers          DispatchOffer[]
-  serviceCredits  ServiceCredit[]
-  quote           BookingQuote?
+  customer             User                   @relation("CustomerBookings", fields: [customerId], references: [id])
+  technician           TechnicianProfile?     @relation("TechnicianBookings", fields: [technicianId], references: [id])
+  service              Service                @relation(fields: [serviceId], references: [id])
+  promoCode            PromoCode?             @relation(fields: [promoCodeId], references: [id])
+  payment              Payment?
+  outboxEvents         OutboxEvent[]
+  reviews              Review[]
+  notifications        Notification[]
+  additionalWork       AdditionalWorkItem[]
+  promoRedemption      PromoRedemption?
+  offers               DispatchOffer[]
+  serviceCredits       ServiceCredit[]
+  quote                BookingQuote?
+  statusHistory        BookingStatusHistory[]
+  // The guarantee ticket opened against this (original) booking.
+  guarantee            GuaranteeTicket?       @relation("GuaranteeTicketBooking")
+  // The free re-visit booking created when a guarantee ticket was approved
+  // with a scheduled visit — set on the NEW booking, pointing back via
+  // GuaranteeTicket.followupBookingId.
+  guaranteeFollowupFor GuaranteeTicket?       @relation("GuaranteeFollowupBooking")
 
   @@index([customerId])
   @@index([status])
@@ -292,6 +351,8 @@ model Booking {
   @@index([technicianId, createdAt])
   // Dispatch sweep: PENDING bookings with an expired round.
   @@index([status, dispatchExpiresAt])
+  // AdminOpsService.getActivityFeed scans recently-updated bookings (48h window).
+  @@index([updatedAt])
   @@map("bookings")
 }
 
@@ -309,6 +370,31 @@ enum BookingStatus {
   COMPLETED
   CANCELLED
   DISPUTED
+  // Technician-initiated: customer was not present/reachable at the address after
+  // arrival. Charges the service's calloutFeeJod to the customer. Only reachable
+  // from ARRIVED.
+  NO_SHOW
+}
+
+/// Append-only audit trail of every booking status transition (§ booking_status_history).
+/// Written alongside each status write in BookingService (create/accept/advanceStatus/
+/// complete/cancel/noShow) — never updated or deleted.
+model BookingStatusHistory {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId  String         @db.Uuid
+  // Null on the very first row (booking creation has no prior status).
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  changedAt  DateTime       @default(now())
+  // The acting user (customer/technician) when known; null for system-driven
+  // transitions (e.g. the abandonment reconciler's silent cancellation).
+  changedBy  String?        @db.Uuid
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  // Admin/audit timeline for a booking, oldest first.
+  @@index([bookingId, changedAt])
+  @@map("booking_status_history")
 }
 
 // ─────────────────────────────────────────────
@@ -594,20 +680,24 @@ model Review {
 // ─────────────────────────────────────────────
 
 model GuaranteeTicket {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bookingId        String          @unique @db.Uuid
-  status           GuaranteeStatus @default(OPEN)
-  description      String?
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId         String          @unique @db.Uuid
+  status            GuaranteeStatus @default(OPEN)
+  description       String?
   // Customer-uploaded evidence (photo/video URLs in object storage).
-  mediaUrls        String[]        @default([])
+  mediaUrls         String[]        @default([])
   // Admin review outcome + optional scheduled free re-visit.
-  adminNote        String?
-  scheduledVisitAt DateTime?
-  expiresAt        DateTime
-  resolvedAt       DateTime?
-  createdAt        DateTime        @default(now())
+  adminNote         String?
+  scheduledVisitAt  DateTime?
+  // The free re-visit booking created on approval with a scheduled visit
+  // (zero-cost, same customer/technician/service). Null until then.
+  followupBookingId String?         @unique @db.Uuid
+  expiresAt         DateTime
+  resolvedAt        DateTime?
+  createdAt         DateTime        @default(now())
 
-  booking Booking @relation(fields: [bookingId], references: [id])
+  booking         Booking  @relation("GuaranteeTicketBooking", fields: [bookingId], references: [id])
+  followupBooking Booking? @relation("GuaranteeFollowupBooking", fields: [followupBookingId], references: [id])
 
   // Admin SLA queue: WHERE status ORDER BY createdAt asc.
   @@index([status, createdAt])
@@ -1026,4 +1116,29 @@ enum ConductStatus {
   REVIEWING
   UPHELD
   DISMISSED
+}
+
+// ─────────────────────────────────────────────
+// Referrals — invite code capture at signup + one-time credit grant on the
+// referred user's first completed booking. Structurally mirrors PromoCode/
+// PromoRedemption: User.referralCode is the "code" side, this table is the
+// "redemption" side (one row per referred signup, exactly once).
+// ─────────────────────────────────────────────
+
+model ReferralRedemption {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referrerId      String    @db.Uuid
+  // A user can be referred at most once (captured at their own signup).
+  referredUserId  String    @unique @db.Uuid
+  // Set once the referrer's credit has been granted (on the referred user's
+  // first COMPLETED booking) — guards against double-granting.
+  creditGrantedAt DateTime?
+  createdAt       DateTime  @default(now())
+
+  referrer     User @relation("ReferralsGiven", fields: [referrerId], references: [id])
+  referredUser User @relation("ReferralsReceived", fields: [referredUserId], references: [id])
+
+  // Referrer's "my referrals" list + stats.
+  @@index([referrerId])
+  @@map("referral_redemptions")
 }

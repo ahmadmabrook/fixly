@@ -85,6 +85,19 @@ describe('NotificationService', () => {
     expect(to).toHaveBeenCalledWith('user:cu-9');
   });
 
+  it('has copy for booking.no_show and emits NO_SHOW status', async () => {
+    const { io, emit } = makeIo();
+    mockedPrisma.notification.create.mockResolvedValue({});
+    const svc = new NotificationService(io);
+
+    await svc.handleBookingEvent('booking.no_show', { bookingId: 'bk-3', customerId: 'cu-1' });
+
+    expect(mockedPrisma.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ dedupeKey: 'bk-3:booking.no_show' }) }));
+    const statusCall = emit.mock.calls.find((c) => c[0] === 'booking:status');
+    expect(statusCall![1]).toEqual(expect.objectContaining({ status: 'NO_SHOW' }));
+  });
+
   it('skips unknown event types', async () => {
     const { io } = makeIo();
     const svc = new NotificationService(io);

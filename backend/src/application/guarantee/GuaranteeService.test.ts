@@ -72,17 +72,68 @@ describe('GuaranteeService.review', () => {
     service = new GuaranteeService();
   });
 
-  it('finalises APPROVED → RESOLVED and notifies the customer', async () => {
-    mockedPrisma.guaranteeTicket.findUnique.mockResolvedValue({ id: 'g1', bookingId: 'bk1', status: 'OPEN', booking: { customerId: 'cust1' } });
-    const txUpdate = jest.fn().mockResolvedValue({ id: 'g1', status: 'RESOLVED' });
+  it('finalises APPROVED → RESOLVED, creates a zero-cost follow-up booking, and notifies the customer', async () => {
+    mockedPrisma.guaranteeTicket.findUnique.mockResolvedValue({
+      id: 'g1',
+      bookingId: 'bk1',
+      status: 'OPEN',
+      booking: {
+        customerId: 'cust1', technicianId: 'tp1', serviceId: 's1',
+        addressLine: 'Amman', addressLat: 31.9, addressLng: 35.9,
+      },
+    });
+    const txUpdate = jest.fn().mockResolvedValue({ id: 'g1', status: 'RESOLVED', followupBookingId: 'followup1' });
     const notifCreate = jest.fn().mockResolvedValue({});
+    const followupBookingCreate = jest.fn().mockResolvedValue({ id: 'followup1', status: 'CONFIRMED' });
+    const statusHistoryCreate = jest.fn().mockResolvedValue({});
+    const paymentCreate = jest.fn().mockResolvedValue({});
+    const outboxCreate = jest.fn().mockResolvedValue({});
     mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-      fn({ guaranteeTicket: { update: txUpdate }, notification: { create: notifCreate } }),
+      fn({
+        guaranteeTicket: { update: txUpdate },
+        notification: { create: notifCreate },
+        booking: { create: followupBookingCreate },
+        bookingStatusHistory: { create: statusHistoryCreate },
+        payment: { create: paymentCreate },
+        outboxEvent: { create: outboxCreate },
+      }),
     );
     const r = await service.review('g1', 'APPROVED', 'ok', new Date(Date.now() + 864e5).toISOString());
     expect(r.status).toBe('RESOLVED');
-    expect(txUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'RESOLVED' }) }));
+    expect(followupBookingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerId: 'cust1', technicianId: 'tp1', serviceId: 's1', totalJod: 0, status: 'CONFIRMED',
+        }),
+      }),
+    );
+    expect(paymentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ bookingId: 'followup1', status: 'PRE_AUTHORIZED' }) }),
+    );
+    expect(outboxCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ bookingId: 'followup1', eventType: 'booking.created' }) }),
+    );
+    expect(txUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'RESOLVED', followupBookingId: 'followup1' }) }),
+    );
     expect(notifCreate).toHaveBeenCalled();
+  });
+
+  it('finalises APPROVED without a scheduled visit and does NOT create a follow-up booking', async () => {
+    mockedPrisma.guaranteeTicket.findUnique.mockResolvedValue({
+      id: 'g1', bookingId: 'bk1', status: 'OPEN',
+      booking: { customerId: 'cust1', technicianId: 'tp1', serviceId: 's1', addressLine: 'Amman', addressLat: 31.9, addressLng: 35.9 },
+    });
+    const txUpdate = jest.fn().mockResolvedValue({ id: 'g1', status: 'RESOLVED' });
+    const notifCreate = jest.fn().mockResolvedValue({});
+    const followupBookingCreate = jest.fn();
+    mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({ guaranteeTicket: { update: txUpdate }, notification: { create: notifCreate }, booking: { create: followupBookingCreate } }),
+    );
+    const r = await service.review('g1', 'APPROVED', 'ok');
+    expect(r.status).toBe('RESOLVED');
+    expect(followupBookingCreate).not.toHaveBeenCalled();
+    expect(txUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ followupBookingId: undefined }) }));
   });
 
   it('rejects re-finalising an already-resolved ticket', async () => {
