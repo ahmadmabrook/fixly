@@ -69,7 +69,7 @@ describe('Quality page (kanban board)', () => {
 
   it('requires confirmation before changing the trust tier', async () => {
     loginAsAdmin();
-    const fn = vi.fn(async (url: string, init?: RequestInit) => {
+    const fn = vi.fn(async (url: string, _init?: RequestInit) => {
       if (typeof url === 'string' && url.includes('/scorecard')) {
         return { ok: true, status: 200, json: async () => scorecardPayload } as Response;
       }
