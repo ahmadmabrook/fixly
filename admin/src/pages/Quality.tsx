@@ -30,23 +30,23 @@ export default function Quality() {
   // is meant to be scanned as a whole); 200 is the list endpoints' max limit.
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-quality'],
-    queryFn: () => api.list<QualityTech>('/admin/quality/techs?limit=200'),
+    queryFn: () => api.list<QualityTech>('/quality/techs?limit=200'),
   });
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['admin-quality'] });
 
   const setTier = useMutation({
-    mutationFn: ({ id, tier }: { id: string; tier: string }) => api.post(`/admin/technicians/${id}/trust-tier`, { tier }),
+    mutationFn: ({ id, tier }: { id: string; tier: string }) => api.post(`/technicians/${id}/trust-tier`, { tier }),
     onSuccess: () => { notify('تم تحديث الفئة', 'success'); invalidate(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   const bgCheck = useMutation({
-    mutationFn: ({ id, result }: { id: string; result: 'PASSED' | 'FAILED' }) => api.post(`/admin/technicians/${id}/bg-check`, { result }),
+    mutationFn: ({ id, result }: { id: string; result: 'PASSED' | 'FAILED' }) => api.post(`/technicians/${id}/bg-check`, { result }),
     onSuccess: () => { notify('تم تسجيل نتيجة الفحص', 'success'); invalidate(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   const skills = useMutation({
-    mutationFn: (id: string) => api.post(`/admin/technicians/${id}/skills-test`),
+    mutationFn: (id: string) => api.post(`/technicians/${id}/skills-test`),
     onSuccess: () => { notify('تم اعتماد الاختبار', 'success'); invalidate(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });

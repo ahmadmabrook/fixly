@@ -28,11 +28,11 @@ export default function Quotes() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-quotes', status, page],
-    queryFn: () => api.list<QuoteItem>(`/admin/quotes?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
+    queryFn: () => api.list<QuoteItem>(`/quotes?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
 
   const setQuote = useMutation({
-    mutationFn: ({ id, quotedJod }: { id: string; quotedJod: string }) => api.post(`/admin/quotes/${id}/quote`, { quotedJod }),
+    mutationFn: ({ id, quotedJod }: { id: string; quotedJod: string }) => api.post(`/quotes/${id}/quote`, { quotedJod }),
     onSuccess: () => { notify('تم تسعير الطلب', 'success'); void qc.invalidateQueries({ queryKey: ['admin-quotes'] }); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
