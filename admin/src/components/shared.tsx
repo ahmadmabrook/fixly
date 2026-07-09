@@ -45,9 +45,10 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
-  const initials = name.split(' ').map(p => p[0]).slice(0, 2).join('');
-  const hue = (name.charCodeAt(0) * 37) % 360;
+export function Avatar({ name, size = 40 }: { name?: string | null; size?: number }) {
+  const safeName = name && name.trim() ? name.trim() : '؟';
+  const initials = safeName.split(' ').map(p => p[0]).slice(0, 2).join('');
+  const hue = (safeName.charCodeAt(0) * 37) % 360;
   return (
     <div
       className="rounded-full flex items-center justify-center font-bold text-white shrink-0"

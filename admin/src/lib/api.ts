@@ -304,7 +304,7 @@ export interface TechnicianItem {
   isVerified: boolean;
   status?: string;
   hourlyRateJod?: string | number | null;
-  user: { id: string; name: string; phone?: string };
+  user: { id: string; name: string | null; phone?: string };
   rating?: string | number | null;
   totalReviews?: number;
 }
@@ -398,7 +398,7 @@ export interface PayoutItem {
 
 export interface CustomerItem {
   id: string;
-  name: string;
+  name: string | null;
   phone?: string;
   isActive?: boolean;
   createdAt: string;

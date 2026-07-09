@@ -136,7 +136,7 @@ export default function Bookings() {
                   data-testid={`booking-row-${b.id}`}
                 >
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 12, color: '#94A3B8' }}>{b.id.slice(0, 8)}…</span></Td>
-                  <Td>{b.customer?.name ?? '—'}</Td>
+                  <Td>{b.customer?.name ?? b.customer?.phone ?? '—'}</Td>
                   <Td>{b.service?.nameAr ?? '—'}</Td>
                   <Td>{b.technician?.user?.name ?? '—'}</Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(b.scheduledAt)}</span></Td>
@@ -187,11 +187,11 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
             <div style={{ fontSize: 14 }} className="space-y-2">
               <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <span style={{ color: '#64748B' }}>العميل</span>
-                <span style={{ fontWeight: 700 }}>{booking.customer?.name ?? '—'}</span>
+                <span style={{ fontWeight: 700 }}>{booking.customer?.name ?? booking.customer?.phone ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <span style={{ color: '#64748B' }}>الفني</span>
-                <span style={{ fontWeight: 700 }}>{booking.technician?.user?.name ?? '—'}</span>
+                <span style={{ fontWeight: 700 }}>{booking.technician?.user?.name ?? booking.technician?.user?.phone ?? '—'}</span>
               </div>
               <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
                 <span style={{ color: '#64748B' }}>الخدمة</span>
