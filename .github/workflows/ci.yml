@@ -1,8 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # No standalone push-to-main trigger: deploy.yml calls this workflow via
+  # workflow_call on every push to main, and both would otherwise land in
+  # the identical `ci-refs/heads/main` concurrency group below — cancel-in-
+  # progress:true would race, non-deterministically killing whichever
+  # instance started second (including deploy.yml's own gate, which then
+  # never resolves `needs: ci` and silently skips the whole deploy).
   pull_request:
   workflow_call:
 
