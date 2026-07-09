@@ -79,7 +79,7 @@ export default function Technicians() {
                     <Td>
                       <button className="flex items-center gap-2" onClick={() => setDetailId(t.id)}>
                         <Avatar name={t.user.name} size={36} />
-                        <span style={{ fontWeight: 600, color: '#1366D6' }}>{t.user.name}</span>
+                        <span style={{ fontWeight: 600, color: '#1366D6' }}>{t.user.name ?? t.user.phone ?? '—'}</span>
                       </button>
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{t.user.phone ?? '—'}</span></Td>
@@ -156,7 +156,7 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
             <div className="flex items-center gap-3">
               <Avatar name={t.user.name} size={48} />
               <div>
-                <div style={{ fontWeight: 800, fontSize: 18 }}>{t.user.name}</div>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>{t.user.name ?? 'بدون اسم'}</div>
                 <div style={{ color: '#64748B', fontSize: 13, fontFamily: 'Inter' }}>{t.user.phone}</div>
               </div>
             </div>

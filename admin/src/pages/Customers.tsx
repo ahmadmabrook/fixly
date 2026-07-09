@@ -54,7 +54,7 @@ export default function Customers() {
                     <Td>
                       <button className="flex items-center gap-2" onClick={() => setDetailId(c.id)}>
                         <Avatar name={c.name} size={36} />
-                        <span style={{ fontWeight: 600, color: '#1366D6' }}>{c.name}</span>
+                        <span style={{ fontWeight: 600, color: '#1366D6' }}>{c.name ?? c.phone ?? '—'}</span>
                       </button>
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{c.phone ?? '—'}</span></Td>
@@ -87,8 +87,8 @@ export default function Customers() {
         body={
           confirm
             ? confirm.blocked
-              ? `سيتم منع ${confirm.customer.name} من استخدام المنصة وإنشاء حجوزات جديدة.`
-              : `سيُعاد تفعيل حساب ${confirm.customer.name} ويتمكن من استخدام المنصة.`
+              ? `سيتم منع ${confirm.customer.name ?? confirm.customer.phone ?? 'هذا العميل'} من استخدام المنصة وإنشاء حجوزات جديدة.`
+              : `سيُعاد تفعيل حساب ${confirm.customer.name ?? confirm.customer.phone ?? 'هذا العميل'} ويتمكن من استخدام المنصة.`
             : undefined
         }
         confirmLabel={confirm?.blocked ? 'حظر' : 'إلغاء الحظر'}
