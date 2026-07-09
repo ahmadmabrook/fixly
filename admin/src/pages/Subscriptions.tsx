@@ -23,7 +23,7 @@ export default function Subscriptions() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-subscriptions', page],
-    queryFn: () => api.list<SubscriptionItem>(`/admin/subscriptions?limit=${limit}&offset=${page * limit}`),
+    queryFn: () => api.list<SubscriptionItem>(`/subscriptions?limit=${limit}&offset=${page * limit}`),
   });
 
   const items = data?.items ?? [];

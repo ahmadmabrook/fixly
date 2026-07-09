@@ -29,11 +29,11 @@ export default function ConductReports() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-conduct', status, page],
-    queryFn: () => api.list<ConductItem>(`/admin/conduct-reports?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
+    queryFn: () => api.list<ConductItem>(`/conduct-reports?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
 
   const resolve = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: 'UPHELD' | 'DISMISSED' }) => api.post(`/admin/conduct-reports/${id}/resolve`, { decision }),
+    mutationFn: ({ id, decision }: { id: string; decision: 'UPHELD' | 'DISMISSED' }) => api.post(`/conduct-reports/${id}/resolve`, { decision }),
     onSuccess: () => { notify('تم حسم البلاغ', 'success'); void qc.invalidateQueries({ queryKey: ['admin-conduct'] }); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
