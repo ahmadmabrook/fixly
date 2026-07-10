@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { PlayCircle } from 'lucide-react';
 import { api } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, ActionBtn, notify, Pagination, Pill } from '../components/shared';
 
 interface QuoteItem {
   id: string;
@@ -17,7 +18,13 @@ interface QuoteItem {
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['PENDING', 'بانتظار التسعير'], ['QUOTED', 'مُسعّر'], ['ACCEPTED', 'مقبول'],
 ];
-const STATUS_LABEL: Record<string, string> = { PENDING: 'بانتظار التسعير', QUOTED: 'مُسعّر', ACCEPTED: 'مقبول', DECLINED: 'مرفوض', EXPIRED: 'منتهٍ' };
+const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
+  PENDING: { ar: 'بانتظار التسعير', bg: '#FEF3C7', fg: '#B45309' },
+  QUOTED: { ar: 'مُسعّر', bg: '#DCFCE7', fg: '#15803D' },
+  ACCEPTED: { ar: 'مقبول', bg: '#DBEAFE', fg: '#1366D6' },
+  DECLINED: { ar: 'مرفوض', bg: '#FEE2E2', fg: '#B91C1C' },
+  EXPIRED: { ar: 'منتهٍ', bg: '#E2E8F0', fg: '#475569' },
+};
 
 export default function Quotes() {
   const [status, setStatus] = useState('PENDING');
@@ -52,50 +59,54 @@ export default function Quotes() {
         ))}
       </div>
 
-      <Card>
-        {isLoading && <Spinner />}
-        {!isLoading && items.length === 0 && <EmptyState message="لا توجد طلبات" />}
-        {!isLoading && items.length > 0 && (
-          <TableWrapper>
-            <thead>
-              <tr style={{ background: '#F8FAFC' }}>
-                <Th>العميل</Th><Th>الخدمة</Th><Th>الوصف</Th><Th>الفيديو</Th><Th>الحالة</Th><Th>التسعير</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((q) => (
-                <tr key={q.id} className="hover:bg-slate-50">
-                  <Td>{q.customer?.name ?? '—'}</Td>
-                  <Td>{q.service?.nameAr ?? '—'}</Td>
-                  <Td><span style={{ color: '#64748B' }}>{(q.description ?? '').slice(0, 40)}</span></Td>
-                  <Td>{q.videoUrl.startsWith('https://') ? <a href={q.videoUrl} target="_blank" rel="noreferrer" style={{ color: '#1366D6', fontSize: 13 }}>مشاهدة</a> : '—'}</Td>
-                  <Td><span style={{ fontSize: 12, fontWeight: 600 }}>{STATUS_LABEL[q.status]}</span></Td>
-                  <Td>
-                    {q.status === 'PENDING' ? (
-                      <div className="flex gap-2 items-center">
-                        <input
-                          value={prices[q.id] ?? ''}
-                          onChange={(e) => setPrices((p) => ({ ...p, [q.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                          placeholder="دينار"
-                          className="h-9 w-24 rounded-lg border border-slate-200 px-2"
-                          style={{ fontSize: 13, direction: 'ltr' }}
-                        />
-                        <ActionBtn
-                          onClick={() => { const v = prices[q.id]; if (v && Number(v) > 0) setQuote.mutate({ id: q.id, quotedJod: v }); }}
-                          disabled={setQuote.isPending || !(Number(prices[q.id]) > 0)}
-                        >تسعير</ActionBtn>
-                      </div>
-                    ) : (
-                      <span style={{ fontFamily: 'Inter', fontWeight: 700, color: '#0E4FA8' }}>{q.quotedJod != null ? `${Number(q.quotedJod)} JD` : '—'}</span>
-                    )}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrapper>
-        )}
-        <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
-      </Card>
+      {isLoading && <Card><Spinner /></Card>}
+      {!isLoading && items.length === 0 && <Card><EmptyState message="لا توجد طلبات" /></Card>}
+      {!isLoading && items.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {items.map((q) => (
+            <Card key={q.id} className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div style={{ fontFamily: 'Inter', fontWeight: 700 }}>{q.id.slice(0, 8)}</div>
+                  <div style={{ color: '#64748B', fontSize: 12 }}>{q.customer?.name ?? '—'}</div>
+                </div>
+                <Pill label={STATUS_PILL[q.status]?.ar ?? q.status} bg={STATUS_PILL[q.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[q.status]?.fg ?? '#475569'} />
+              </div>
+              <div className="mt-3" style={{ fontSize: 14 }}>
+                <span style={{ fontWeight: 600 }}>{q.service?.nameAr ?? '—'}</span>
+                {q.description && <span style={{ color: '#64748B' }}> — {q.description}</span>}
+              </div>
+              {q.videoUrl.startsWith('https://') ? (
+                <a href={q.videoUrl} target="_blank" rel="noreferrer" className="mt-3 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: '#0F172A' }}>
+                  <PlayCircle size={40} color="#FFF" />
+                </a>
+              ) : (
+                <div className="mt-3 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: '#F1F5F9', color: '#94A3B8', fontSize: 13 }}>لا يوجد فيديو</div>
+              )}
+              {q.status === 'PENDING' ? (
+                <div className="mt-3 flex gap-2 items-center">
+                  <input
+                    value={prices[q.id] ?? ''}
+                    onChange={(e) => setPrices((p) => ({ ...p, [q.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                    placeholder="دينار"
+                    className="h-9 flex-1 rounded-lg border border-slate-200 px-2"
+                    style={{ fontSize: 13, direction: 'ltr' }}
+                  />
+                  <ActionBtn
+                    onClick={() => { const v = prices[q.id]; if (v && Number(v) > 0) setQuote.mutate({ id: q.id, quotedJod: v }); }}
+                    disabled={setQuote.isPending || !(Number(prices[q.id]) > 0)}
+                  >تسعير</ActionBtn>
+                </div>
+              ) : (
+                <div className="mt-3" style={{ fontSize: 14, fontWeight: 700, color: '#15803D' }}>
+                  {q.quotedJod != null ? `السعر الثابت: ${Number(q.quotedJod)} دينار` : '—'}
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+      <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
     </div>
   );
 }
