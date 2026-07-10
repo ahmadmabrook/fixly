@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import {
   BrowserRouter, Routes, Route, Navigate, useNavigate, useParams,
 } from 'react-router-dom';
@@ -9,7 +9,6 @@ import { restoreSession, logout as apiLogout } from './lib/api';
 import { BookingSocketProvider } from './lib/socket-provider';
 import TopNav from './components/TopNav';
 import Footer from './components/Footer';
-import AuthModal from './components/AuthModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import OnboardingSplash from './components/OnboardingSplash';
 import { OfflineBanner } from './components/shared';
@@ -28,6 +27,7 @@ const Account = lazy(() => import('./pages/Account'));
 const ReferralPage = lazy(() => import('./pages/ReferralPage'));
 const QuotesPage = lazy(() => import('./pages/QuotesPage'));
 const TechPortal = lazy(() => import('./pages/tech/TechPortal'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
 
 /** Centered spinner shown while a lazy route chunk loads. */
 function RouteSpinner() {
@@ -43,13 +43,10 @@ function RouteSpinner() {
   );
 }
 
-type ModalState =
-  | { open: false }
-  | { open: true; returnTo: string };
-
 /**
  * Deep-linkable customer shell. Routes:
  *  /                — landing
+ *  /login           — sign-in (?returnTo= where to land after success)
  *  /services        — catalog
  *  /services/:id    — service details (deep-linkable, shareable)
  *  /services/:id/book — booking form
@@ -59,7 +56,15 @@ type ModalState =
  * to its own booking's live status updates.
  */
 export default function App() {
-  const [modal, setModal] = useState<ModalState>({ open: false });
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
+  );
+}
+
+function AppShell() {
+  const navigate = useNavigate();
   const accessToken = useAuth((s) => s.accessToken);
   const authed = !!accessToken;
   const lang = useLang((s) => s.lang);
@@ -80,91 +85,77 @@ export default function App() {
     if (localStorage.getItem('role')) void restoreSession();
   }, []);
 
-  const openLoginModal = useCallback((returnTo: string) => {
-    setModal({ open: true, returnTo });
-  }, []);
-
-  const closeModal = useCallback(() => setModal({ open: false }), []);
+  function requireLogin(returnTo: string) {
+    navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  }
 
   return (
-    <BrowserRouter>
-      <BookingSocketProvider>
-        <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
-          <OfflineBanner />
-          <OnboardingSplash />
-          <TopNav authed={authed} onLogin={() => openLoginModal('/services')} onLogout={() => void apiLogout()} />
+    <BookingSocketProvider>
+      <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
+        <OfflineBanner />
+        <OnboardingSplash />
+        <TopNav authed={authed} onLogin={() => requireLogin('/services')} onLogout={() => void apiLogout()} />
 
-          <ErrorBoundary>
-            <Suspense fallback={<RouteSpinner />}>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/services" element={<Catalog />} />
-                <Route
-                  path="/services/:id"
-                  element={<ServiceRoute onRequireLogin={openLoginModal} />}
-                />
-                <Route
-                  path="/services/:id/book"
-                  element={<BookingRoute onRequireLogin={openLoginModal} />}
-                />
-                <Route
-                  path="/payment/return"
-                  element={authed ? <PaymentReturn /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/my-bookings"
-                  element={authed ? <MyBookings /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/bookings/:id"
-                  element={authed ? <BookingDetail /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/bookings/:id/track"
-                  element={authed ? <TrackingPage /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/guarantee"
-                  element={authed ? <GuaranteePage /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/account"
-                  element={authed ? <Account /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/referral"
-                  element={authed ? <ReferralPage /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/quotes"
-                  element={authed ? <QuotesPage /> : <Navigate to="/" replace />}
-                />
-                <Route
-                  path="/tech"
-                  element={authed ? <TechPortal /> : <Navigate to="/" replace />}
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Suspense>
-          </ErrorBoundary>
+        <ErrorBoundary>
+          <Suspense fallback={<RouteSpinner />}>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/services" element={<Catalog />} />
+              <Route
+                path="/services/:id"
+                element={<ServiceRoute onRequireLogin={requireLogin} />}
+              />
+              <Route
+                path="/services/:id/book"
+                element={<BookingRoute onRequireLogin={requireLogin} />}
+              />
+              <Route
+                path="/payment/return"
+                element={authed ? <PaymentReturn /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/my-bookings"
+                element={authed ? <MyBookings /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/bookings/:id"
+                element={authed ? <BookingDetail /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/bookings/:id/track"
+                element={authed ? <TrackingPage /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/guarantee"
+                element={authed ? <GuaranteePage /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/account"
+                element={authed ? <Account /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/referral"
+                element={authed ? <ReferralPage /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/quotes"
+                element={authed ? <QuotesPage /> : <Navigate to="/" replace />}
+              />
+              <Route
+                path="/tech"
+                element={authed ? <TechPortal /> : <Navigate to="/" replace />}
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
 
-          <Footer />
+        <Footer />
+      </div>
 
-          {modal.open && (
-            <AuthModal
-              onClose={closeModal}
-              onSuccess={() => {
-                const target = modal.returnTo;
-                closeModal();
-                window.location.assign(target);
-              }}
-            />
-          )}
-        </div>
-
-        <Toaster position="top-center" richColors />
-      </BookingSocketProvider>
-    </BrowserRouter>
+      <Toaster position="top-center" richColors />
+    </BookingSocketProvider>
   );
 }
 
@@ -191,7 +182,7 @@ function BookingRoute({ onRequireLogin }: { onRequireLogin: (returnTo: string) =
   const navigate = useNavigate();
   // Subscribe to auth state so this re-renders on login/logout.
   const accessToken = useAuth((s) => s.accessToken);
-  // Open the login modal as a side effect — never call a parent's setState
+  // Navigate to /login as a side effect — never call a parent's setState
   // during render (React warns and it can cause cross-component update bugs).
   useEffect(() => {
     if (!accessToken) onRequireLogin(`/services/${id}/book`);

@@ -1,19 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
-import AuthModal from './AuthModal';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import LoginPage from './LoginPage';
 import { useAuth } from '../lib/store';
 
-function renderModal(props: { onClose: () => void; onSuccess: () => void }, initialEntry = '/') {
+function renderPage(initialEntry = '/login') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <AuthModal {...props} />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/services" element={<div>SERVICES PAGE</div>} />
+        <Route path="/services/:id/book" element={<div>BOOKING PAGE</div>} />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
-// A JWT whose payload base64-decodes to a CUSTOMER role (AuthModal reads it).
+// A JWT whose payload base64-decodes to a CUSTOMER role (LoginPage reads it).
 const PAYLOAD = btoa(JSON.stringify({ userId: 'u1', role: 'CUSTOMER' }));
 const FAKE_JWT = `header.${PAYLOAD}.sig`;
 
@@ -43,44 +47,29 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('AuthModal', () => {
-  it('runs the OTP flow and stores the session on success', async () => {
-    const onSuccess = vi.fn();
-    const onClose = vi.fn();
+describe('LoginPage', () => {
+  it('runs the OTP flow, stores the session and navigates to returnTo on success', async () => {
     const user = userEvent.setup();
 
-    renderModal({ onClose, onSuccess });
+    renderPage('/login?returnTo=%2Fservices%2Fid1%2Fbook');
 
-    // Step 1: enter phone, request OTP.
     const phone = screen.getByLabelText('رقم الهاتف');
     await user.type(phone, '799000001');
     await user.click(screen.getByRole('button', { name: 'إرسال الرمز' }));
 
-    // Step 2: OTP entry appears.
     const otp = await screen.findByLabelText('رمز التحقق');
     await user.type(otp, '000000');
     await user.click(screen.getByRole('button', { name: 'تحقق والدخول' }));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    expect(useAuth.getState().accessToken).toBe(FAKE_JWT);
+    await waitFor(() => expect(useAuth.getState().accessToken).toBe(FAKE_JWT));
     expect(useAuth.getState().role).toBe('CUSTOMER');
-  });
-
-  it('is dismissable via Escape (focus-trapped dialog)', async () => {
-    const onClose = vi.fn();
-    const user = userEvent.setup();
-    renderModal({ onClose, onSuccess: vi.fn() });
-
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
-    await user.keyboard('{Escape}');
-    expect(onClose).toHaveBeenCalled();
+    expect(await screen.findByText('BOOKING PAGE')).toBeInTheDocument();
   });
 
   it('pre-fills the referral code from a ?ref= deep link and sends it on verify', async () => {
-    const onSuccess = vi.fn();
     const user = userEvent.setup();
 
-    renderModal({ onClose: vi.fn(), onSuccess }, '/?ref=ABC123');
+    renderPage('/login?ref=ABC123');
 
     expect(screen.getByLabelText('رمز الإحالة')).toHaveValue('ABC123');
 
@@ -93,7 +82,7 @@ describe('AuthModal', () => {
 
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     await user.click(screen.getByRole('button', { name: 'تحقق والدخول' }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    await waitFor(() => expect(useAuth.getState().accessToken).toBe(FAKE_JWT));
 
     const verifyCall = fetchMock.mock.calls.find((call: unknown[]) => String(call[0]).endsWith('/auth/otp/verify'));
     expect(verifyCall).toBeDefined();

@@ -1,15 +1,9 @@
-import { useState, useId } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Phone, Gift } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
-import { useDialog } from '../hooks/useDialog';
-import { notify } from './shared';
-
-interface AuthModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
+import { Card, notify } from '../components/shared';
 
 /**
  * Read the `role` claim from a JWT without verifying it (the server is the
@@ -34,8 +28,10 @@ function errorMessage(e: unknown, fallback = 'حدث خطأ'): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
+export default function LoginPage() {
+  const navigate = useNavigate();
   const [params] = useSearchParams();
+  const returnTo = params.get('returnTo') || '/';
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('+962');
   const [otp, setOtp] = useState('');
@@ -44,8 +40,6 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   // still editable — the backend only applies it on first-time signup.
   const [referralCode, setReferralCode] = useState(() => params.get('ref') ?? '');
   const { setTokens } = useAuth();
-  const ref = useDialog<HTMLDivElement>(onClose);
-  const titleId = useId();
 
   async function requestOtp() {
     setLoading(true);
@@ -74,7 +68,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       });
       setTokens(accessToken, roleFromJwt(accessToken));
       notify('تم تسجيل الدخول بنجاح', 'success');
-      onSuccess();
+      navigate(returnTo, { replace: true });
     } catch (e: unknown) {
       notify(errorMessage(e), 'error');
     } finally {
@@ -83,28 +77,15 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
-      onClick={onClose}
-    >
-      <div
-        ref={ref}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="bg-white rounded-2xl p-6 shadow-2xl w-full mx-4"
-        style={{ maxWidth: 400 }}
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id={titleId} style={{ fontWeight: 700, fontSize: 22, color: '#0F172A' }}>تسجيل الدخول</h2>
-        <p style={{ color: '#475569', fontSize: 14, marginTop: 4 }}>
+    <main className="max-w-[420px] mx-auto px-6 py-16">
+      <Card className="p-8">
+        <h1 style={{ fontWeight: 700, fontSize: 22, color: '#0F172A', textAlign: 'center' }}>تسجيل الدخول</h1>
+        <p style={{ color: '#475569', fontSize: 14, marginTop: 4, textAlign: 'center' }}>
           {step === 'phone' ? 'أدخل رقم هاتفك للمتابعة' : `أدخل الرمز المرسل إلى ${phone}`}
         </p>
 
         {step === 'phone' ? (
-          <div className="mt-5 space-y-4">
+          <div className="mt-6 space-y-4">
             <div className="flex items-center gap-2 h-12 px-4 rounded-xl border border-slate-200 bg-slate-50">
               <Phone size={18} color="#94A3B8" />
               <input
@@ -133,16 +114,17 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               />
             </div>
             <button
-              onClick={requestOtp}
+              onClick={() => void requestOtp()}
               disabled={loading || phone.length < 10}
               className="w-full h-12 rounded-xl disabled:opacity-50"
               style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 15 }}
             >
               {loading ? '...' : 'إرسال الرمز'}
             </button>
+            <p style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>بالمتابعة، أنت توافق على الشروط والأحكام وسياسة الخصوصية.</p>
           </div>
         ) : (
-          <div className="mt-5 space-y-4">
+          <div className="mt-6 space-y-4">
             {/* A single invisible input captures typing/paste/native SMS autofill
                 (autoComplete="one-time-code"); the 6 boxes below are purely a
                 visual reflection of its value, clicking any box focuses it. */}
@@ -175,7 +157,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
             </div>
             <p style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
             <button
-              onClick={verifyOtp}
+              onClick={() => void verifyOtp()}
               disabled={loading || otp.length !== 6}
               className="w-full h-12 rounded-xl disabled:opacity-50"
               style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 15 }}
@@ -187,9 +169,7 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
             </button>
           </div>
         )}
-
-        <button onClick={onClose} className="mt-4 w-full" style={{ color: '#94A3B8', fontSize: 13 }}>إلغاء</button>
-      </div>
-    </div>
+      </Card>
+    </main>
   );
 }
