@@ -38,7 +38,7 @@ function mockFetchWith(payloads: Array<{ status?: number; payload: unknown }>) {
 const listPayload = {
   data: [
     {
-      id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN',
+      id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN', category: null, escalatedAt: null,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       user: { name: 'أحمد', phone: '0790000000' },
       _count: { messages: 2 },
@@ -49,7 +49,7 @@ const listPayload = {
 
 const ticketPayload = {
   data: {
-    id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN',
+    id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN', category: null, escalatedAt: null,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     user: { name: 'أحمد', phone: '0790000000' },
     messages: [{ id: 'm1', senderRole: 'USER', body: 'لدي مشكلة', createdAt: new Date().toISOString() }],
@@ -59,12 +59,17 @@ const ticketPayload = {
 const UUID_IN_MSG = '11111111-2222-4333-8444-555555555555';
 const ticketWithUuidPayload = {
   data: {
-    id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN',
+    id: 't1', subject: 'مشكلة بالحجز', status: 'OPEN', category: null, escalatedAt: null,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     user: { name: 'أحمد', phone: '0790000000' },
     messages: [{ id: 'm1', senderRole: 'USER', body: `رقم حجزي هو ${UUID_IN_MSG}`, createdAt: new Date().toISOString() }],
   },
 };
+
+// The split-pane layout auto-selects the first ticket in the list (no
+// "open" click needed like the old drawer UX) — every test waits for the
+// conversation panel's refund button, which only renders once the
+// conversation has loaded, instead of a drawer heading.
 
 describe('Support page (refund is confirm-gated)', () => {
   it('does NOT fire the refund mutation on a single click — confirm dialog required', async () => {
@@ -76,11 +81,7 @@ describe('Support page (refund is confirm-gated)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    // Open the conversation drawer
-    await user.click(screen.getByText('فتح'));
-    // The drawer heading renders the subject as an h2
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
 
     // Open the refund form
     await user.click(screen.getByText('استرداد'));
@@ -113,9 +114,7 @@ describe('Support page (refund is confirm-gated)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    await user.click(screen.getByText('فتح'));
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
     await user.click(screen.getByText('استرداد'));
 
     const bookingInput = screen.getByPlaceholderText('معرّف الحجز');
@@ -144,9 +143,7 @@ describe('Support page (refund is confirm-gated)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    await user.click(screen.getByText('فتح'));
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
     await user.click(screen.getByText('استرداد'));
 
     const bookingInput = screen.getByPlaceholderText('معرّف الحجز');
@@ -171,9 +168,7 @@ describe('Support page (refund booking-id auto-extract)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    await user.click(screen.getByText('فتح'));
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
     await user.click(screen.getByText('استرداد'));
 
     const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;
@@ -191,9 +186,7 @@ describe('Support page (refund booking-id auto-extract)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    await user.click(screen.getByText('فتح'));
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
     await user.click(screen.getByText('استرداد'));
 
     const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;
@@ -214,9 +207,7 @@ describe('Support page (refund booking-id auto-extract)', () => {
     const user = userEvent.setup();
     renderWithProviders(<Support />);
     await waitFor(() => expect(screen.getByText('أحمد')).toBeInTheDocument());
-
-    await user.click(screen.getByText('فتح'));
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('مشكلة بالحجز'));
+    await waitFor(() => expect(screen.getByText('استرداد')).toBeInTheDocument());
     await user.click(screen.getByText('استرداد'));
 
     const bookingInput = screen.getByPlaceholderText('معرّف الحجز') as HTMLInputElement;

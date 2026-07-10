@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { GuaranteeStatus, SupportStatus, WithdrawalStatus } from '@prisma/client';
+import { GuaranteeStatus, SupportStatus, SupportCategory, WithdrawalStatus } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { requireAdminRole } from '../middleware/auth';
@@ -12,6 +12,7 @@ import { TechnicianService } from '../../../application/technician/TechnicianSer
 
 const GUARANTEE_STATUSES = Object.values(GuaranteeStatus);
 const SUPPORT_STATUSES = Object.values(SupportStatus);
+const SUPPORT_CATEGORIES = Object.values(SupportCategory);
 const WITHDRAWAL_STATUSES = Object.values(WithdrawalStatus);
 
 /**
@@ -181,6 +182,24 @@ adminOpsRouter.post(
   validate([param('id').isUUID(), body('status').isIn(SUPPORT_STATUSES)]),
   asyncHandler(async (req, res) => {
     res.json({ data: await supportService.setStatus(req.params.id, req.body.status as SupportStatus) });
+  }),
+);
+
+adminOpsRouter.post(
+  '/support/:id/category',
+  requireAdminRole('SUPPORT'),
+  validate([param('id').isUUID(), body('category').isIn(SUPPORT_CATEGORIES)]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await supportService.setCategory(req.params.id, req.body.category as SupportCategory) });
+  }),
+);
+
+adminOpsRouter.post(
+  '/support/:id/escalate',
+  requireAdminRole('SUPPORT'),
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await supportService.escalate(req.params.id) });
   }),
 );
 
