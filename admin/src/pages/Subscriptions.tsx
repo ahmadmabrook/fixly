@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Users, CheckCircle2, DollarSign } from 'lucide-react';
 import { api } from '../lib/api';
 import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, Pagination } from '../components/shared';
 import { fmtJod } from '../lib/format';
@@ -41,9 +42,9 @@ export default function Subscriptions() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard label="إجمالي المشتركين" value={data?.total ?? 0} />
-        <KpiCard label="فعّال (هذه الصفحة)" value={activeOnPage} sub={`${pastDueOnPage} متأخر`} />
-        <KpiCard label="إيراد شهري (هذه الصفحة)" value={`${fmtJod(mrrOnPage)} JD`} />
+        <KpiCard label="إجمالي المشتركين" value={data?.total ?? 0} icon={<Users size={18} />} color="#1366D6" />
+        <KpiCard label="فعّال (هذه الصفحة)" value={activeOnPage} sub={`${pastDueOnPage} متأخر`} icon={<CheckCircle2 size={18} />} color="#15803D" />
+        <KpiCard label="إيراد شهري (هذه الصفحة)" value={`${fmtJod(mrrOnPage)} JD`} icon={<DollarSign size={18} />} color="#0FB5A6" />
       </div>
 
       <Card>
