@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, BarChart, Bar, Cell, LabelList,
+  CartesianGrid, Tooltip, PieChart, Pie, Cell,
 } from 'recharts';
 import { api, AdminStats, FinancialReport, OperationalStats, ActivityFeedItem, AtRiskOrder } from '../lib/api';
 import { KpiCard, Card, SkeletonKpiRow, SkeletonChart, EmptyState } from '../components/shared';
@@ -62,7 +62,7 @@ const RISK_LABEL: Record<AtRiskOrder['riskType'], { ar: string; bg: string; fg: 
 
 const BRAND_BLUE = '#1366D6';
 const ACCENT_TEAL = '#0FB5A6';
-const BAR_COLORS = ['#1366D6', '#0FB5A6', '#F59E0B', '#8B5CF6', '#EC4899', '#10B981', '#EF4444', '#6366F1'];
+const SERVICE_CHART_COLORS = ['#1366D6', '#0FB5A6', '#F59E0B', '#8B5CF6', '#EC4899', '#10B981', '#EF4444', '#6366F1'];
 
 export default function Dashboard() {
   const { data: stats, isLoading, isError } = useQuery<AdminStats>({
@@ -345,35 +345,19 @@ export default function Dashboard() {
           {serviceData.length === 0 ? (
             <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
           ) : (
-            <div role="img" aria-label="رسم بياني لعدد الحجوزات حسب الخدمة">
+            <div role="img" aria-label="رسم بياني دائري لعدد الحجوزات حسب الخدمة">
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={serviceData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                <XAxis
-                  dataKey="nameAr"
-                  tick={{ fontSize: 11, fill: '#64748B' }}
-                  axisLine={{ stroke: '#E2E8F0' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#64748B' }}
-                  axisLine={false}
-                  tickLine={false}
-                  allowDecimals={false}
-                  label={{ value: 'عدد', angle: -90, position: 'insideRight', style: { fontSize: 11, fill: '#94A3B8' } }}
-                />
+              <PieChart>
+                <Pie data={serviceData} dataKey="count" nameKey="nameAr" innerRadius={45} outerRadius={78} isAnimationActive={false}>
+                  {serviceData.map((_entry, idx) => (
+                    <Cell key={idx} fill={SERVICE_CHART_COLORS[idx % SERVICE_CHART_COLORS.length]} />
+                  ))}
+                </Pie>
                 <Tooltip
                   contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 13, direction: 'rtl' }}
                   formatter={(v) => [`${v}`, 'عدد الحجوزات']}
-                  labelStyle={{ fontWeight: 600, color: '#0F172A' }}
                 />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                  <LabelList dataKey="count" position="top" style={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
-                  {serviceData.map((_entry, idx) => (
-                    <Cell key={idx} fill={BAR_COLORS[idx % BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
+              </PieChart>
             </ResponsiveContainer>
             </div>
           )}
