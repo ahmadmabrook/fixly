@@ -132,8 +132,8 @@ describe('Technicians page (detail drawer scorecard + intro video)', () => {
     await waitFor(() => expect(screen.getByText('علي')).toBeInTheDocument());
     await user.click(screen.getByText('تفاصيل'));
 
-    await waitFor(() => expect(screen.getByText('الفيديو التعريفي:')).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: 'عرض' })).toHaveAttribute('href', 'https://example.com/video.mp4');
+    await waitFor(() => expect(screen.getByText('الفيديو التعريفي')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'تشغيل الفيديو التعريفي' })).toHaveAttribute('href', 'https://example.com/video.mp4');
 
     await waitFor(() => expect(screen.getByText('بطاقة الأداء')).toBeInTheDocument());
     expect(screen.getByText('90%')).toBeInTheDocument();
