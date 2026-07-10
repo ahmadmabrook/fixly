@@ -287,6 +287,9 @@ model Booking {
   addressLine         String
   addressLat          Float
   addressLng          Float
+  // Customer-provided free-text instructions (e.g. gate code, floor number) —
+  // shown to the technician, never used to drive business logic.
+  notes               String?
   scheduledAt         DateTime?
   rescheduledAt       DateTime?
   startedAt           DateTime?

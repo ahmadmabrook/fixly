@@ -158,6 +158,7 @@ export interface CreateBookingInput {
   addressLine: string;
   addressLat: number;
   addressLng: number;
+  notes?: string | null;
   scheduledAt: string | null;
   promoCode?: string | null;
 }

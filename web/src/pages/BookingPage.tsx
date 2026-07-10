@@ -40,6 +40,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const { data: svc, isLoading, isError, error } = useService(serviceId);
   const [when, setWhen] = useState<'now' | 'later'>('now');
   const [addr, setAddr] = useState<AddressValue>({ address: 'خلدا، شارع وصفي التل', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
+  const [notes, setNotes] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
   const [promoInput, setPromoInput] = useState('');
@@ -91,6 +92,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         addressLine: address.trim(),
         addressLat: latNum,
         addressLng: lngNum,
+        notes: notes.trim() || null,
         scheduledAt: when === 'now' ? null : (() => {
           const d = new Date(Date.now() + 86_400_000);
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
@@ -113,7 +115,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         onError: (e) => notify(e instanceof Error ? e.message : 'حدث خطأ', 'error'),
       },
     );
-  }, [svc, addr, when, promo, promoInput, createBooking, onDone]);
+  }, [svc, addr, notes, when, promo, promoInput, createBooking, onDone]);
 
   // Once a checkout session is open, render only the payment step.
   if (checkout && createdId) {
@@ -176,10 +178,22 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
             <div className="mt-3">
               <MapAddressPicker value={addr} onChange={setAddr} height={260} />
             </div>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value.slice(0, 300))}
+              className="mt-3 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none"
+              style={{ fontSize: 14 }}
+              placeholder="ملاحظات (مثال: رمز البوابة 1234)"
+            />
           </Card>
 
           <Card className="p-6">
             <h2 style={{ fontWeight: 700, fontSize: 16 }}>الدفع</h2>
+            {/* Only a real card checkout exists (HyperPay hosted checkout,
+                VISA/MASTER only) — no Apple Pay/Google Pay integration. A
+                3-way selector like the design mock would let the customer
+                "choose" options that silently fall through to the same card
+                form, which is worse than a single accurate option. */}
             <div
               className="mt-3 p-4 rounded-xl border-2 text-center"
               style={{ borderColor: '#1366D6', background: '#E8F1FE', fontWeight: 700, fontSize: 14, color: '#0E4FA8' }}

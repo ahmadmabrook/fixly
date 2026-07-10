@@ -39,6 +39,7 @@ bookingsRouter.post(
     body('addressLine').isString().trim().isLength({ min: 1, max: 500 }),
     body('addressLat').isFloat({ min: -90, max: 90 }),
     body('addressLng').isFloat({ min: -180, max: 180 }),
+    body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
     // A scheduled booking must be in the future — mirrors reschedule()'s guard so
     // a client can't create a booking dated in the past (data anomaly / abuse).
     body('scheduledAt')
@@ -57,6 +58,7 @@ bookingsRouter.post(
       addressLine: req.body.addressLine,
       addressLat: req.body.addressLat,
       addressLng: req.body.addressLng,
+      notes: req.body.notes ?? undefined,
       scheduledAt: req.body.scheduledAt ?? undefined,
       promoCode: req.body.promoCode ?? undefined,
     });

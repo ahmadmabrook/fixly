@@ -16,6 +16,8 @@ export interface CreateBookingInput {
   addressLine: string;
   addressLat: number;
   addressLng: number;
+  /** Free-text instructions for the technician (gate code, floor, etc.). */
+  notes?: string;
   scheduledAt?: string;
   /** Optional promo/discount code applied to the fixed service price. */
   promoCode?: string;
@@ -94,6 +96,7 @@ export class BookingCreateFlow {
             addressLine: input.addressLine,
             addressLat: input.addressLat,
             addressLng: input.addressLng,
+            notes: input.notes?.trim() || undefined,
             scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
             discountJod,
             promoCodeId: quote?.promoCodeId,
