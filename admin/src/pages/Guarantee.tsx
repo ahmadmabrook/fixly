@@ -61,7 +61,7 @@ export default function Guarantee() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div style={{ fontFamily: 'Inter', fontWeight: 700 }}>{t.id.slice(0, 8)}</div>
-                    <div style={{ color: '#64748B', fontSize: 12 }}>{t.booking?.customer?.name ?? '—'} · {new Date(t.createdAt).toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' })}</div>
+                    <div style={{ color: '#64748B', fontSize: 12 }}><span>{t.booking?.customer?.name ?? '—'}</span> · {new Date(t.createdAt).toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' })}</div>
                   </div>
                   <Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} />
                 </div>
