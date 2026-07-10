@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api, CustomerItem, CustomerBookingItem } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill } from '../components/shared';
 
 export default function Customers() {
   const [page, setPage] = useState(0);
@@ -79,7 +79,7 @@ export default function Customers() {
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{c.phone ?? '—'}</span></Td>
                     <Td>
-                      {blocked ? <span style={{ color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>محظور</span> : <span style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>نشط</span>}
+                      {blocked ? <Pill label="محظور" bg="#FEE2E2" fg="#B91C1C" /> : <Pill label="نشط" bg="#DCFCE7" fg="#15803D" />}
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(c.createdAt)}</span></Td>
                     <Td>

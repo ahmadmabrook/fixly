@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, GuaranteeAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_REVIEW', 'قيد المراجعة'], ['RESOLVED', 'موافق'], ['REJECTED', 'مرفوض'],
 ];
+const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
+  OPEN: { ar: 'مفتوح', bg: '#FEF3C7', fg: '#B45309' },
+  IN_REVIEW: { ar: 'قيد المراجعة', bg: '#FEF3C7', fg: '#B45309' },
+  RESOLVED: { ar: 'موافق', bg: '#DCFCE7', fg: '#15803D' },
+  REJECTED: { ar: 'مرفوض', bg: '#FEE2E2', fg: '#B91C1C' },
+};
 
 function slaLabel(expiresAt: string): { text: string; color: string } {
   const ms = new Date(expiresAt).getTime() - Date.now();
@@ -59,7 +65,7 @@ export default function Guarantee() {
                     <Td>{t.booking?.customer?.name ?? '—'}</Td>
                     <Td>{t.booking?.service?.nameAr ?? '—'}</Td>
                     <Td><span style={{ color: '#64748B' }}>{(t.description ?? '').slice(0, 40)}</span></Td>
-                    <Td>{t.status}</Td>
+                    <Td><Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} /></Td>
                     <Td><span style={{ color: sla.color, fontSize: 12, fontWeight: 600 }}>{(t.status === 'OPEN' || t.status === 'IN_REVIEW') ? sla.text : '—'}</span></Td>
                     <Td><ActionBtn onClick={() => setActive(t)}>مراجعة</ActionBtn></Td>
                   </tr>

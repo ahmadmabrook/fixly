@@ -1,13 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, SupportAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
 import { fmtJod } from '../lib/format';
 import { extractBookingId } from '../lib/extractBookingId';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_PROGRESS', 'قيد المعالجة'], ['CLOSED', 'مغلق'],
 ];
+const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
+  OPEN: { ar: 'مفتوح', bg: '#FEF3C7', fg: '#B45309' },
+  IN_PROGRESS: { ar: 'قيد المعالجة', bg: '#DBEAFE', fg: '#1366D6' },
+  CLOSED: { ar: 'مغلق', bg: '#E2E8F0', fg: '#475569' },
+};
 
 export default function Support() {
   const [status, setStatus] = useState('');
@@ -48,7 +53,7 @@ export default function Support() {
                   <Td>{t.user?.name ?? '—'}</Td>
                   <Td>{t.subject}</Td>
                   <Td><span style={{ fontFamily: 'Inter' }}>{t._count?.messages ?? 0}</span></Td>
-                  <Td>{t.status}</Td>
+                  <Td><Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} /></Td>
                   <Td><ActionBtn onClick={() => setOpenId(t.id)}>فتح</ActionBtn></Td>
                 </tr>
               ))}

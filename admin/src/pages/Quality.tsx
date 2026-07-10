@@ -19,7 +19,7 @@ interface QualityTech {
 
 const TIERS = ['PROBATION', 'VERIFIED', 'PRO', 'ELITE'] as const;
 const TIER_LABEL: Record<string, string> = { PROBATION: 'تحت التجربة', VERIFIED: 'موثّق', PRO: 'محترف', ELITE: 'نخبة' };
-const TIER_COLOR: Record<string, string> = { PROBATION: '#B45309', VERIFIED: '#0E4FA8', PRO: '#7C3AED', ELITE: '#15803D' };
+const TIER_COLOR: Record<string, string> = { PROBATION: '#B45309', VERIFIED: '#1366D6', PRO: '#7C3AED', ELITE: '#15803D' };
 const BG_LABEL: Record<string, string> = { PENDING: 'معلّق', PASSED: 'اجتاز', FAILED: 'فشل' };
 
 export default function Quality() {
