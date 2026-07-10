@@ -45,27 +45,35 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-screen sticky top-0"
-      style={{ width: 240, background: '#0F172A', color: '#FFF', flexShrink: 0 }}
+      className="flex flex-col h-screen sticky top-0 border-slate-200"
+      style={{ width: 240, background: '#FFFFFF', borderInlineStart: '1px solid #E2E8F0', flexShrink: 0 }}
     >
       {/* Logo */}
-      <div className="px-6 py-5 border-b" style={{ borderColor: '#1E293B' }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: '#FFF', letterSpacing: -0.5 }}>
-          Fixly <span style={{ color: '#1366D6' }}>Admin</span>
-        </span>
+      <div className="px-5 py-5 flex items-center gap-2 border-b" style={{ borderColor: '#F1F5F9' }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1366D6' }}>
+          <Wrench size={16} color="#FFF" />
+        </div>
+        <div>
+          <div style={{ color: '#1366D6', fontWeight: 800, fontSize: 18 }}>Fixly</div>
+          <div style={{ color: '#94A3B8', fontSize: 11 }}>لوحة العمليات</div>
+        </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto py-3">
         {items.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                isActive ? 'bg-[#1366D6] text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`
+              `w-full px-4 py-2.5 flex items-center gap-3 text-sm transition-colors ${isActive ? '' : 'hover:bg-slate-50'}`
             }
+            style={({ isActive }) => ({
+              background: isActive ? '#E8F1FE' : 'transparent',
+              color: isActive ? '#1366D6' : '#475569',
+              borderInlineEnd: isActive ? '3px solid #1366D6' : '3px solid transparent',
+              fontWeight: isActive ? 700 : 500,
+            })}
           >
             <Icon size={18} strokeWidth={2} />
             {label}
@@ -74,19 +82,20 @@ export default function Sidebar() {
       </nav>
 
       {/* Admin info + logout */}
-      <div className="px-4 py-4 border-t" style={{ borderColor: '#1E293B' }}>
+      <div className="p-4 border-t flex items-center gap-2" style={{ borderColor: '#F1F5F9' }}>
         {admin && (
-          <div className="mb-3 px-1">
-            <p className="text-white text-sm font-semibold truncate">{admin.name}</p>
-            <p className="text-slate-500 text-xs truncate">{admin.email}</p>
+          <div className="flex-1 min-w-0">
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }} className="truncate">{admin.name}</p>
+            <p style={{ fontSize: 11, color: '#94A3B8' }} className="truncate">{admin.email}</p>
           </div>
         )}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+          aria-label="تسجيل الخروج"
+          className="p-1.5 rounded-lg hover:bg-slate-100 shrink-0"
+          style={{ color: '#64748B' }}
         >
           <LogOut size={16} />
-          تسجيل الخروج
         </button>
       </div>
     </aside>

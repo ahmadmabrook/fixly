@@ -163,19 +163,21 @@ adminRouter.get(
   }),
 );
 
-// GET /technicians?status=&limit=&offset=
+// GET /technicians?status=&search=&limit=&offset= — search matches phone (contains) or name (case-insensitive contains).
 adminRouter.get(
   '/technicians',
   validate([
     query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
     query('status').optional().isIn(TECHNICIAN_STATUSES),
+    query('search').optional().isString().trim().isLength({ min: 1, max: 100 }),
   ]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
     const status = req.query.status as TechnicianStatus | undefined;
-    const { items, total } = await adminService.listTechnicians(status, limit, offset);
+    const search = req.query.search as string | undefined;
+    const { items, total } = await adminService.listTechnicians(status, limit, offset, search);
     res.json({ data: items, meta: { total, limit, offset } });
   }),
 );
@@ -192,17 +194,19 @@ adminRouter.post(
   }),
 );
 
-// GET /customers?limit=&offset=
+// GET /customers?search=&limit=&offset= — search matches phone (contains) or name (case-insensitive contains).
 adminRouter.get(
   '/customers',
   validate([
     query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
+    query('search').optional().isString().trim().isLength({ min: 1, max: 100 }),
   ]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
-    const { items, total } = await adminService.listCustomers(limit, offset);
+    const search = req.query.search as string | undefined;
+    const { items, total } = await adminService.listCustomers(limit, offset, search);
     res.json({ data: items, meta: { total, limit, offset } });
   }),
 );

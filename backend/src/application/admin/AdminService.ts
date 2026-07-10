@@ -17,7 +17,7 @@ import {
   listCustomers,
   listPayouts,
 } from './AdminService.reads';
-import { verifyTechnician, rejectTechnician, suspendTechnician } from './AdminService.technicianModeration';
+import { verifyTechnician, rejectTechnician, suspendTechnician, reinstateTechnician } from './AdminService.technicianModeration';
 import { setCustomerBlocked } from './AdminService.customerModeration';
 
 /**
@@ -77,8 +77,8 @@ export class AdminService {
     return listBookingsForExport(status, maxRows);
   }
 
-  async listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0) {
-    return listTechnicians(status, limit, offset);
+  async listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0, search?: string) {
+    return listTechnicians(status, limit, offset, search);
   }
 
   async getTechnicianDetail(id: string, actorId: string, ip?: string) {
@@ -97,6 +97,10 @@ export class AdminService {
     return suspendTechnician(id, reason, actorId, ip);
   }
 
+  async reinstateTechnician(id: string, actorId: string, ip?: string) {
+    return reinstateTechnician(id, actorId, ip);
+  }
+
   async listCustomerBookings(customerId: string, limit = 50, offset = 0) {
     return listCustomerBookings(customerId, limit, offset);
   }
@@ -105,8 +109,8 @@ export class AdminService {
     return setCustomerBlocked(id, blocked, actorId, ip);
   }
 
-  async listCustomers(limit = 50, offset = 0) {
-    return listCustomers(limit, offset);
+  async listCustomers(limit = 50, offset = 0, search?: string) {
+    return listCustomers(limit, offset, search);
   }
 
   async listPayouts(status?: PayoutStatus, limit = 50, offset = 0) {
