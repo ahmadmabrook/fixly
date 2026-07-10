@@ -274,6 +274,53 @@ describe('AdminService.verifyTechnician (idempotency)', () => {
   });
 });
 
+describe('AdminService.reinstateTechnician', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('moves a SUSPENDED technician back to APPROVED and audits it', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'tp1', isVerified: true, status: 'APPROVED', user: { id: 'u1' } });
+    const audit = jest.fn().mockResolvedValue({});
+    mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        technicianProfile: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', status: 'SUSPENDED' }),
+          update,
+        },
+        adminAuditLog: { create: audit },
+      }),
+    );
+    await service.reinstateTechnician('tp1', 'admin1', '1.2.3.4');
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'tp1' },
+      data: expect.objectContaining({ status: 'APPROVED', isVerified: true, rejectionReason: null }),
+    }));
+    expect(audit).toHaveBeenCalled();
+  });
+
+  it('rejects reinstating a technician that is not SUSPENDED', async () => {
+    mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        technicianProfile: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'tp1', status: 'APPROVED' }),
+          update: jest.fn(),
+        },
+        adminAuditLog: { create: jest.fn() },
+      }),
+    );
+    await expect(service.reinstateTechnician('tp1', 'admin1')).rejects.toThrow('Only a suspended technician can be reinstated');
+  });
+
+  it('throws NotFound when the technician profile does not exist', async () => {
+    mockedPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        technicianProfile: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+        adminAuditLog: { create: jest.fn() },
+      }),
+    );
+    await expect(service.reinstateTechnician('missing', 'admin1')).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe('AdminService.login (failed-login logging)', () => {
   // We spy on the logger singleton to verify the audit-shaped warn log fires.
   let warnSpy: jest.SpyInstance;

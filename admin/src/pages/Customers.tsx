@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { api, CustomerItem, CustomerBookingItem } from '../lib/api';
 import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify } from '../components/shared';
 
@@ -10,10 +12,13 @@ export default function Customers() {
   const [confirm, setConfirm] = useState<{ customer: CustomerItem; blocked: boolean } | null>(null);
   const limit = 50;
   const qc = useQueryClient();
+  // Deep-linkable from the global header search (`/customers?search=...`).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('search') ?? '';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-customers', page],
-    queryFn: () => api.list<CustomerItem>(`/customers?limit=${limit}&offset=${page * limit}`),
+    queryKey: ['admin-customers', page, search],
+    queryFn: () => api.list<CustomerItem>(`/customers?limit=${limit}&offset=${page * limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   });
 
   const block = useMutation({
@@ -28,11 +33,26 @@ export default function Customers() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>العملاء</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-          قائمة عملاء المنصة المسجلين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>العملاء</h1>
+          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
+            قائمة عملاء المنصة المسجلين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 h-9 rounded-lg" style={{ background: '#F1F5F9', width: 260 }}>
+          <Search size={16} color="#94A3B8" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setPage(0);
+              setSearchParams(e.target.value ? { search: e.target.value } : {});
+            }}
+            className="flex-1 bg-transparent outline-none"
+            placeholder="بحث بالاسم أو رقم الهاتف..."
+            style={{ fontSize: 13 }}
+          />
+        </div>
       </div>
 
       <Card>

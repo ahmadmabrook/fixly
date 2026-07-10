@@ -329,3 +329,9 @@ function ConfirmDialogBody({
     </div>
   );
 }
+
+export const ADMIN_ROLES: ReadonlyArray<readonly [string, string]> = [
+  ['SUPER_ADMIN', 'مدير عام'], ['OPS', 'عمليات'], ['FINANCE', 'مالية'], ['SUPPORT', 'دعم'],
+];
+
+export const adminRoleLabel = (role: string) => ADMIN_ROLES.find(([k]) => k === role)?.[1] ?? role;

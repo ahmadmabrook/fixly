@@ -56,6 +56,16 @@ adminOpsRouter.post(
   }),
 );
 
+// Reinstate a suspended technician back to APPROVED (OPS) — previously a one-way door.
+adminOpsRouter.post(
+  '/technicians/:id/reinstate',
+  requireAdminRole('OPS'),
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await adminService.reinstateTechnician(req.params.id, req.user!.userId, req.ip) });
+  }),
+);
+
 // GET /admin/technicians/:id/scorecard (OPS) — id is the TechnicianProfile id.
 adminOpsRouter.get(
   '/technicians/:id/scorecard',

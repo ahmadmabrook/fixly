@@ -158,8 +158,13 @@ export async function listBookingsForExport(status: BookingStatus | undefined, m
   });
 }
 
-export async function listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0) {
-  const where = status ? { status } : {};
+export async function listTechnicians(status?: TechnicianStatus, limit = 50, offset = 0, search?: string) {
+  const where = {
+    ...(status ? { status } : {}),
+    ...(search
+      ? { user: { OR: [{ phone: { contains: search } }, { name: { contains: search, mode: 'insensitive' as const } }] } }
+      : {}),
+  };
   const [items, total] = await prisma.$transaction([
     prisma.technicianProfile.findMany({
       where,
@@ -215,8 +220,11 @@ export async function listCustomerBookings(customerId: string, limit = 50, offse
   return { items, total };
 }
 
-export async function listCustomers(limit = 50, offset = 0) {
-  const where = { role: 'CUSTOMER' as const };
+export async function listCustomers(limit = 50, offset = 0, search?: string) {
+  const where = {
+    role: 'CUSTOMER' as const,
+    ...(search ? { OR: [{ phone: { contains: search } }, { name: { contains: search, mode: 'insensitive' as const } }] } : {}),
+  };
   const [items, total] = await prisma.$transaction([
     prisma.user.findMany({
       where,

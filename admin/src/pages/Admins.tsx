@@ -2,13 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, AdminUserItem } from '../lib/api';
 import { useAuth } from '../lib/store';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify } from '../components/shared';
-
-const ROLES: ReadonlyArray<readonly [string, string]> = [
-  ['SUPER_ADMIN', 'مدير عام'], ['OPS', 'عمليات'], ['FINANCE', 'مالية'], ['SUPPORT', 'دعم'],
-];
-
-const roleLabel = (role: string) => ROLES.find(([k]) => k === role)?.[1] ?? role;
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, ADMIN_ROLES as ROLES, adminRoleLabel as roleLabel } from '../components/shared';
 
 export default function Admins() {
   const qc = useQueryClient();

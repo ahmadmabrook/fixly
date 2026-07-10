@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Search } from 'lucide-react';
 import { api, TechnicianItem, TechnicianDetail, TechnicianScorecard } from '../lib/api';
 import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
 
@@ -22,10 +23,12 @@ export default function Technicians() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const limit = 50;
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('search') ?? '';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-technicians', statusFilter, page],
-    queryFn: () => api.list<TechnicianItem>(`/technicians?${statusFilter ? `status=${statusFilter}&` : ''}limit=${limit}&offset=${page * limit}`),
+    queryKey: ['admin-technicians', statusFilter, page, search],
+    queryFn: () => api.list<TechnicianItem>(`/technicians?${statusFilter ? `status=${statusFilter}&` : ''}${search ? `search=${encodeURIComponent(search)}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
 
   const verify = useMutation({
@@ -46,11 +49,28 @@ export default function Technicians() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>الفنيون</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-          إدارة وتوثيق الفنيين المسجلين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>الفنيون</h1>
+          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
+            إدارة وتوثيق الفنيين المسجلين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 h-9 rounded-lg" style={{ background: '#F1F5F9', width: 260 }}>
+          <Search size={16} color="#94A3B8" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setPage(0);
+              const next = new URLSearchParams(searchParams);
+              if (e.target.value) next.set('search', e.target.value); else next.delete('search');
+              setSearchParams(next);
+            }}
+            className="flex-1 bg-transparent outline-none"
+            placeholder="بحث بالاسم أو رقم الهاتف..."
+            style={{ fontSize: 13 }}
+          />
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -132,8 +152,8 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     enabled: !!t,
   });
   const [reason, setReason] = useState('');
-  // Pending confirmation for a destructive technician action (reject / suspend).
-  const [confirmAction, setConfirmAction] = useState<'reject' | 'suspend' | null>(null);
+  // Pending confirmation for a destructive technician action (reject / suspend / reinstate).
+  const [confirmAction, setConfirmAction] = useState<'reject' | 'suspend' | 'reinstate' | null>(null);
   const reject = useMutation({
     mutationFn: () => api.post(`/technicians/${id}/reject`, { reason: reason.trim() }),
     onSuccess: () => { notify('تم رفض الفني', 'success'); onChanged(); },
@@ -142,6 +162,11 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
   const suspend = useMutation({
     mutationFn: () => api.post(`/technicians/${id}/suspend`, { reason: reason.trim() }),
     onSuccess: () => { notify('تم إيقاف الفني', 'success'); onChanged(); },
+    onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
+  });
+  const reinstate = useMutation({
+    mutationFn: () => api.post(`/technicians/${id}/reinstate`),
+    onSuccess: () => { notify('تم إعادة تفعيل الفني', 'success'); onChanged(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   const docs: Array<[string, string | null | undefined]> = t
@@ -210,6 +235,9 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
                 {t.status === 'APPROVED' && (
                   <button onClick={() => setConfirmAction('suspend')} disabled={!reason.trim() || suspend.isPending} data-testid="suspend-tech-btn" className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>إيقاف</button>
                 )}
+                {t.status === 'SUSPENDED' && (
+                  <button onClick={() => setConfirmAction('reinstate')} disabled={reinstate.isPending} data-testid="reinstate-tech-btn" className="px-4 h-9 rounded-lg disabled:opacity-50" style={{ background: '#DCFCE7', color: '#15803D', fontSize: 12, fontWeight: 600 }}>إعادة تفعيل</button>
+                )}
                 <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
               </div>
             </div>
@@ -219,18 +247,21 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
 
       <ConfirmDialog
         open={confirmAction !== null}
-        title={confirmAction === 'reject' ? 'تأكيد رفض الفني' : 'تأكيد إيقاف الفني'}
+        title={confirmAction === 'reject' ? 'تأكيد رفض الفني' : confirmAction === 'suspend' ? 'تأكيد إيقاف الفني' : 'تأكيد إعادة تفعيل الفني'}
         body={
           confirmAction === 'reject'
             ? 'سيتم رفض طلب التحاق الفني ولن يتمكن من استقبال الحجوزات.'
-            : 'سيتم إيقاف حساب الفني فوراً ولن يتمكن من استقبال حجوزات جديدة.'
+            : confirmAction === 'suspend'
+              ? 'سيتم إيقاف حساب الفني فوراً ولن يتمكن من استقبال حجوزات جديدة.'
+              : 'سيتم إعادة تفعيل حساب الفني وسيتمكن من استقبال حجوزات جديدة بعد أن يفعّل حالة التوفر بنفسه.'
         }
-        confirmLabel={confirmAction === 'reject' ? 'رفض' : 'إيقاف'}
+        confirmLabel={confirmAction === 'reject' ? 'رفض' : confirmAction === 'suspend' ? 'إيقاف' : 'إعادة تفعيل'}
         cancelLabel="إلغاء"
-        confirmVariant="danger"
+        confirmVariant={confirmAction === 'reinstate' ? 'primary' : 'danger'}
         onConfirm={() => {
           if (confirmAction === 'reject') reject.mutate();
           else if (confirmAction === 'suspend') suspend.mutate();
+          else if (confirmAction === 'reinstate') reinstate.mutate();
           setConfirmAction(null);
         }}
         onCancel={() => setConfirmAction(null)}
