@@ -317,6 +317,8 @@ export interface TechnicianDetail extends TechnicianItem {
   selfieUrl?: string | null;
   introVideoUrl?: string | null;
   rejectionReason?: string | null;
+  jobsCompleted?: number;
+  offPlatformFlags?: number;
   services: Array<{ id: string; nameAr: string; nameEn?: string }>;
   recentReviews: Array<{ id: string; rating: number; comment: string | null; reviewer: { name: string | null } }>;
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile } from '../components/shared';
 
 interface QualityTech {
   id: string;
@@ -204,10 +204,13 @@ function QualityDrawer({
             </div>
           )}
 
+          <div className="grid grid-cols-3 gap-2">
+            <OpsStatTile label="التقييم" value={Number(tech.rating) > 0 ? Number(tech.rating).toFixed(1) : '—'} />
+            <OpsStatTile label="المهام" value={tech.jobsCompleted} />
+            <OpsStatTile label="البلاغات" value={tech.offPlatformFlags} />
+          </div>
           <div style={{ fontSize: 14 }}>
-            <div><span style={{ color: '#64748B' }}>التقييم:</span> {Number(tech.rating).toFixed(1)} ({tech.totalReviews})</div>
-            <div><span style={{ color: '#64748B' }}>مهام مكتملة:</span> {tech.jobsCompleted}</div>
-            <div><span style={{ color: '#64748B' }}>بلاغات خارج المنصة:</span> {tech.offPlatformFlags}</div>
+            <div><span style={{ color: '#64748B' }}>عدد التقييمات:</span> {tech.totalReviews}</div>
             <div><span style={{ color: '#64748B' }}>الحالة:</span> {tech.status === 'SUSPENDED' ? 'موقوف' : tech.isInsured ? 'مؤمَّن' : '—'}</div>
           </div>
 

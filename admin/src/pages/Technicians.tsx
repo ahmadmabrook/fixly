@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BadgeCheck, Search } from 'lucide-react';
+import { BadgeCheck, Search, FileText, PlayCircle } from 'lucide-react';
 import { api, TechnicianItem, TechnicianDetail, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, OpsStatTile } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['PENDING', 'قيد المراجعة'], ['APPROVED', 'موثّق'], ['REJECTED', 'مرفوض'], ['SUSPENDED', 'موقوف'],
@@ -170,7 +170,7 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   const docs: Array<[string, string | null | undefined]> = t
-    ? [['الهوية', t.idDocUrl], ['الشهادة', t.certificateUrl], ['صورة شخصية', t.selfieUrl], ['الفيديو التعريفي', t.introVideoUrl]]
+    ? [['الهوية', t.idDocUrl], ['الشهادة', t.certificateUrl], ['صورة شخصية', t.selfieUrl]]
     : [];
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
@@ -185,10 +185,15 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
                 <div style={{ color: '#64748B', fontSize: 13, fontFamily: 'Inter' }}>{t.user.phone}</div>
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-2">
+              <OpsStatTile label="التقييم" value={Number(t.rating) > 0 ? Number(t.rating).toFixed(1) : '—'} />
+              <OpsStatTile label="المهام" value={t.jobsCompleted ?? 0} />
+              <OpsStatTile label="البلاغات" value={t.offPlatformFlags ?? 0} />
+            </div>
             <div style={{ fontSize: 14 }}>
               <div><span style={{ color: '#64748B' }}>السعر/ساعة:</span> {t.hourlyRateJod != null ? `${Number(t.hourlyRateJod)} دينار` : '—'}</div>
               <div><span style={{ color: '#64748B' }}>المركبة:</span> {t.vehicle ?? '—'}</div>
-              <div><span style={{ color: '#64748B' }}>التقييم:</span> {Number(t.rating).toFixed(1)} ({t.totalReviews})</div>
+              <div><span style={{ color: '#64748B' }}>عدد التقييمات:</span> {t.totalReviews}</div>
             </div>
             {scorecard && (
               <div>
@@ -209,12 +214,30 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>المستندات</div>
-              <div className="mt-1 flex flex-col gap-1">
+              <div className="mt-1 grid grid-cols-3 gap-2">
                 {docs.map(([label, url]) => (
-                  <span key={label} style={{ fontSize: 13 }}>{label}: {url ? <a href={url} target="_blank" rel="noreferrer" style={{ color: '#1366D6' }}>عرض</a> : <span style={{ color: '#94A3B8' }}>غير مرفق</span>}</span>
+                  url ? (
+                    <a key={label} href={url} target="_blank" rel="noreferrer" className="rounded-lg bg-slate-100 hover:bg-slate-200 flex flex-col items-center justify-center gap-1" style={{ aspectRatio: '3 / 4' }}>
+                      <FileText size={22} color="#475569" />
+                      <span style={{ fontSize: 11, color: '#475569' }}>{label}</span>
+                    </a>
+                  ) : (
+                    <div key={label} className="rounded-lg bg-slate-50 flex flex-col items-center justify-center gap-1" style={{ aspectRatio: '3 / 4' }}>
+                      <FileText size={22} color="#CBD5E1" />
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>{label}</span>
+                    </div>
+                  )
                 ))}
               </div>
             </div>
+            {t.introVideoUrl && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>الفيديو التعريفي</div>
+                <a href={t.introVideoUrl} target="_blank" rel="noreferrer" aria-label="تشغيل الفيديو التعريفي" className="mt-1 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: '#0F172A' }}>
+                  <PlayCircle size={36} color="#FFF" />
+                </a>
+              </div>
+            )}
             {t.recentReviews.length > 0 && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>آخر التقييمات</div>
