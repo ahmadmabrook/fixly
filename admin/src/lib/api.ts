@@ -346,6 +346,8 @@ export interface SupportAdminItem {
   id: string;
   subject: string;
   status: string;
+  category: string | null;
+  escalatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   user?: { name: string | null; phone: string } | null;

@@ -1965,6 +1965,21 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [OPEN, IN_PROGRESS, CLOSED] } } } } } }
       responses: { '200': { description: Updated. } }
+  /admin/support/{id}/category:
+    post:
+      tags: [Admin]
+      summary: Categorize a support ticket (SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [category], properties: { category: { type: string, enum: [QUALITY, DELAY, PRICING, BEHAVIOR, SAFETY, OTHER] } } } } } }
+      responses: { '200': { description: Updated. } }
+  /admin/support/{id}/escalate:
+    post:
+      tags: [Admin]
+      summary: Escalate a support ticket to the ops lead (SUPPORT)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Escalated (idempotent). } }
 
   # ---- Admin: broadcast / finance / admins (RBAC) ----
   /admin/broadcasts:

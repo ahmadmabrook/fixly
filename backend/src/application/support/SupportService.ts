@@ -1,4 +1,4 @@
-import { SupportStatus } from '@prisma/client';
+import { SupportStatus, SupportCategory } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError } from '../../shared/errors';
 import { createUserNotification } from '../notification/notify';
@@ -102,5 +102,19 @@ export class SupportService {
     const ticket = await prisma.supportTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundError('SupportTicket');
     return prisma.supportTicket.update({ where: { id }, data: { status } });
+  }
+
+  async setCategory(id: string, category: SupportCategory) {
+    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+    if (!ticket) throw new NotFoundError('SupportTicket');
+    return prisma.supportTicket.update({ where: { id }, data: { category } });
+  }
+
+  /** Escalate to the ops lead — idempotent, keeps the first escalation timestamp. */
+  async escalate(id: string) {
+    const ticket = await prisma.supportTicket.findUnique({ where: { id } });
+    if (!ticket) throw new NotFoundError('SupportTicket');
+    if (ticket.escalatedAt) return ticket;
+    return prisma.supportTicket.update({ where: { id }, data: { escalatedAt: new Date() } });
   }
 }
