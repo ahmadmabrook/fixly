@@ -3,9 +3,12 @@ node_modules
 .github
 .claude
 graphify-out
+fixly
+web/*
+!web/package.json
+admin/*
+!admin/package.json
 backend/dist
 backend/coverage
-web/dist
-admin/dist
 *.md
 !backend/prisma
