@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Phone, KeyRound, Gift } from 'lucide-react';
+import { Phone, Gift } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { useDialog } from '../hooks/useDialog';
@@ -143,21 +143,35 @@ export default function AuthModal({ onClose, onSuccess }: AuthModalProps) {
           </div>
         ) : (
           <div className="mt-5 space-y-4">
-            <div className="flex items-center gap-2 h-12 px-4 rounded-xl border border-slate-200 bg-slate-50">
-              <KeyRound size={18} color="#94A3B8" />
+            {/* A single invisible input captures typing/paste/native SMS autofill
+                (autoComplete="one-time-code"); the 6 boxes below are purely a
+                visual reflection of its value, clicking any box focuses it. */}
+            <div className="relative flex items-center justify-center gap-2" dir="ltr">
               <input
                 type="text"
                 inputMode="numeric"
                 value={otp}
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="flex-1 bg-transparent outline-none text-center"
-                style={{ fontSize: 24, fontFamily: 'Inter', fontWeight: 700, letterSpacing: 8 }}
-                placeholder="000000"
+                className="absolute inset-0 w-full h-full opacity-0"
+                style={{ fontSize: 24 }}
                 maxLength={6}
-                dir="ltr"
                 aria-label="رمز التحقق"
                 autoComplete="one-time-code"
               />
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  aria-hidden="true"
+                  className="flex items-center justify-center rounded-xl border"
+                  style={{
+                    width: 48, height: 56, fontSize: 22, fontFamily: 'Inter', fontWeight: 700,
+                    borderColor: i === otp.length ? '#1366D6' : '#E2E8F0',
+                    background: '#F8FAFC', color: '#0F172A',
+                  }}
+                >
+                  {otp[i] ?? ''}
+                </div>
+              ))}
             </div>
             <p style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
             <button

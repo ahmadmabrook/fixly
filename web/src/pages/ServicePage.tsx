@@ -1,4 +1,4 @@
-import { ChevronLeft, Clock, ShieldCheck, CreditCard, Video, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, Clock, ShieldCheck, Check, CreditCard, Video, AlertCircle, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useService } from '../hooks/useServices';
 import { Card, ServiceIcon, PriceBadge } from '../components/shared';
@@ -54,7 +54,7 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
             <ul className="mt-3 grid sm:grid-cols-2 gap-2">
               {(svc.sopIncludes && svc.sopIncludes.length > 0 ? svc.sopIncludes : DEFAULT_INCLUDES).map((t) => (
                 <li key={t} className="flex items-center gap-2" style={{ fontSize: 14 }}>
-                  <ShieldCheck size={15} color="#15803D" aria-hidden="true" /> {t}
+                  <Check size={15} color="#15803D" aria-hidden="true" /> {t}
                 </li>
               ))}
             </ul>
