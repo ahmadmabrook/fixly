@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
+import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
 
 interface ConductItem {
   id: string;
@@ -16,6 +16,12 @@ interface ConductItem {
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['UPHELD', 'مؤكد'], ['DISMISSED', 'مرفوض'],
 ];
+const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
+  OPEN: { ar: 'مفتوح', bg: '#FEF3C7', fg: '#B45309' },
+  REVIEWING: { ar: 'قيد المراجعة', bg: '#FEF3C7', fg: '#B45309' },
+  UPHELD: { ar: 'مؤكد', bg: '#FEE2E2', fg: '#B91C1C' },
+  DISMISSED: { ar: 'مرفوض', bg: '#E2E8F0', fg: '#475569' },
+};
 const KIND_LABEL: Record<string, string> = {
   OFF_PLATFORM_SOLICIT: 'محاولة خارج المنصة', NO_SHOW: 'عدم حضور', QUALITY: 'جودة', SAFETY: 'سلامة', OTHER: 'أخرى',
 };
@@ -70,7 +76,7 @@ export default function ConductReports() {
                   <Td>{r.reporter?.name ?? '—'}</Td>
                   <Td>{r.subjectTech?.user?.name ?? '—'}</Td>
                   <Td><span style={{ color: '#64748B' }}>{(r.details ?? '').slice(0, 50)}</span></Td>
-                  <Td>{r.status}</Td>
+                  <Td><Pill label={STATUS_PILL[r.status]?.ar ?? r.status} bg={STATUS_PILL[r.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[r.status]?.fg ?? '#475569'} /></Td>
                   <Td>
                     {r.status === 'OPEN' || r.status === 'REVIEWING' ? (
                       <div className="flex gap-2">

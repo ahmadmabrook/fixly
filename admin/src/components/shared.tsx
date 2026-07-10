@@ -45,6 +45,18 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/** Generic colored status pill for pages whose status enum isn't the booking
+ *  StatusBadge above (conduct reports, guarantee tickets, subscriptions,
+ *  customer active/blocked). Matches AdminPanel.tsx's pill pattern
+ *  (`px-2 py-0.5 rounded-full text-xs font-bold`) instead of plain text. */
+export function Pill({ label, bg, fg }: { label: string; bg: string; fg: string }) {
+  return (
+    <span className="inline-block rounded-full px-2.5 py-1" style={{ background: bg, color: fg, fontSize: 11, fontWeight: 700 }}>
+      {label}
+    </span>
+  );
+}
+
 export function Avatar({ name, size = 40 }: { name?: string | null; size?: number }) {
   const safeName = name && name.trim() ? name.trim() : '؟';
   const initials = safeName.split(' ').map(p => p[0]).slice(0, 2).join('');

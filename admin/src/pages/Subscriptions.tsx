@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, Pagination } from '../components/shared';
+import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, Pill } from '../components/shared';
 import { fmtJod } from '../lib/format';
 
 interface SubscriptionItem {
@@ -14,8 +14,12 @@ interface SubscriptionItem {
   customer?: { name?: string | null; phone?: string | null };
 }
 
-const STATUS_LABEL: Record<string, string> = { ACTIVE: 'فعّال', PAST_DUE: 'متأخر', CANCELLED: 'ملغى', EXPIRED: 'منتهٍ' };
-const STATUS_COLOR: Record<string, string> = { ACTIVE: '#15803D', PAST_DUE: '#B45309', CANCELLED: '#64748B', EXPIRED: '#94A3B8' };
+const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
+  ACTIVE: { ar: 'فعّال', bg: '#DCFCE7', fg: '#15803D' },
+  PAST_DUE: { ar: 'متأخر', bg: '#FEF3C7', fg: '#B45309' },
+  CANCELLED: { ar: 'ملغى', bg: '#E2E8F0', fg: '#475569' },
+  EXPIRED: { ar: 'منتهٍ', bg: '#E2E8F0', fg: '#475569' },
+};
 
 export default function Subscriptions() {
   const [page, setPage] = useState(0);
@@ -62,7 +66,7 @@ export default function Subscriptions() {
                 <tr key={s.id} className="hover:bg-slate-50">
                   <Td>{s.customer?.name ?? '—'}</Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{s.customer?.phone ?? '—'}</span></Td>
-                  <Td><span style={{ color: STATUS_COLOR[s.status], fontSize: 12, fontWeight: 700 }}>{STATUS_LABEL[s.status]}{s.cancelledAt && s.status === 'ACTIVE' ? ' (سيُلغى)' : ''}</span></Td>
+                  <Td><Pill label={`${STATUS_PILL[s.status].ar}${s.cancelledAt && s.status === 'ACTIVE' ? ' (سيُلغى)' : ''}`} bg={STATUS_PILL[s.status].bg} fg={STATUS_PILL[s.status].fg} /></Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(s.currentPeriodEnd)}</span></Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(s.createdAt)}</span></Td>
                 </tr>
