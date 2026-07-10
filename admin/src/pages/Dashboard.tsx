@@ -5,8 +5,9 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, PieChart, Pie, Cell,
 } from 'recharts';
+import { DollarSign, ClipboardList, Users, Star, TrendingUp, UserCheck, ShieldCheck, Wallet } from 'lucide-react';
 import { api, AdminStats, FinancialReport, OperationalStats, ActivityFeedItem, AtRiskOrder } from '../lib/api';
-import { KpiCard, Card, SkeletonKpiRow, SkeletonChart, EmptyState } from '../components/shared';
+import { KpiCard, OpsStatTile, Card, SkeletonKpiRow, SkeletonChart, EmptyState } from '../components/shared';
 import { fmtJod } from '../lib/format';
 
 function isoDaysAgo(days: number): string {
@@ -157,21 +158,22 @@ export default function Dashboard() {
 
       {/* Primary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="إيرادات اليوم"       value={`${fmtJod(stats.todayRevenueJod)} JD`} />
-        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} />
-        <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} />
-        <KpiCard label="متوسط التقييم"       value={fmtJod(stats.avgRating)} />
+        <KpiCard label="إيرادات اليوم"       value={`${fmtJod(stats.todayRevenueJod)} JD`} icon={<DollarSign size={18} />} color="#1366D6" />
+        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} icon={<ClipboardList size={18} />} color="#0FB5A6" />
+        <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} icon={<Users size={18} />} color="#F5A623" />
+        <KpiCard label="متوسط التقييم"       value={fmtJod(stats.avgRating)} icon={<Star size={18} />} color="#1FAA59" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="الإيرادات الإجمالية" value={`${fmtJod(stats.totalRevenueJod)} JD`} />
+        <KpiCard label="الإيرادات الإجمالية" value={`${fmtJod(stats.totalRevenueJod)} JD`} icon={<TrendingUp size={18} />} color="#1366D6" />
         <KpiCard
           label="فنيون موثّقون"
           value={stats.verifiedTechnicians}
           sub={`${stats.totalTechnicians > 0 ? Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100) : 0}% من ${stats.totalTechnicians}`}
+          icon={<UserCheck size={18} />} color="#0FB5A6"
         />
-        <KpiCard label="تذاكر ضمان مفتوحة"   value={stats.openGuarantees} />
-        <KpiCard label="مدفوعات معلّقة"      value={stats.pendingPayouts} />
+        <KpiCard label="تذاكر ضمان مفتوحة"   value={stats.openGuarantees} icon={<ShieldCheck size={18} />} color="#E5484D" />
+        <KpiCard label="مدفوعات معلّقة"      value={stats.pendingPayouts} icon={<Wallet size={18} />} color="#F5A623" />
       </div>
 
       {/* Operational KPIs */}
@@ -186,13 +188,13 @@ export default function Dashboard() {
         ) : !operational ? (
           <SkeletonKpiRow />
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            <KpiCard label="معدل القبول" value={fmtRate(operational.acceptanceRate)} />
-            <KpiCard label="متوسط وقت التعيين" value={fmtMinutes(operational.avgTimeToAssignSeconds)} />
-            <KpiCard label="متوسط تأخر الوصول" value={fmtMinutes(operational.avgArrivalDelaySeconds)} />
-            <KpiCard label="معدل الإلغاء" value={fmtRate(operational.cancellationRate)} />
-            <KpiCard label="معدل الشكاوى" value={fmtRate(operational.complaintRate)} />
-            <KpiCard label="تكرار الحجز" value={fmtRate(operational.repeatBookingRate)} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            <OpsStatTile label="معدل القبول" value={fmtRate(operational.acceptanceRate)} />
+            <OpsStatTile label="متوسط وقت التعيين" value={fmtMinutes(operational.avgTimeToAssignSeconds)} />
+            <OpsStatTile label="متوسط تأخر الوصول" value={fmtMinutes(operational.avgArrivalDelaySeconds)} />
+            <OpsStatTile label="معدل الإلغاء" value={fmtRate(operational.cancellationRate)} />
+            <OpsStatTile label="معدل الشكاوى" value={fmtRate(operational.complaintRate)} />
+            <OpsStatTile label="تكرار الحجز" value={fmtRate(operational.repeatBookingRate)} />
           </div>
         )}
       </div>

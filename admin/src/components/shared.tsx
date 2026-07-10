@@ -59,13 +59,36 @@ export function Avatar({ name, size = 40 }: { name?: string | null; size?: numbe
   );
 }
 
-export function KpiCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+export function KpiCard({
+  label, value, sub, icon, color, delta,
+}: {
+  label: string; value: string | number; sub?: string;
+  icon?: ReactNode; color?: string; delta?: string;
+}) {
   return (
-    <Card className="p-5 flex flex-col gap-1">
-      <span style={{ fontSize: 13, color: '#64748B', fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', fontFamily: 'Inter' }}>{value}</span>
+    <Card className="p-4">
+      {icon && color && (
+        <div className="flex items-center justify-between">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: color + '20', color }}>{icon}</div>
+          {delta && <span style={{ fontSize: 12, fontWeight: 600, color: '#15803D' }}>{delta}</span>}
+        </div>
+      )}
+      <div className={icon ? 'mt-3' : ''} style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', fontFamily: 'Inter' }}>{value}</div>
+      <div style={{ fontSize: 13, color: '#64748B', marginTop: icon ? 4 : 0 }}>{label}</div>
       {sub && <span style={{ fontSize: 12, color: '#94A3B8' }}>{sub}</span>}
     </Card>
+  );
+}
+
+/** Small, iconless operational-metric tile — visually distinct (smaller,
+ *  no icon chip) from KpiCard so secondary stats don't compete with headline
+ *  KPIs. Matches AdminPanel.tsx's OpsStat. */
+export function OpsStatTile({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-white rounded-xl p-3 border border-slate-100">
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', fontFamily: 'Inter' }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{label}</div>
+    </div>
   );
 }
 

@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download } from 'lucide-react';
+import { Download, DollarSign, TrendingUp, Users, ClipboardList } from 'lucide-react';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+} from 'recharts';
 import { api, FinancialReport } from '../lib/api';
 import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, notify } from '../components/shared';
 import { fmtJod } from '../lib/format';
@@ -19,6 +22,16 @@ export default function Reports() {
     queryKey: ['admin-financial', from, to, granularity],
     queryFn: () => api.get<FinancialReport>(`/reports/financial?${qs}`),
   });
+
+  const chartData = useMemo(
+    () =>
+      (data?.series ?? []).map((r) => ({
+        period: new Date(r.period).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }),
+        grossJod: Number(r.grossJod),
+        platformFeeJod: Number(r.platformFeeJod),
+      })),
+    [data],
+  );
 
   async function exportCsv() {
     try {
@@ -59,11 +72,27 @@ export default function Reports() {
 
       {data && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard label="إجمالي الإيراد" value={`${fmtJod(data.totals.grossJod)} JD`} />
-          <KpiCard label="عمولة المنصة" value={`${fmtJod(data.totals.platformFeeJod)} JD`} />
-          <KpiCard label="مستحقات الفنيين" value={`${fmtJod(data.totals.technicianNetJod)} JD`} />
-          <KpiCard label="عدد الحجوزات" value={data.totals.bookings} />
+          <KpiCard label="إجمالي الإيراد" value={`${fmtJod(data.totals.grossJod)} JD`} icon={<DollarSign size={18} />} color="#1366D6" />
+          <KpiCard label="عمولة المنصة" value={`${fmtJod(data.totals.platformFeeJod)} JD`} icon={<TrendingUp size={18} />} color="#0FB5A6" />
+          <KpiCard label="مستحقات الفنيين" value={`${fmtJod(data.totals.technicianNetJod)} JD`} icon={<Users size={18} />} color="#F5A623" />
+          <KpiCard label="عدد الحجوزات" value={data.totals.bookings} icon={<ClipboardList size={18} />} color="#8B5CF6" />
         </div>
+      )}
+
+      {chartData.length > 0 && (
+        <Card className="p-5">
+          <h3 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 12 }}>الإيراد مقابل عمولة المنصة</h3>
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+              <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#64748B' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 13, direction: 'rtl' }} cursor={false} />
+              <Bar dataKey="grossJod" fill="#1366D6" radius={[6, 6, 0, 0]} name="الإيراد" isAnimationActive={false} />
+              <Bar dataKey="platformFeeJod" fill="#0FB5A6" radius={[6, 6, 0, 0]} name="العمولة" isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
       )}
 
       <Card>
