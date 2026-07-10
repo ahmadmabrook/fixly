@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, GuaranteeAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
+import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_REVIEW', 'قيد المراجعة'], ['RESOLVED', 'موافق'], ['REJECTED', 'مرفوض'],
@@ -13,11 +13,12 @@ const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
   REJECTED: { ar: 'مرفوض', bg: '#FEE2E2', fg: '#B91C1C' },
 };
 
-function slaLabel(expiresAt: string): { text: string; color: string } {
+function slaLabel(expiresAt: string): { text: string; color: string; pct: number } {
   const ms = new Date(expiresAt).getTime() - Date.now();
-  if (ms <= 0) return { text: 'تجاوز SLA', color: '#B91C1C' };
+  if (ms <= 0) return { text: 'تجاوز SLA', color: '#B91C1C', pct: 0 };
   const mins = Math.round(ms / 60000);
-  return { text: `${mins} دقيقة متبقية`, color: mins < 30 ? '#B45309' : '#15803D' };
+  // SLA window is 2h (120min); pct is remaining time as a fraction of that.
+  return { text: `${mins} دقيقة متبقية`, color: mins < 30 ? '#B45309' : '#1366D6', pct: Math.min(100, (mins / 120) * 100) };
 }
 
 export default function Guarantee() {
@@ -47,35 +48,52 @@ export default function Guarantee() {
         ))}
       </div>
 
-      <Card>
-        {isLoading && <Spinner />}
-        {!isLoading && items.length === 0 && <EmptyState message="لا توجد تذاكر" />}
-        {!isLoading && items.length > 0 && (
-          <TableWrapper>
-            <thead>
-              <tr style={{ background: '#F8FAFC' }}>
-                <Th>العميل</Th><Th>الخدمة</Th><Th>الوصف</Th><Th>الحالة</Th><Th>SLA</Th><Th>إجراء</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((t) => {
-                const sla = slaLabel(t.expiresAt);
-                return (
-                  <tr key={t.id} className="hover:bg-slate-50">
-                    <Td>{t.booking?.customer?.name ?? '—'}</Td>
-                    <Td>{t.booking?.service?.nameAr ?? '—'}</Td>
-                    <Td><span style={{ color: '#64748B' }}>{(t.description ?? '').slice(0, 40)}</span></Td>
-                    <Td><Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} /></Td>
-                    <Td><span style={{ color: sla.color, fontSize: 12, fontWeight: 600 }}>{(t.status === 'OPEN' || t.status === 'IN_REVIEW') ? sla.text : '—'}</span></Td>
-                    <Td><ActionBtn onClick={() => setActive(t)}>مراجعة</ActionBtn></Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </TableWrapper>
-        )}
-        <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
-      </Card>
+      {isLoading && <Card><Spinner /></Card>}
+      {!isLoading && items.length === 0 && <Card><EmptyState message="لا توجد تذاكر" /></Card>}
+      {!isLoading && items.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {items.map((t) => {
+            const sla = slaLabel(t.expiresAt);
+            const inReview = t.status === 'OPEN' || t.status === 'IN_REVIEW';
+            const media = t.mediaUrls.filter((u) => u.startsWith('https://'));
+            return (
+              <Card key={t.id} className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div style={{ fontFamily: 'Inter', fontWeight: 700 }}>{t.id.slice(0, 8)}</div>
+                    <div style={{ color: '#64748B', fontSize: 12 }}>{t.booking?.customer?.name ?? '—'} · {new Date(t.createdAt).toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' })}</div>
+                  </div>
+                  <Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} />
+                </div>
+                <div className="mt-3" style={{ fontSize: 14, fontWeight: 600 }}>{t.booking?.service?.nameAr ?? '—'}</div>
+                {t.description && <p style={{ color: '#64748B', fontSize: 13, marginTop: 4 }}>{t.description.slice(0, 80)}</p>}
+                {media.length > 0 && (
+                  <div className="mt-3 flex gap-1.5">
+                    {media.slice(0, 3).map((u, i) => (
+                      <a key={i} href={u} target="_blank" rel="noreferrer" className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center hover:bg-slate-200 shrink-0">
+                        <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>مرفق {i + 1}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {inReview && (
+                  <>
+                    <div className="mt-3 flex items-center justify-between" style={{ fontSize: 12 }}>
+                      <span style={{ color: '#94A3B8' }}>SLA (ساعتان)</span>
+                      <span style={{ color: sla.color, fontWeight: 700 }}>{sla.text}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full" style={{ background: '#F1F5F9' }}>
+                      <div className="h-full rounded-full" style={{ width: `${sla.pct}%`, background: sla.color }} />
+                    </div>
+                  </>
+                )}
+                <ActionBtn onClick={() => setActive(t)} className="mt-3 w-full justify-center">مراجعة</ActionBtn>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+      <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
 
       {active && <ReviewDrawer ticket={active} onClose={() => setActive(null)} onDone={() => { setActive(null); void qc.invalidateQueries({ queryKey: ['admin-guarantee'] }); }} />}
     </div>
