@@ -238,6 +238,18 @@ export interface TechnicianCard {
   isVerified: boolean;
 }
 
+/** GET /technicians/nearby item — live-ish approximate position of a
+ *  currently-available technician (Landing page nearby-technicians map). */
+export interface NearbyTechnician {
+  id: string;
+  name: string | null;
+  lat: number;
+  lng: number;
+  rating: string | number;
+  isVerified: boolean;
+  vehicle: string | null;
+}
+
 export interface GuaranteeTicketItem {
   id: string;
   status: string;
