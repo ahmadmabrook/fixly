@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones, BadgeCheck, Star, Check, Wrench, Navigation } from 'lucide-react';
+import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones, BadgeCheck, Star, Check, Wrench } from 'lucide-react';
 import { useServices } from '../hooks/useServices';
 import { api, BookingListItem, NearbyTechnician } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid, Avatar } from '../components/shared';
+import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid } from '../components/shared';
 import NearbyTechniciansMap from '../components/NearbyTechniciansMap';
 
 // Amman, Jordan — sensible default until/unless the browser grants location.
@@ -137,79 +137,18 @@ export default function Landing() {
         </div>
 
         <div className="relative">
-          {accessToken ? (
-            <div className="aspect-[4/5] rounded-3xl overflow-hidden relative">
-              <NearbyTechniciansMap center={center} technicians={nearbyTechs ?? []} height={999} />
-              <div className="absolute top-4 right-4 left-4 flex justify-between pointer-events-none">
-                <Card className="p-3 flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#DCFCE7' }}><Wrench size={18} color="#15803D" aria-hidden="true" /></div>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#475569' }}>فنيون قريبون منك</div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{(nearbyTechs ?? []).length}</span> متاح الآن</div>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          ) : (
-            <div className="aspect-[4/5] rounded-3xl overflow-hidden relative" style={{ background: 'linear-gradient(135deg,#1366D6 0%,#0FB5A6 100%)' }}>
-              {/* Illustrative map mock for anonymous visitors — no real technician
-                  data to show them yet. Logged-in visitors get the real map
-                  above instead (see NearbyTechniciansMap). */}
-              <div className="absolute inset-0" aria-hidden="true">
-                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
-                  <g stroke="rgba(255,255,255,0.55)" strokeWidth="6" fill="none">
-                    <path d="M-20 80 L420 120" />
-                    <path d="M-20 220 L420 200" />
-                    <path d="M-20 320 L420 340" />
-                    <path d="M80 -20 L60 420" />
-                    <path d="M220 -20 L260 420" />
-                    <path d="M340 -20 L320 420" />
-                  </g>
-                  <path d="M310 290 Q 240 240 200 200 T 110 110" stroke="#FFF" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.9" />
-                </svg>
-                <div className="absolute" style={{ left: '26%', top: '55%', transform: 'translate(-50%,-100%)' }}>
-                  <MapPin size={30} color="#FFF" fill="#0E4FA8" strokeWidth={1.5} />
+          <div className="aspect-[4/5] rounded-3xl overflow-hidden relative">
+            <NearbyTechniciansMap center={center} technicians={nearbyTechs ?? []} height={999} />
+            <div className="absolute top-4 right-4 left-4 flex justify-between pointer-events-none">
+              <Card className="p-3 flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#DCFCE7' }}><Wrench size={18} color="#15803D" aria-hidden="true" /></div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#475569' }}>فنيون قريبون منك</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{(nearbyTechs ?? []).length}</span> متاح الآن</div>
                 </div>
-                <div className="absolute" style={{ left: '76%', top: '32%', transform: 'translate(-50%,-100%)' }}>
-                  <div className="relative">
-                    <div className="absolute inset-0 rounded-full animate-ping" style={{ background: '#0FB5A6', opacity: 0.4 }} />
-                    <div className="w-11 h-11 rounded-full border-[3px] border-white shadow-lg flex items-center justify-center" style={{ background: '#0FB5A6' }}>
-                      <Wrench size={20} color="#FFF" aria-hidden="true" />
-                    </div>
-                  </div>
-                </div>
-                <button aria-hidden="true" tabIndex={-1} className="absolute bottom-24 left-4 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center">
-                  <Navigation size={16} color="#1366D6" />
-                </button>
-              </div>
-
-              <div className="absolute top-6 right-6 left-6 flex justify-between">
-                <Card className="p-3 flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#CCFBF1' }}><Clock size={18} color="#0F766E" aria-hidden="true" /></div>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#475569' }}>وقت الوصول</div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>5</span> دقائق</div>
-                  </div>
-                </Card>
-                <Card className="p-3 flex items-center gap-2">
-                  <Avatar name="خالد" size={36} verified />
-                  <div>
-                    <div style={{ fontSize: 11, color: '#475569' }}>الفني</div>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>خالد</div>
-                  </div>
-                </Card>
-              </div>
-
-              <Card className="absolute bottom-6 left-6 right-6 p-4 flex items-center gap-3">
-                <ServiceIcon id="elec" size={20} />
-                <div className="flex-1">
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>كهرباء — سعر ثابت</div>
-                  <StatusBadge status="EN_ROUTE" />
-                </div>
-                <PriceBadge amount={50} />
               </Card>
             </div>
-          )}
+          </div>
         </div>
       </section>
 
