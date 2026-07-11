@@ -209,7 +209,7 @@ export class TechnicianService {
         },
         take: limit,
       });
-      return techs
+      const mapped = techs
         .filter((t) => t.currentLat != null && t.currentLng != null)
         .map((t) => ({
           id: t.id,
@@ -220,6 +220,12 @@ export class TechnicianService {
           isVerified: t.isVerified,
           vehicle: t.vehicle,
         }));
+      // The GEO index can hold ids that are no longer available/approved
+      // (§2.4 prunes on missed heartbeats, not on status/availability
+      // changes) — if none of the candidate ids actually resolved to a
+      // usable technician, fall through to the broader Postgres scan below
+      // rather than reporting a false "nobody nearby".
+      if (mapped.length > 0) return mapped;
     }
 
     const candidates = await prisma.technicianProfile.findMany({
