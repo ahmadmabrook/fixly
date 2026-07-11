@@ -51,9 +51,12 @@ export default function Login() {
         style={{ maxWidth: 400, boxShadow: '0 4px 24px rgba(15,23,42,0.10)' }}
       >
         <div className="mb-8 text-center">
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A' }}>
-            Fixly <span style={{ color: '#1366D6' }}>Admin</span>
-          </h1>
+          <div className="flex items-center justify-center gap-2">
+            <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#1366D6' }} aria-hidden="true">🔧</span>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A' }}>
+              Fixly <span style={{ color: '#1366D6' }}>Admin</span>
+            </h1>
+          </div>
           <p style={{ fontSize: 14, color: '#64748B', marginTop: 4 }}>لوحة إدارة المنصة</p>
         </div>
 

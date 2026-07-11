@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
-import { api, BookingItem, BookingDetail } from '../lib/api';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { api, AdminStats, BookingItem, BookingDetail } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, ActionBtn, notify } from '../components/shared';
 import { fmtJod } from '../lib/format';
 import BookingsMap from '../components/BookingsMap';
+
+const STATUS_DIST_COLORS = ['#F5A623', '#0FB5A6', '#1FAA59', '#E5484D'];
 
 const STATUSES = ['', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABELS: Record<string, string> = {
@@ -64,6 +67,13 @@ export default function Bookings() {
   const bookings = data?.items ?? [];
   const total = data?.total ?? 0;
 
+  const { data: stats } = useQuery<AdminStats>({ queryKey: ['admin-stats'], queryFn: () => api.get<AdminStats>('/stats') });
+  const dist = stats?.bookingsByStatus;
+  const distItems: Array<[string, number]> = dist
+    ? [['قيد التنفيذ', dist.inProgress], ['في الطريق', dist.arriving], ['مكتملة', dist.completed], ['ملغاة', dist.cancelled]]
+    : [];
+  const distTotal = distItems.reduce((s, [, v]) => s + v, 0);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -103,12 +113,37 @@ export default function Bookings() {
         </div>
       </div>
 
-      {/* Live map of the listed bookings (pins for those with coordinates). */}
-      {!isLoading && !isError && bookings.some((b) => b.addressLat != null) && (
-        <Card className="p-3">
-          <BookingsMap bookings={bookings} height={320} />
-        </Card>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Live map of the listed bookings (pins for those with coordinates). */}
+        {!isLoading && !isError && bookings.some((b) => b.addressLat != null) && (
+          <Card className="p-3 lg:col-span-2">
+            <BookingsMap bookings={bookings} height={280} />
+          </Card>
+        )}
+
+        {distTotal > 0 && (
+          <Card className="p-4">
+            <h3 style={{ fontWeight: 700, fontSize: 14 }}>توزيع الحالات</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={distItems.map(([name, value]) => ({ name, value }))} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} isAnimationActive={false}>
+                  {distItems.map(([name], idx) => <Cell key={name} fill={STATUS_DIST_COLORS[idx % STATUS_DIST_COLORS.length]} />)}
+                </Pie>
+                <Tooltip cursor={false} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-1.5" style={{ fontSize: 12 }}>
+              {distItems.map(([label, value], idx) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: STATUS_DIST_COLORS[idx % STATUS_DIST_COLORS.length] }} />
+                  <span className="flex-1">{label}</span>
+                  <span style={{ fontWeight: 700, fontFamily: 'Inter' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
 
       <Card>
         {isLoading && <Spinner />}

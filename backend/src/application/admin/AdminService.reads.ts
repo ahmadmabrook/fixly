@@ -58,6 +58,12 @@ export async function getAdminStats() {
   });
   const nameMap = new Map(serviceNames.map((s) => [s.id, s.nameAr]));
 
+  const bookingsByStatusRaw = await prisma.booking.groupBy({
+    by: ['status'],
+    _count: { id: true },
+  });
+  const statusCountMap = new Map(bookingsByStatusRaw.map((b) => [b.status, b._count.id]));
+
   return {
     totalBookings,
     pendingBookings,
@@ -75,6 +81,16 @@ export async function getAdminStats() {
       nameAr: nameMap.get(b.serviceId) ?? b.serviceId,
       count: b._count.id,
     })),
+    // Coarse 4-bucket distribution for the dashboard's status-distribution
+    // chart — mirrors the granularity of the Figma spec's donut (in
+    // progress / arriving / completed / cancelled) rather than exposing
+    // every fine-grained BookingStatus value.
+    bookingsByStatus: {
+      inProgress: statusCountMap.get('IN_PROGRESS') ?? 0,
+      arriving: (statusCountMap.get('EN_ROUTE') ?? 0) + (statusCountMap.get('ARRIVED') ?? 0),
+      completed: statusCountMap.get('COMPLETED') ?? 0,
+      cancelled: statusCountMap.get('CANCELLED') ?? 0,
+    },
   };
 }
 

@@ -184,6 +184,7 @@ export interface AdminStats {
   openGuarantees: number;
   pendingPayouts: number;
   bookingsByService?: Array<{ serviceId: string; nameAr: string; count: number }>;
+  bookingsByStatus?: { inProgress: number; arriving: number; completed: number; cancelled: number };
 }
 
 export interface OperationalStats {

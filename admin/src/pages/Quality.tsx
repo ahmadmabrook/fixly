@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile, Pill } from '../components/shared';
 
 interface QualityTech {
   id: string;
@@ -20,6 +20,7 @@ interface QualityTech {
 const TIERS = ['PROBATION', 'VERIFIED', 'PRO', 'ELITE'] as const;
 const TIER_LABEL: Record<string, string> = { PROBATION: 'تحت التجربة', VERIFIED: 'موثّق', PRO: 'محترف', ELITE: 'نخبة' };
 const TIER_COLOR: Record<string, string> = { PROBATION: '#B45309', VERIFIED: '#1366D6', PRO: '#7C3AED', ELITE: '#15803D' };
+const TIER_BG: Record<string, string> = { PROBATION: '#FEF3C7', VERIFIED: '#DBEAFE', PRO: '#EDE9FE', ELITE: '#DCFCE7' };
 const BG_LABEL: Record<string, string> = { PENDING: 'معلّق', PASSED: 'اجتاز', FAILED: 'فشل' };
 
 export default function Quality() {
@@ -72,7 +73,7 @@ export default function Quality() {
             return (
               <Card key={tier} className="p-3">
                 <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
-                  <span style={{ color: TIER_COLOR[tier], fontWeight: 700, fontSize: 13 }}>{TIER_LABEL[tier]}</span>
+                  <Pill label={TIER_LABEL[tier]} bg={TIER_BG[tier]} fg={TIER_COLOR[tier]} />
                   <span style={{ marginInlineStart: 'auto', fontSize: 12, color: '#94A3B8' }}>{col.length}</span>
                 </div>
                 <div className="space-y-2">
@@ -158,6 +159,7 @@ function QualityDrawer({
             <div>
               <div style={{ fontWeight: 800, fontSize: 18 }}>{tech.user?.name ?? '—'}</div>
               <div style={{ color: '#64748B', fontSize: 13, fontFamily: 'Inter' }}>{tech.user?.phone ?? '—'}</div>
+              <div className="mt-1"><Pill label={TIER_LABEL[tech.trustTier]} bg={TIER_BG[tech.trustTier]} fg={TIER_COLOR[tech.trustTier]} /></div>
             </div>
           </div>
 
