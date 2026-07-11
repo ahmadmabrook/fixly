@@ -1,7 +1,12 @@
-import { ChevronLeft, Clock, ShieldCheck, Check, CreditCard, Video, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, Clock, ShieldCheck, Check, CreditCard, Video, AlertCircle, X, BadgeCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useService } from '../hooks/useServices';
+import { api } from '../lib/api';
+import { useAuth } from '../lib/store';
 import { Card, ServiceIcon, PriceBadge } from '../components/shared';
+
+interface SubscriptionDto { status: string; discountPercent: number; guaranteeDays: number }
 
 interface ServicePageProps {
   serviceId: string;
@@ -13,6 +18,15 @@ const DEFAULT_INCLUDES = ['فحص شامل من فني معتمد', 'إصلاح 
 
 export default function ServicePage({ serviceId, onBook, onBack }: ServicePageProps) {
   const { data: svc, isLoading, isError, error, refetch } = useService(serviceId);
+  const accessToken = useAuth((s) => s.accessToken);
+  const { data: sub } = useQuery({
+    queryKey: ['subscription'],
+    queryFn: () => api.get<SubscriptionDto | null>('/subscriptions/me'),
+    enabled: !!accessToken,
+  });
+  const member = sub?.status === 'ACTIVE';
+  const discountPercent = sub?.discountPercent ?? 15;
+  const guaranteeDays = member ? sub?.guaranteeDays ?? 90 : 30;
 
   if (isLoading) {
     return (
@@ -65,7 +79,7 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
               <ul className="mt-3 grid sm:grid-cols-2 gap-2">
                 {svc.sopExcludes.map((t) => (
                   <li key={t} className="flex items-center gap-2" style={{ fontSize: 14, color: '#475569' }}>
-                    <X size={15} color="#B91C1C" aria-hidden="true" /> {t}
+                    <X size={15} color="#E5484D" aria-hidden="true" /> {t}
                   </li>
                 ))}
               </ul>
@@ -96,10 +110,16 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
         <Card className="p-6 h-fit sticky top-20">
           <div style={{ color: '#475569', fontSize: 13 }}>السعر الثابت</div>
           <div className="mt-1"><PriceBadge amount={Number(svc.priceJod)} big /></div>
+          {member && (
+            <div className="mt-1" style={{ color: '#15803D', fontSize: 13, fontWeight: 700 }}>
+              خصم العضوية −<span style={{ fontFamily: 'Inter' }}>{discountPercent}</span>% مُطبّق عند الحجز
+            </div>
+          )}
           <div className="my-4 h-px bg-slate-100" />
           <ul className="space-y-2" style={{ fontSize: 13, color: '#475569' }}>
             <li className="flex items-center gap-2"><Clock size={14} aria-hidden="true" /> فوراً خلال 30 دقيقة</li>
-            <li className="flex items-center gap-2"><ShieldCheck size={14} color="#15803D" aria-hidden="true" /> ضمان 30 يوم مشمول</li>
+            <li className="flex items-center gap-2"><BadgeCheck size={14} color="#1366D6" aria-hidden="true" /> فني معتمد Fixly Certified</li>
+            <li className="flex items-center gap-2"><ShieldCheck size={14} color="#15803D" aria-hidden="true" /> ضمان <span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوم مشمول</li>
             <li className="flex items-center gap-2"><CreditCard size={14} aria-hidden="true" /> دفع آمن</li>
           </ul>
           <button onClick={onBook} className="mt-5 w-full h-12 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>

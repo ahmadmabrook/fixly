@@ -51,6 +51,7 @@ const AR: Dict = {
   'hero.searchCta': 'اطلب الآن',
   'hero.searchPlaceholder': 'ما الخدمة التي تحتاجها؟',
   // value props
+  'vp.certified.t': 'فنيون معتمدون', 'vp.certified.b': 'Fixly Certified — موثّقون قبل الوصول',
   'vp.speed.t': '30 دقيقة', 'vp.speed.b': 'أقرب فني يصلك سريعاً',
   'vp.price.t': 'سعر ثابت', 'vp.price.b': 'بدون مفاجآت أو خفايا',
   'vp.guarantee.t': 'ضمان 30 يوم', 'vp.guarantee.b': 'إصلاح مجاني أو استرداد',
@@ -95,6 +96,7 @@ const EN: Dict = {
   'hero.sub': 'Electricity, plumbing, AC, painting and furniture assembly — fixed prices and a 30-day guarantee.',
   'hero.searchCta': 'Book now',
   'hero.searchPlaceholder': 'What service do you need?',
+  'vp.certified.t': 'Certified technicians', 'vp.certified.b': 'Fixly Certified — vetted before arrival',
   'vp.speed.t': '30 minutes', 'vp.speed.b': 'The nearest technician, fast',
   'vp.price.t': 'Fixed price', 'vp.price.b': 'No surprises, no hidden fees',
   'vp.guarantee.t': '30-day guarantee', 'vp.guarantee.b': 'Free re-fix or refund',
