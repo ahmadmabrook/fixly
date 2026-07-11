@@ -3,17 +3,17 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, Search, FileText, PlayCircle } from 'lucide-react';
 import { api, TechnicianItem, TechnicianDetail, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, OpsStatTile } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, OpsStatTile, Pill } from '../components/shared';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['PENDING', 'قيد المراجعة'], ['APPROVED', 'موثّق'], ['REJECTED', 'مرفوض'], ['SUSPENDED', 'موقوف'],
 ];
 
-const STATUS_LABEL: Record<string, { ar: string; color: string }> = {
-  PENDING: { ar: 'قيد المراجعة', color: '#B45309' },
-  APPROVED: { ar: 'موثّق', color: '#15803D' },
-  REJECTED: { ar: 'مرفوض', color: '#B91C1C' },
-  SUSPENDED: { ar: 'موقوف', color: '#B91C1C' },
+const STATUS_LABEL: Record<string, { ar: string; bg: string; fg: string }> = {
+  PENDING: { ar: 'قيد المراجعة', bg: '#FEF3C7', fg: '#B45309' },
+  APPROVED: { ar: 'موثّق', bg: '#DCFCE7', fg: '#15803D' },
+  REJECTED: { ar: 'مرفوض', bg: '#FEE2E2', fg: '#B91C1C' },
+  SUSPENDED: { ar: 'موقوف', bg: '#FEE2E2', fg: '#B91C1C' },
 };
 
 export default function Technicians() {
@@ -93,7 +93,7 @@ export default function Technicians() {
             <tbody>
               {technicians.map((t) => {
                 const st = statusOf(t);
-                const sl = STATUS_LABEL[st] ?? { ar: st, color: '#475569' };
+                const sl = STATUS_LABEL[st] ?? { ar: st, bg: '#F1F5F9', fg: '#475569' };
                 return (
                   <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                     <Td>
@@ -107,9 +107,9 @@ export default function Technicians() {
                     <Td><span style={{ fontFamily: 'Inter' }}>{t.totalReviews ?? 0}</span></Td>
                     <Td>
                       {st === 'APPROVED' ? (
-                        <span className="inline-flex items-center gap-1" style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}><BadgeCheck size={14} /> موثّق</span>
+                        <span className="inline-flex items-center gap-1"><Pill label="موثّق" bg={sl.bg} fg={sl.fg} /> <BadgeCheck size={14} color="#15803D" aria-hidden="true" /></span>
                       ) : (
-                        <span style={{ color: sl.color, fontSize: 12, fontWeight: 600 }}>{sl.ar}</span>
+                        <Pill label={sl.ar} bg={sl.bg} fg={sl.fg} />
                       )}
                     </Td>
                     <Td>

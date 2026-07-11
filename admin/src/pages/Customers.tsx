@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api, CustomerItem, CustomerBookingItem } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill, OpsStatTile } from '../components/shared';
 
 export default function Customers() {
   const [page, setPage] = useState(0);
@@ -99,7 +99,13 @@ export default function Customers() {
         <Pagination page={page} total={total} limit={limit} onPage={setPage} />
       </Card>
 
-      {detailId && <HistoryDrawer id={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && (
+        <HistoryDrawer
+          id={detailId}
+          customer={customers.find((c) => c.id === detailId) ?? null}
+          onClose={() => setDetailId(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={confirm !== null}
@@ -124,13 +130,30 @@ export default function Customers() {
   );
 }
 
-function HistoryDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+function HistoryDrawer({ id, customer, onClose }: { id: string; customer: CustomerItem | null; onClose: () => void }) {
   const { data, isLoading } = useQuery({ queryKey: ['admin-customer-bookings', id], queryFn: () => api.list<CustomerBookingItem>(`/customers/${id}/bookings?limit=100`) });
+  const items = data?.items ?? [];
+  const totalSpent = items
+    .filter((b) => b.status === 'COMPLETED')
+    .reduce((sum, b) => sum + Number(b.totalJod), 0);
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
       <div className="h-full bg-white overflow-auto" style={{ width: 440 }} onClick={(e) => e.stopPropagation()} dir="rtl">
         <div className="p-6">
-          <h2 style={{ fontWeight: 800, fontSize: 18 }}>سجل الحجوزات</h2>
+          <div className="flex items-center gap-3">
+            <Avatar name={customer?.name ?? null} size={44} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{customer?.name ?? customer?.phone ?? '—'}</div>
+              {customer?.phone && <div style={{ color: '#64748B', fontSize: 12, fontFamily: 'Inter' }}>{customer.phone}</div>}
+            </div>
+          </div>
+          {!isLoading && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <OpsStatTile label="عدد الحجوزات" value={items.length} />
+              <OpsStatTile label="إجمالي الإنفاق" value={`${totalSpent} د`} />
+            </div>
+          )}
+          <h2 className="mt-5" style={{ fontWeight: 800, fontSize: 18 }}>سجل الحجوزات</h2>
           {isLoading && <Spinner />}
           {!isLoading && (data?.items.length ?? 0) === 0 && <EmptyState message="لا توجد حجوزات" />}
           <div className="mt-4 space-y-2">
