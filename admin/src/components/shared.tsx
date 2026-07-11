@@ -192,7 +192,7 @@ export function EmptyState({ message }: { message: string }) {
 
 export function TableWrapper({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto table-scroll">
       <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
         {children}
       </table>

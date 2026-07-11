@@ -8,3 +8,21 @@
 [dir="ltr"], .font-latin {
   font-family: 'Inter', sans-serif;
 }
+
+/* Wide tables (many columns) can overflow on narrower screens. RTL scroll
+   containers default to showing the rightmost (first) columns and hide the
+   trailing ones off-screen with no visible cue — keep the scrollbar always
+   on so a hidden column is discoverable instead of silently clipped. */
+.table-scroll {
+  scrollbar-width: thin;
+}
+.table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
