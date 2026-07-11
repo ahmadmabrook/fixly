@@ -173,9 +173,12 @@ export class TechnicianService {
   /** Approximate positions of currently-available technicians near a point —
    *  powers the customer-facing "nearby technicians" map preview (Landing
    *  page), reading the same live Redis GEO index the dispatch algorithm
-   *  matches against. Falls back to a plain Postgres scan (bounded by
-   *  isAvailable + a non-null position) if Redis is unavailable, same
-   *  fallback convention as DispatchService.qualifiedTechs. */
+   *  matches against. Falls back to a radius-filtered Postgres scan (same
+   *  haversine convention as DispatchService.qualifiedTechsFallback) not
+   *  only when Redis errors, but also when it returns zero candidates —
+   *  unlike DispatchService, a false "nobody's near you" here is a visible,
+   *  confusing customer-facing gap (an empty map), not just a slower dispatch
+   *  round, so it's worth the extra Postgres scan to double-check. */
   async nearbyAvailable(lat: number, lng: number, radiusKm = 15, limit = 20) {
     await pruneStaleTechnicians();
 
@@ -192,10 +195,35 @@ export class TechnicianService {
       logger.warn({ err }, 'nearbyAvailable: Redis GEO search unavailable, falling back to Postgres scan');
     }
 
-    const techs = await prisma.technicianProfile.findMany({
-      where: ids
-        ? { id: { in: ids }, status: 'APPROVED', isAvailable: true }
-        : { status: 'APPROVED', isAvailable: true, currentLat: { not: null }, currentLng: { not: null } },
+    if (ids && ids.length > 0) {
+      const techs = await prisma.technicianProfile.findMany({
+        where: { id: { in: ids }, status: 'APPROVED', isAvailable: true },
+        select: {
+          id: true,
+          currentLat: true,
+          currentLng: true,
+          rating: true,
+          isVerified: true,
+          vehicle: true,
+          user: { select: { name: true } },
+        },
+        take: limit,
+      });
+      return techs
+        .filter((t) => t.currentLat != null && t.currentLng != null)
+        .map((t) => ({
+          id: t.id,
+          name: t.user.name,
+          lat: t.currentLat!,
+          lng: t.currentLng!,
+          rating: t.rating,
+          isVerified: t.isVerified,
+          vehicle: t.vehicle,
+        }));
+    }
+
+    const candidates = await prisma.technicianProfile.findMany({
+      where: { status: 'APPROVED', isAvailable: true, currentLat: { not: null }, currentLng: { not: null } },
       select: {
         id: true,
         currentLat: true,
@@ -205,11 +233,11 @@ export class TechnicianService {
         vehicle: true,
         user: { select: { name: true } },
       },
-      take: limit,
     });
 
-    return techs
-      .filter((t) => t.currentLat != null && t.currentLng != null)
+    return candidates
+      .filter((t) => haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= radiusKm)
+      .slice(0, limit)
       .map((t) => ({
         id: t.id,
         name: t.user.name,
