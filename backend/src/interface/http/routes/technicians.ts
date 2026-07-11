@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { ReviewService } from '../../../application/review/ReviewService';
+import { TechnicianService } from '../../../application/technician/TechnicianService';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { NotFoundError } from '../../../shared/errors';
 
@@ -12,8 +13,27 @@ import { NotFoundError } from '../../../shared/errors';
 export const techniciansRouter: Router = Router();
 
 const reviewService = new ReviewService();
+const technicianService = new TechnicianService();
 
 techniciansRouter.use(authenticate);
+
+// GET /technicians/nearby — approximate live positions of currently-available
+// technicians near a point (customer-facing "nearby technicians" map preview).
+// Registered before /:id so "nearby" isn't swallowed as a UUID param.
+techniciansRouter.get(
+  '/nearby',
+  validate([
+    query('lat').isFloat({ min: -90, max: 90 }).toFloat(),
+    query('lng').isFloat({ min: -180, max: 180 }).toFloat(),
+    query('radiusKm').optional().isFloat({ min: 1, max: 50 }).toFloat(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const lat = req.query.lat as unknown as number;
+    const lng = req.query.lng as unknown as number;
+    const radiusKm = (req.query.radiusKm as unknown as number | undefined) ?? 15;
+    res.json({ data: await technicianService.nearbyAvailable(lat, lng, radiusKm) });
+  }),
+);
 
 // GET /technicians/:id — public-safe profile card (no PII beyond display name).
 techniciansRouter.get(

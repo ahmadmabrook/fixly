@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Power, AlertTriangle } from 'lucide-react';
 import { api, TechnicianProfileMe, TrustTier } from '../../lib/api';
 import { notify } from '../../components/shared';
+import { useTechnicianLocationPush } from '../../hooks/useTechnicianLocationPush';
 import { NearbyJobs } from './TechPortal.NearbyJobs';
 import { ActiveJobs } from './TechPortal.ActiveJobs';
 import { Earnings } from './TechPortal.Earnings';
@@ -29,6 +30,7 @@ export function Dashboard({ me, onChange }: { me: TechnicianProfileMe; onChange:
   const qc = useQueryClient();
   const [tab, setTab] = useState<'jobs' | 'active' | 'earnings' | 'ratings' | 'scorecard' | 'profile'>('jobs');
   const [available, setAvailable] = useState(me.isAvailable);
+  useTechnicianLocationPush(available);
 
   async function toggle() {
     try {

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
-import { redis, TECH_LOCATIONS_KEY, TECH_HEARTBEAT_KEY } from '../../infrastructure/cache/redis';
+import { redis, TECH_LOCATIONS_KEY, TECH_HEARTBEAT_KEY, pruneStaleTechnicians } from '../../infrastructure/cache/redis';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { withdrawalsRequestedTotal } from '../../shared/metrics';
 import { haversineKm } from '../../shared/geo';
@@ -168,6 +168,57 @@ export class TechnicianService {
     // Throttled — Postgres untouched this call, but the response still
     // reflects the just-submitted position (API contract unchanged).
     return { ...profile, currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() };
+  }
+
+  /** Approximate positions of currently-available technicians near a point —
+   *  powers the customer-facing "nearby technicians" map preview (Landing
+   *  page), reading the same live Redis GEO index the dispatch algorithm
+   *  matches against. Falls back to a plain Postgres scan (bounded by
+   *  isAvailable + a non-null position) if Redis is unavailable, same
+   *  fallback convention as DispatchService.qualifiedTechs. */
+  async nearbyAvailable(lat: number, lng: number, radiusKm = 15, limit = 20) {
+    await pruneStaleTechnicians();
+
+    let ids: string[] | null = null;
+    try {
+      ids = (await redis.geosearch(
+        TECH_LOCATIONS_KEY,
+        'FROMLONLAT', lng, lat,
+        'BYRADIUS', radiusKm, 'km',
+        'ASC',
+        'COUNT', limit,
+      )) as string[];
+    } catch (err) {
+      logger.warn({ err }, 'nearbyAvailable: Redis GEO search unavailable, falling back to Postgres scan');
+    }
+
+    const techs = await prisma.technicianProfile.findMany({
+      where: ids
+        ? { id: { in: ids }, status: 'APPROVED', isAvailable: true }
+        : { status: 'APPROVED', isAvailable: true, currentLat: { not: null }, currentLng: { not: null } },
+      select: {
+        id: true,
+        currentLat: true,
+        currentLng: true,
+        rating: true,
+        isVerified: true,
+        vehicle: true,
+        user: { select: { name: true } },
+      },
+      take: limit,
+    });
+
+    return techs
+      .filter((t) => t.currentLat != null && t.currentLng != null)
+      .map((t) => ({
+        id: t.id,
+        name: t.user.name,
+        lat: t.currentLat!,
+        lng: t.currentLng!,
+        rating: t.rating,
+        isVerified: t.isVerified,
+        vehicle: t.vehicle,
+      }));
   }
 
   /** Jobs actively offered to this technician via dispatch. Only bookings with an
