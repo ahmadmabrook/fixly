@@ -17,7 +17,13 @@ interface QuoteDto {
 interface Svc { id: string; nameAr: string }
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'بانتظار التسعير', QUOTED: 'جاهز — سعر ثابت', ACCEPTED: 'مقبول', DECLINED: 'مرفوض', EXPIRED: 'منتهٍ' };
-const STATUS_COLOR: Record<string, string> = { PENDING: '#B45309', QUOTED: '#15803D', ACCEPTED: '#0E4FA8', DECLINED: '#B91C1C', EXPIRED: '#94A3B8' };
+const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
+  PENDING: { bg: '#FEF3C7', fg: '#B45309' },
+  QUOTED: { bg: '#DCFCE7', fg: '#15803D' },
+  ACCEPTED: { bg: '#E8F1FE', fg: '#0E4FA8' },
+  DECLINED: { bg: '#FEE2E2', fg: '#B91C1C' },
+  EXPIRED: { bg: '#F1F5F9', fg: '#94A3B8' },
+};
 
 export default function QuotesPage() {
   const qc = useQueryClient();
@@ -84,7 +90,7 @@ export default function QuotesPage() {
           <Card key={q.id} className="p-4">
             <div className="flex items-center justify-between">
               <div style={{ fontWeight: 700, fontSize: 15 }}>{q.service?.nameAr ?? '—'}</div>
-              <span style={{ color: STATUS_COLOR[q.status], fontSize: 12, fontWeight: 700 }}>{STATUS_LABEL[q.status]}</span>
+              <span className="px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[q.status].bg, color: STATUS_COLOR[q.status].fg, fontSize: 12, fontWeight: 700 }}>{STATUS_LABEL[q.status]}</span>
             </div>
             {q.description && <p style={{ color: '#64748B', fontSize: 13, marginTop: 4 }}>{q.description}</p>}
             {q.status === 'QUOTED' && q.quotedJod != null && (

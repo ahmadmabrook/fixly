@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { User, MapPin, CreditCard, Bell, LifeBuoy, Settings as SettingsIcon, ShieldCheck, Gift, Receipt, Wallet, Star } from 'lucide-react';
 import { api } from '../lib/api';
@@ -25,10 +25,13 @@ const TABS: ReadonlyArray<readonly [Tab, string, typeof User]> = [
   ['support', 'الدعم', LifeBuoy],
   ['settings', 'الإعدادات', SettingsIcon],
 ];
+const TAB_KEYS = new Set<string>(TABS.map(([k]) => k));
 
 export default function Account() {
-  const [tab, setTab] = useState<Tab>('profile');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  const [tab, setTab] = useState<Tab>(initialTab && TAB_KEYS.has(initialTab) ? (initialTab as Tab) : 'profile');
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<{ name: string | null; phone: string }>('/auth/me') });
   const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<{ status: string } | null>('/subscriptions/me') });
   const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: () => api.get<{ balanceJod: string | number }>('/credits/me') });

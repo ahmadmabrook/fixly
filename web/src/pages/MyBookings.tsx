@@ -1,12 +1,23 @@
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Inbox } from 'lucide-react';
 import { useBookings } from '../hooks/useBookings';
 import { useAuth } from '../lib/store';
 import { useBookingSocket } from '../lib/socket';
 import { Card, ServiceIcon, PriceBadge, StatusBadge, SkeletonList } from '../components/shared';
 
+const ACTIVE_STATUSES = new Set(['PENDING', 'AWAITING_PAYMENT', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']);
+
 export default function MyBookings() {
   const accessToken = useAuth((s) => s.accessToken);
+  const navigate = useNavigate();
   const { data: bookings, isLoading } = useBookings();
+  const [tab, setTab] = useState<'active' | 'past'>('active');
+
+  const filtered = useMemo(
+    () => (bookings ?? []).filter((b) => (tab === 'active' ? ACTIVE_STATUSES.has(b.status) : !ACTIVE_STATUSES.has(b.status))),
+    [bookings, tab],
+  );
 
   if (!accessToken) {
     return (
@@ -20,13 +31,40 @@ export default function MyBookings() {
     <main className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 style={{ fontWeight: 800, fontSize: 32 }}>طلباتي</h1>
 
+      <div className="mt-4 flex gap-2" role="tablist" aria-label="تصفية الطلبات">
+        {(['active', 'past'] as const).map((k) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className="px-4 py-2 rounded-full"
+            style={{ background: tab === k ? '#1366D6' : '#F1F5F9', color: tab === k ? '#FFF' : '#475569', fontWeight: 700, fontSize: 13 }}
+          >
+            {k === 'active' ? 'نشطة' : 'سابقة'}
+          </button>
+        ))}
+      </div>
+
       {isLoading && <div className="mt-6"><SkeletonList count={4} rowHeight={72} /></div>}
-      {!isLoading && (!bookings || bookings.length === 0) && (
-        <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>لا توجد طلبات بعد.</p>
+      {!isLoading && filtered.length === 0 && (
+        <Card className="mt-6 p-10 text-center">
+          <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center" style={{ background: '#F1F5F9' }}>
+            <Inbox size={26} color="#94A3B8" aria-hidden="true" />
+          </div>
+          <p className="mt-3" style={{ color: '#475569', fontSize: 15 }}>
+            {tab === 'active' ? 'لا توجد طلبات نشطة حالياً' : 'لا توجد طلبات سابقة بعد'}
+          </p>
+          {tab === 'active' && (
+            <button onClick={() => navigate('/services')} className="mt-4 px-5 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 14 }}>
+              اطلب خدمة الآن
+            </button>
+          )}
+        </Card>
       )}
 
       <div className="mt-6 space-y-3" role="list" aria-label="قائمة الطلبات">
-        {(bookings ?? []).map((b) => (
+        {filtered.map((b) => (
           <BookingRow key={b.id} item={b} />
         ))}
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ShieldCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
 import { useBookingSocket } from '../lib/socket';
@@ -7,6 +8,8 @@ import { api, ApiError, PromoQuote, CheckoutSession } from '../lib/api';
 import { Card, ServiceIcon, PriceBadge, InlineRow, ConfirmDialog, StatusBadge, notify } from '../components/shared';
 import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 import HyperPayWidget from '../components/HyperPayWidget';
+
+interface SubscriptionDto { status: string; discountPercent: number; guaranteeDays: number }
 
 interface BookingPageProps {
   serviceId: string;
@@ -49,6 +52,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const { mutate: createBooking, isPending } = useCreateBooking();
   const [createdId, setCreatedId] = useState<string | null>(null);
   const liveStatus = useBookingSocket(createdId);
+  const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<SubscriptionDto | null>('/subscriptions/me') });
+  const member = sub?.status === 'ACTIVE';
+  const discountPercent = sub?.discountPercent ?? 15;
+  const guaranteeDays = member ? sub?.guaranteeDays ?? 90 : 30;
 
   // After a successful create, push the live status into the toast flow.
   useEffect(() => {
@@ -259,11 +266,20 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
           )}
           <div className="my-4 h-px bg-slate-100" />
           <InlineRow label="سعر الخدمة" value={`${price} دينار`} />
+          {member && (
+            <InlineRow
+              label={`خصم العضوية −${discountPercent}%`}
+              value={<span style={{ color: '#15803D' }}>−{Math.round(price * discountPercent) / 100} دينار</span>}
+            />
+          )}
           <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />
           <div className="my-2 h-px bg-slate-100" />
           <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : price} دينار`} />
           <p className="mt-3 p-3 rounded-lg" style={{ background: '#E8F1FE', color: '#0E4FA8', fontSize: 12 }}>
             سيتم حجز المبلغ الآن ويُخصم بعد إتمام الخدمة.
+          </p>
+          <p className="mt-2 flex items-center gap-1.5" style={{ color: '#15803D', fontSize: 12 }}>
+            <ShieldCheck size={14} aria-hidden="true" /> ضمان <span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوم مشمول
           </p>
           <button
             onClick={() => setConfirming(true)}

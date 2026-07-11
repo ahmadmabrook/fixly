@@ -1,20 +1,23 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones } from 'lucide-react';
+import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones, BadgeCheck, Star, Check, Wrench, Navigation } from 'lucide-react';
 import { useServices } from '../hooks/useServices';
 import { api, BookingListItem } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid } from '../components/shared';
+import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid, Avatar } from '../components/shared';
 
 interface PublicReview { id: string; rating: number; comment: string | null; reviewerName: string | null }
 
 const VALUE_PROPS = [
-  { i: <Clock size={26} color="#1366D6" aria-hidden="true" />, tKey: 'vp.speed.t', bKey: 'vp.speed.b' },
+  { i: <BadgeCheck size={26} color="#1366D6" aria-hidden="true" />, tKey: 'vp.certified.t', bKey: 'vp.certified.b' },
   { i: <CreditCard size={26} color="#0FB5A6" aria-hidden="true" />, tKey: 'vp.price.t', bKey: 'vp.price.b' },
   { i: <ShieldCheck size={26} color="#15803D" aria-hidden="true" />, tKey: 'vp.guarantee.t', bKey: 'vp.guarantee.b' },
-  { i: <Headphones size={26} color="#F5A623" aria-hidden="true" />, tKey: 'vp.support.t', bKey: 'vp.support.b' },
+  { i: <Clock size={26} color="#F5A623" aria-hidden="true" />, tKey: 'vp.speed.t', bKey: 'vp.speed.b' },
+  { i: <Headphones size={26} color="#7C3AED" aria-hidden="true" />, tKey: 'vp.support.t', bKey: 'vp.support.b' },
 ];
+
+const PROTECTION_BENEFITS = ['أولوية خلال 30 دقيقة', 'خصم 15% على كل خدمة', 'ضمان ممتد 90 يوم', 'فحص مجاني كل 3 أشهر', 'دعم VIP'];
 
 const STEPS = [
   { n: 1, tKey: 'step.1.t', bKey: 'step.1.b' },
@@ -109,8 +112,54 @@ export default function Landing() {
         </div>
 
         <div className="relative">
-          <div className="aspect-[4/5] rounded-3xl overflow-hidden relative flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#1366D6 0%,#0FB5A6 100%)' }}>
-            <span style={{ fontSize: 160 }} aria-hidden="true">🔧</span>
+          <div className="aspect-[4/5] rounded-3xl overflow-hidden relative" style={{ background: 'linear-gradient(135deg,#1366D6 0%,#0FB5A6 100%)' }}>
+            {/* Illustrative map mock — purely decorative, not a live tracking view
+                (the real live map lives on the tracking page, wired to Mapbox). */}
+            <div className="absolute inset-0" aria-hidden="true">
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+                <g stroke="rgba(255,255,255,0.55)" strokeWidth="6" fill="none">
+                  <path d="M-20 80 L420 120" />
+                  <path d="M-20 220 L420 200" />
+                  <path d="M-20 320 L420 340" />
+                  <path d="M80 -20 L60 420" />
+                  <path d="M220 -20 L260 420" />
+                  <path d="M340 -20 L320 420" />
+                </g>
+                <path d="M310 290 Q 240 240 200 200 T 110 110" stroke="#FFF" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.9" />
+              </svg>
+              <div className="absolute" style={{ left: '26%', top: '55%', transform: 'translate(-50%,-100%)' }}>
+                <MapPin size={30} color="#FFF" fill="#0E4FA8" strokeWidth={1.5} />
+              </div>
+              <div className="absolute" style={{ left: '76%', top: '32%', transform: 'translate(-50%,-100%)' }}>
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-full animate-ping" style={{ background: '#0FB5A6', opacity: 0.4 }} />
+                  <div className="w-11 h-11 rounded-full border-[3px] border-white shadow-lg flex items-center justify-center" style={{ background: '#0FB5A6' }}>
+                    <Wrench size={20} color="#FFF" aria-hidden="true" />
+                  </div>
+                </div>
+              </div>
+              <button aria-hidden="true" tabIndex={-1} className="absolute bottom-24 left-4 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center">
+                <Navigation size={16} color="#1366D6" />
+              </button>
+            </div>
+
+            <div className="absolute top-6 right-6 left-6 flex justify-between">
+              <Card className="p-3 flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#CCFBF1' }}><Clock size={18} color="#0F766E" aria-hidden="true" /></div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#475569' }}>وقت الوصول</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>5</span> دقائق</div>
+                </div>
+              </Card>
+              <Card className="p-3 flex items-center gap-2">
+                <Avatar name="خالد" size={36} verified />
+                <div>
+                  <div style={{ fontSize: 11, color: '#475569' }}>الفني</div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>خالد</div>
+                </div>
+              </Card>
+            </div>
+
             <Card className="absolute bottom-6 left-6 right-6 p-4 flex items-center gap-3">
               <ServiceIcon id="elec" size={20} />
               <div className="flex-1">
@@ -123,7 +172,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-16">
+      <section className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-16">
         {VALUE_PROPS.map((v) => (
           <Card key={v.tKey} className="p-5">
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#F1F5F9' }}>{v.i}</div>
@@ -170,12 +219,45 @@ export default function Landing() {
         </div>
       </section>
 
+      <section className="pb-16">
+        <Card className="p-8 overflow-hidden relative" style={{ background: 'linear-gradient(120deg,#0E4FA8 0%,#1366D6 60%,#0FB5A6 100%)' }}>
+          <div className="grid md:grid-cols-2 gap-6 items-center">
+            <div>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.2)', color: '#FFF', fontSize: 12, fontWeight: 700 }}>
+                <Star size={12} fill="#F5A623" strokeWidth={0} aria-hidden="true" /> خطة الحماية
+              </span>
+              <h2 className="mt-3" style={{ fontWeight: 800, fontSize: 30, color: '#FFF' }}>اشترك ووفّر على كل خدمة</h2>
+              <div className="mt-2" style={{ color: '#DBEAFE', fontSize: 15 }}>
+                <span style={{ fontFamily: 'Inter', fontWeight: 800, fontSize: 22, color: '#FFF' }}>5</span> دنانير/شهر
+              </div>
+              <button
+                onClick={() => navigate(accessToken ? '/account?tab=protection' : '/login?returnTo=%2Faccount%3Ftab%3Dprotection')}
+                className="mt-5 px-6 h-12 rounded-xl active:scale-[0.98] transition"
+                style={{ background: '#FFF', color: '#1366D6', fontWeight: 700 }}
+              >
+                اشترك الآن
+              </button>
+            </div>
+            <div className="grid gap-2.5">
+              {PROTECTION_BENEFITS.map((b) => (
+                <div key={b} className="flex items-center gap-2" style={{ color: '#FFF', fontSize: 15 }}>
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.2)' }}>
+                    <Check size={14} color="#FFF" aria-hidden="true" />
+                  </span>
+                  {b}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </section>
+
       {reviews && reviews.length > 0 && (
         <section className="pb-16">
           <div className="flex items-end justify-between">
             <h2 style={{ fontWeight: 800, fontSize: 32 }}>{t('sec.reviews')}</h2>
           </div>
-          <div className="mt-6 grid md:grid-cols-3 gap-4">
+          <div className="mt-6 grid md:grid-cols-4 gap-4">
             {reviews.map((r) => (
               <Card key={r.id} className="p-5">
                 <Stars rating={r.rating} />
