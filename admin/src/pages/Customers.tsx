@@ -131,7 +131,7 @@ export default function Customers() {
 }
 
 function HistoryDrawer({ id, customer, onClose }: { id: string; customer: CustomerItem | null; onClose: () => void }) {
-  const { data, isLoading } = useQuery({ queryKey: ['admin-customer-bookings', id], queryFn: () => api.list<CustomerBookingItem>(`/customers/${id}/bookings?limit=100`) });
+  const { data, isLoading, isError } = useQuery({ queryKey: ['admin-customer-bookings', id], queryFn: () => api.list<CustomerBookingItem>(`/customers/${id}/bookings?limit=100`) });
   const items = data?.items ?? [];
   const totalSpent = items
     .filter((b) => b.status === 'COMPLETED')
@@ -155,7 +155,8 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
           )}
           <h2 className="mt-5" style={{ fontWeight: 800, fontSize: 18 }}>سجل الحجوزات</h2>
           {isLoading && <Spinner />}
-          {!isLoading && (data?.items.length ?? 0) === 0 && <EmptyState message="لا توجد حجوزات" />}
+          {isError && <EmptyState message="تعذّر تحميل سجل الحجوزات" />}
+          {!isLoading && !isError && items.length === 0 && <EmptyState message="لا توجد حجوزات" />}
           <div className="mt-4 space-y-2">
             {(data?.items ?? []).map((b) => (
               <div key={b.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#F8FAFC' }}>

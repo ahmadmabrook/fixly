@@ -69,6 +69,31 @@ describe('POST /api/v1/promo/validate', () => {
       .send({ code: 'NOPE-NOPE', serviceId: ELECTRICITY_SERVICE_ID })
       .expect(422);
   });
+
+  // Regression test for the promo/validate ↔ BookingService.create.ts base-price
+  // mismatch: a Protection-plan subscriber previewing a promo must see the same
+  // discount math the real booking charge actually applies (promo stacked on the
+  // member-discounted price), not a quote against the raw list price.
+  it('quotes the promo against the subscriber (member) price when the customer has an active subscription', async () => {
+    const subscription = await prisma.subscription.create({
+      data: { customerId: userId, status: 'ACTIVE', discountPercent: 15, currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+    });
+    try {
+      const res = await request(app)
+        .post('/api/v1/promo/validate')
+        .set(auth())
+        .send({ code: 'WELCOME10', serviceId: ELECTRICITY_SERVICE_ID })
+        .expect(200);
+      // 50 JOD list price − 15% member discount = 42.5 subscriber price;
+      // WELCOME10 (10%) off 42.5 = 4.25 discount → 38.25 final. originalJod stays
+      // the list price (50) so the UI can still show "was 50, now 38.25".
+      expect(res.body.data.originalJod).toBe('50');
+      expect(res.body.data.discountJod).toBe('4.25');
+      expect(res.body.data.finalJod).toBe('38.25');
+    } finally {
+      await prisma.subscription.delete({ where: { id: subscription.id } });
+    }
+  });
 });
 
 describe('Addresses CRUD', () => {

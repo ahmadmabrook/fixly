@@ -145,7 +145,7 @@ export default function Technicians() {
 }
 
 function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
-  const { data: t, isLoading } = useQuery({ queryKey: ['admin-technician', id], queryFn: () => api.get<TechnicianDetail>(`/technicians/${id}`) });
+  const { data: t, isLoading, isError } = useQuery({ queryKey: ['admin-technician', id], queryFn: () => api.get<TechnicianDetail>(`/technicians/${id}`) });
   const { data: scorecard } = useQuery({
     queryKey: ['admin-technician-scorecard', id],
     queryFn: () => api.get<TechnicianScorecard>(`/technicians/${id}/scorecard`),
@@ -176,6 +176,7 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
       <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
         {isLoading && <Spinner />}
+        {isError && <EmptyState message="تعذّر تحميل بيانات الفني" />}
         {t && (
           <div className="p-6 space-y-4">
             <div className="flex items-center gap-3">

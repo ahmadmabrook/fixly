@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Phone, Gift } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
@@ -121,7 +121,12 @@ export default function LoginPage() {
             >
               {loading ? '...' : 'إرسال الرمز'}
             </button>
-            <p style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>بالمتابعة، أنت توافق على الشروط والأحكام وسياسة الخصوصية.</p>
+            <p style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
+              بالمتابعة، أنت توافق على{' '}
+              <Link to="/terms" style={{ color: '#1366D6', fontWeight: 600 }}>الشروط والأحكام</Link>
+              {' '}و{' '}
+              <Link to="/privacy" style={{ color: '#1366D6', fontWeight: 600 }}>سياسة الخصوصية</Link>.
+            </p>
           </div>
         ) : (
           <div className="mt-6 space-y-4">

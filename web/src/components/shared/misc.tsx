@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import {
-  Zap, Droplets, Snowflake, PaintRoller, Sofa, BadgeCheck, Wrench, MapPin, Navigation, ChevronDown,
+  Zap, Droplets, Snowflake, PaintRoller, Sofa, BadgeCheck, Wrench, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -97,33 +97,6 @@ export function InlineRow({ label, value, strong }: { label: string; value: Reac
     <div className="flex items-center justify-between py-2">
       <span style={{ color: '#475569', fontSize: 14 }}>{label}</span>
       <span style={{ color: '#0F172A', fontWeight: strong ? 700 : 500, fontSize: strong ? 16 : 14 }}>{value}</span>
-    </div>
-  );
-}
-
-export function MapMock({ customerLabel = 'موقعك', height = 360 }: { customerLabel?: string; height?: number }) {
-  return (
-    <div className="relative w-full overflow-hidden" style={{ height, background: 'linear-gradient(180deg,#EEF2F7 0%,#E5ECF3 100%)' }}>
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 400" preserveAspectRatio="none">
-        <g stroke="#FFF" strokeWidth="6" fill="none" opacity="0.9">
-          <path d="M-20 80 L420 120" /><path d="M-20 220 L420 200" /><path d="M-20 320 L420 340" />
-          <path d="M80 -20 L60 420" /><path d="M220 -20 L260 420" /><path d="M340 -20 L320 420" />
-        </g>
-        <g stroke="#D8E1EA" strokeWidth="2" fill="none">
-          <path d="M-20 150 L420 160" /><path d="M160 -20 L150 420" />
-        </g>
-        <rect x="20" y="240" width="90" height="80" rx="8" fill="#DCEBD8" />
-        <rect x="280" y="40" width="100" height="70" rx="8" fill="#DCEBD8" />
-      </svg>
-      <div className="absolute" style={{ left: '40%', top: '35%', transform: 'translate(-50%,-100%)' }}>
-        <div className="flex flex-col items-center">
-          <div className="px-2.5 py-1 rounded-full bg-white shadow-md text-[11px] font-semibold mb-1" style={{ color: '#0F172A' }}>{customerLabel}</div>
-          <MapPin size={28} color="#1366D6" fill="#1366D6" strokeWidth={1.5} stroke="#FFF" />
-        </div>
-      </div>
-      <button onClick={() => notify('تم تحديد موقعك')} className="absolute bottom-4 left-4 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center" aria-label="تحديد موقعي">
-        <Navigation size={18} color="#1366D6" aria-hidden="true" />
-      </button>
     </div>
   );
 }

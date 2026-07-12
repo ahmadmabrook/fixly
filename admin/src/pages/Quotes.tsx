@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlayCircle } from 'lucide-react';
 import { api } from '../lib/api';
-import { Card, Spinner, EmptyState, ActionBtn, notify, Pagination, Pill } from '../components/shared';
+import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
+import { fmtJod } from '../lib/format';
 
 interface QuoteItem {
   id: string;
@@ -30,10 +31,16 @@ export default function Quotes() {
   const [status, setStatus] = useState('PENDING');
   const [page, setPage] = useState(0);
   const [prices, setPrices] = useState<Record<string, string>>({});
+  // Pending confirmation for a firm-price decision: setQuote is a one-shot,
+  // customer-notifying action on the backend (a quote can only be priced
+  // once — status must be PENDING — so there's no in-app way to correct a
+  // mis-typed price afterwards). Every other money-setting action in the
+  // admin panel (refund, payout, withdrawal) is confirm-gated; this matches.
+  const [confirmQuote, setConfirmQuote] = useState<{ id: string; quotedJod: string; label: string } | null>(null);
   const limit = 50;
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-quotes', status, page],
     queryFn: () => api.list<QuoteItem>(`/quotes?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
@@ -60,8 +67,9 @@ export default function Quotes() {
       </div>
 
       {isLoading && <Card><Spinner /></Card>}
-      {!isLoading && items.length === 0 && <Card><EmptyState message="لا توجد طلبات" /></Card>}
-      {!isLoading && items.length > 0 && (
+      {isError && <Card><EmptyState message="تعذّر تحميل طلبات الفحص المرئي" /></Card>}
+      {!isLoading && !isError && items.length === 0 && <Card><EmptyState message="لا توجد طلبات" /></Card>}
+      {!isLoading && !isError && items.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {items.map((q) => (
             <Card key={q.id} className="p-5">
@@ -93,8 +101,12 @@ export default function Quotes() {
                     style={{ fontSize: 13, direction: 'ltr' }}
                   />
                   <ActionBtn
-                    onClick={() => { const v = prices[q.id]; if (v && Number(v) > 0) setQuote.mutate({ id: q.id, quotedJod: v }); }}
+                    onClick={() => {
+                      const v = prices[q.id];
+                      if (v && Number(v) > 0) setConfirmQuote({ id: q.id, quotedJod: v, label: q.customer?.name ?? q.id.slice(0, 8) });
+                    }}
                     disabled={setQuote.isPending || !(Number(prices[q.id]) > 0)}
+                    data-testid={`quote-price-btn-${q.id}`}
                   >تسعير</ActionBtn>
                 </div>
               ) : (
@@ -107,6 +119,24 @@ export default function Quotes() {
         </div>
       )}
       <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
+
+      <ConfirmDialog
+        open={confirmQuote !== null}
+        title="تأكيد السعر الثابت"
+        body={
+          confirmQuote
+            ? `سيصبح السعر ${fmtJod(confirmQuote.quotedJod)} دينار السعر الثابت لطلب ${confirmQuote.label} وسيُبلَّغ العميل به فوراً. لا يمكن تعديل السعر بعد هذه الخطوة.`
+            : undefined
+        }
+        confirmLabel="تأكيد السعر"
+        cancelLabel="إلغاء"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (confirmQuote) setQuote.mutate({ id: confirmQuote.id, quotedJod: confirmQuote.quotedJod });
+          setConfirmQuote(null);
+        }}
+        onCancel={() => setConfirmQuote(null)}
+      />
     </div>
   );
 }

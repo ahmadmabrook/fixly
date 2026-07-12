@@ -23,6 +23,39 @@ If business logic is unclear, state exactly what context is missing and give the
 13. Every safe improvement: improved code. 14. Every risky improvement: safer alternative.
 15. Prove every section was reviewed.
 
+## Constants, Reusability, and Design Asset Rules
+
+### No Magic Values
+- Do not use unexplained magic numbers, strings, colors, URLs, route names, permission names,
+  storage keys, event names, timeout values, status values, or feature identifiers.
+- Replace repeated or business-significant values with appropriately scoped:
+  constants, enums, typed configuration, localization keys, design tokens, or domain value objects.
+- A literal may remain inline only when its meaning is obvious, used once, and unlikely to change,
+  such as `0`, `1`, an empty string, or a small loop boundary where context is fully clear.
+
+### Avoid Redundancy
+- Do not duplicate business logic, validation rules, API handling, permission checks, formatting,
+  transformations, UI patterns, constants, types, or test setup.
+- Reuse existing utilities, services, hooks, components, validators, DTOs, mappers, and abstractions
+  before introducing new implementations.
+- Do not create premature abstractions merely to remove superficial similarity.
+- Extract shared logic when duplication represents the same responsibility and is likely to evolve
+  together.
+
+### Single Source of Truth for Design Assets
+- All colors must come from the centralized design-token/theme system.
+- Do not use inline hexadecimal, RGB, HSL, Tailwind arbitrary color values, or duplicated color
+  definitions unless explicitly approved.
+- All icons and images must come from the centralized asset registry or approved asset library.
+- Do not duplicate image files, icon implementations, SVG markup, or asset paths across modules.
+- Shared asset identifiers, URLs, dimensions, variants, and fallbacks must be centrally defined.
+- Backend-provided image URLs must be consumed through the approved media/asset abstraction when one
+  exists.
+- Any exception must be documented with a reason and marked NEEDS CONTEXT or explicitly approved.
+
+## Proper descriptive names for functions, methods, and properties
+- Always use properly described camelCase names for classes, variables, properties, and functions.
+
 ## Autonomous Fix Mode
 For every issue: identify → categorize → explain why it matters → show original → show improved
 implementation → explain benefit → mark FIXED.

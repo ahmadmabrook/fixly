@@ -15,7 +15,7 @@ export default function Broadcast() {
   const [segment, setSegment] = useState('ALL');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-broadcasts'],
     queryFn: () => api.list<BroadcastItem>('/broadcasts?limit=50'),
   });
@@ -100,8 +100,9 @@ export default function Broadcast() {
       <Card>
         <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9', fontWeight: 700, fontSize: 14 }}>السجل</div>
         {isLoading && <Spinner />}
-        {!isLoading && (data?.items.length ?? 0) === 0 && <EmptyState message="لا توجد إشعارات مرسلة" />}
-        {!isLoading && (data?.items.length ?? 0) > 0 && (
+        {isError && <EmptyState message="تعذّر تحميل سجل الإشعارات" />}
+        {!isLoading && !isError && (data?.items.length ?? 0) === 0 && <EmptyState message="لا توجد إشعارات مرسلة" />}
+        {!isLoading && !isError && (data?.items.length ?? 0) > 0 && (
           <TableWrapper>
             <thead><tr style={{ background: '#F8FAFC' }}><Th>العنوان</Th><Th>الشريحة</Th><Th>المستلمون</Th><Th>التاريخ</Th></tr></thead>
             <tbody>

@@ -33,7 +33,7 @@ export default function ConductReports() {
   const limit = 50;
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-conduct', status, page],
     queryFn: () => api.list<ConductItem>(`/conduct-reports?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
@@ -61,8 +61,9 @@ export default function ConductReports() {
 
       <Card>
         {isLoading && <Spinner />}
-        {!isLoading && items.length === 0 && <EmptyState message="لا توجد بلاغات" />}
-        {!isLoading && items.length > 0 && (
+        {isError && <EmptyState message="تعذّر تحميل بلاغات السلوك" />}
+        {!isLoading && !isError && items.length === 0 && <EmptyState message="لا توجد بلاغات" />}
+        {!isLoading && !isError && items.length > 0 && (
           <TableWrapper>
             <thead>
               <tr style={{ background: '#F8FAFC' }}>

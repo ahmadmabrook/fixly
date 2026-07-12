@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -71,5 +71,42 @@ describe('TrackingPage', () => {
     await user.click(await screen.findByRole('button', { name: /إبلاغ/ }));
     expect(await screen.findByText('الإبلاغ عن الفني')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'محاولة التعامل خارج التطبيق' })).toBeInTheDocument();
+  });
+
+  it('calling the technician requests a masked-call proxy number and dials it', async () => {
+    const user = userEvent.setup();
+    const locationStub = { ...window.location, href: '' };
+    Object.defineProperty(window, 'location', { value: locationStub, writable: true });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const booking = { id: 'b1', status: 'EN_ROUTE', scheduledAt: null, totalJod: '50', service: svc, technicianId: 't1', addressLat: 31.9, addressLng: 35.9 };
+    vi.stubGlobal('fetch', vi.fn(async (url: string, opts?: RequestInit) => {
+      if (url.endsWith('/bookings/b1') && (!opts || opts.method === undefined)) {
+        return { ok: true, status: 200, json: async () => ({ data: booking }) } as Response;
+      }
+      if (url.includes('/technicians/')) {
+        return { ok: true, status: 200, json: async () => ({ data: { id: 't1', name: 'أحمد', avatarUrl: null, rating: '4.8', totalReviews: 12, vehicle: null, isVerified: true } }) } as Response;
+      }
+      if (url.endsWith('/bookings/b1/masked-call') && opts?.method === 'POST') {
+        return { ok: true, status: 200, json: async () => ({ data: { proxyNumber: '+962790000000' } }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch);
+
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/bookings/b1/track']}>
+          <Routes>
+            <Route path="/bookings/:id/track" element={<TrackingPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'اتصال' }));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe('tel:+962790000000');
+    });
   });
 });

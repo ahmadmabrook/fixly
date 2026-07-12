@@ -28,7 +28,7 @@ export default function Guarantee() {
   const limit = 50;
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-guarantee', status, page],
     queryFn: () => api.list<GuaranteeAdminItem>(`/guarantee?${status ? `status=${status}&` : ''}limit=${limit}&offset=${page * limit}`),
   });
@@ -49,8 +49,9 @@ export default function Guarantee() {
       </div>
 
       {isLoading && <Card><Spinner /></Card>}
-      {!isLoading && items.length === 0 && <Card><EmptyState message="لا توجد تذاكر" /></Card>}
-      {!isLoading && items.length > 0 && (
+      {isError && <Card><EmptyState message="تعذّر تحميل تذاكر الضمان" /></Card>}
+      {!isLoading && !isError && items.length === 0 && <Card><EmptyState message="لا توجد تذاكر" /></Card>}
+      {!isLoading && !isError && items.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {items.map((t) => {
             const sla = slaLabel(t.expiresAt);

@@ -12,7 +12,7 @@ export default function Admins() {
   const [activeConfirm, setActiveConfirm] = useState<{ admin: AdminUserItem; next: boolean } | null>(null);
   const [roleConfirm, setRoleConfirm] = useState<{ admin: AdminUserItem; next: string } | null>(null);
 
-  const { data, isLoading } = useQuery({ queryKey: ['admin-admins'], queryFn: () => api.get<AdminUserItem[]>('/admins') });
+  const { data, isLoading, isError } = useQuery({ queryKey: ['admin-admins'], queryFn: () => api.get<AdminUserItem[]>('/admins') });
 
   const create = useMutation({
     mutationFn: () => api.post('/admins', { email: form.email.trim(), password: form.password, name: form.name.trim(), role: form.role }),
@@ -54,8 +54,9 @@ export default function Admins() {
 
       <Card>
         {isLoading && <Spinner />}
-        {!isLoading && (data?.length ?? 0) === 0 && <EmptyState message="لا يوجد مسؤولون" />}
-        {!isLoading && (data?.length ?? 0) > 0 && (
+        {isError && <EmptyState message="تعذّر تحميل قائمة المسؤولين" />}
+        {!isLoading && !isError && (data?.length ?? 0) === 0 && <EmptyState message="لا يوجد مسؤولون" />}
+        {!isLoading && !isError && (data?.length ?? 0) > 0 && (
           <TableWrapper>
             <thead><tr style={{ background: '#F8FAFC' }}><Th>الاسم</Th><Th>البريد</Th><Th>الدور</Th><Th>الحالة</Th><Th>إجراء</Th></tr></thead>
             <tbody>

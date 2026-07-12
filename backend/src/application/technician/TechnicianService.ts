@@ -9,11 +9,17 @@ import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
 import { omitFields } from '../../shared/sanitize';
 
-const MIN_WITHDRAWAL_JOD = 20;
+export const MIN_WITHDRAWAL_JOD = 20;
 const WITHDRAWAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 // §2.4: Postgres is now just the fallback/admin-map snapshot — write-through
 // at most this often per technician rather than on every live-location ping.
 const LOCATION_WRITETHROUGH_COOLDOWN_SECONDS = 10;
+
+/** Allowed hourly-rate band (JOD), enforced at both the route validator (fast
+ *  400 on an out-of-range value) and here (defense-in-depth / non-HTTP callers).
+ *  Single source of truth so the two checks can never drift apart. */
+export const MIN_HOURLY_RATE_JOD = 40;
+export const MAX_HOURLY_RATE_JOD = 60;
 
 
 interface OnboardingInput {
@@ -36,8 +42,8 @@ export class TechnicianService {
   /** Apply to become a technician (or resubmit). Creates/updates the profile in
    *  PENDING and flips the user's role to TECHNICIAN. */
   async apply(userId: string, input: OnboardingInput) {
-    if (input.hourlyRateJod < 40 || input.hourlyRateJod > 60) {
-      throw new ValidationError('السعر بالساعة يجب أن يكون بين 40 و60 ديناراً');
+    if (input.hourlyRateJod < MIN_HOURLY_RATE_JOD || input.hourlyRateJod > MAX_HOURLY_RATE_JOD) {
+      throw new ValidationError(`السعر بالساعة يجب أن يكون بين ${MIN_HOURLY_RATE_JOD} و${MAX_HOURLY_RATE_JOD} ديناراً`);
     }
     if (!input.serviceIds.length) throw new ValidationError('اختر خدمة واحدة على الأقل');
     if (!input.agreementAccepted) throw new ValidationError('يجب الموافقة على الشروط والأحكام');
@@ -513,8 +519,8 @@ export class TechnicianService {
    *  apply(), which locks once APPROVED. Only usable by already-APPROVED
    *  technicians (PENDING/REJECTED/SUSPENDED still go through onboarding). */
   async updateServicesPricing(userId: string, serviceIds: string[], hourlyRateJod: number) {
-    if (hourlyRateJod < 40 || hourlyRateJod > 60) {
-      throw new ValidationError('السعر بالساعة يجب أن يكون بين 40 و60 ديناراً');
+    if (hourlyRateJod < MIN_HOURLY_RATE_JOD || hourlyRateJod > MAX_HOURLY_RATE_JOD) {
+      throw new ValidationError(`السعر بالساعة يجب أن يكون بين ${MIN_HOURLY_RATE_JOD} و${MAX_HOURLY_RATE_JOD} ديناراً`);
     }
     if (!serviceIds.length) throw new ValidationError('اختر خدمة واحدة على الأقل');
 

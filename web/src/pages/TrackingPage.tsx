@@ -44,6 +44,18 @@ export default function TrackingPage() {
 
   const activeIdx = STEPS.findIndex(([s]) => s === status);
 
+  // Masked calling (Twilio Proxy — see backend MaskedCallService): dial a
+  // proxy number that bridges to the other party without exposing either
+  // side's real phone number.
+  async function callTechnician() {
+    try {
+      const { proxyNumber } = await api.post<{ proxyNumber: string }>(`/bookings/${id}/masked-call`, {});
+      window.location.href = `tel:${proxyNumber}`;
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'تعذّر بدء الاتصال', 'error');
+    }
+  }
+
   async function doCancel(reason: string) {
     setCancelling(false);
     try {
@@ -133,10 +145,13 @@ export default function TrackingPage() {
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button onClick={() => notify('جارٍ الاتصال (رقم مُقنّع)')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600, fontSize: 13 }}>
+                <button onClick={() => void callTechnician()} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600, fontSize: 13 }}>
                   <Phone size={16} /> اتصال
                 </button>
-                <button onClick={() => notify('فتح المحادثة')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 13 }}>
+                {/* No booking-scoped chat endpoint exists yet (only /support
+                    tickets, which aren't tied to a specific technician) — say
+                    so honestly instead of a fake "chat opened" toast. */}
+                <button onClick={() => notify('المحادثة داخل التطبيق غير متاحة بعد — يمكنك الاتصال أو التواصل مع الدعم', 'info')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 13 }}>
                   <MessageCircle size={16} /> رسالة
                 </button>
                 <button onClick={() => setShowReviews(true)} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600, fontSize: 13 }}>

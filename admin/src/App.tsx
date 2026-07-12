@@ -2,6 +2,7 @@ import { useEffect, useState, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './lib/store';
 import { onAuthExpired, restoreSession } from './lib/api';
+import { canAccessRoute } from './lib/permissions';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 
@@ -24,6 +25,34 @@ const Quotes = lazy(() => import('./pages/Quotes'));
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
   return accessToken ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+/**
+ * Frontend defense-in-depth: gates rendering of a role-restricted page by
+ * the same role map the Sidebar uses to decide what to link to (see
+ * lib/permissions.ts). Without this, an authenticated admin with a lower
+ * privilege role (e.g. SUPPORT) could type a restricted URL — /admins,
+ * /payouts, /withdrawals — directly into the address bar and land on a
+ * fully-interactive page whose every request the backend then rejects with
+ * 403, which is a confusing dead end rather than a clear "no access"
+ * message. The backend (`requireAdminRole` on every admin route) remains
+ * the actual authorization boundary; this only improves the UX around it.
+ */
+function RequireRole({ path, children }: { path: string; children: React.ReactNode }) {
+  const role = useAuth((s) => s.admin?.role);
+  if (!canAccessRoute(role, path)) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
+        <div className="text-center" style={{ maxWidth: 360 }}>
+          <p style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>ليست لديك صلاحية للوصول لهذه الصفحة</p>
+          <p style={{ fontSize: 13, color: '#64748B', marginTop: 8 }}>
+            هذا القسم مخصص لدور آخر. تواصل مع المدير العام إذا كنت تعتقد أن هذا غير صحيح.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 /** Subscribes to api.onAuthExpired and bounces the user to /login.
@@ -85,20 +114,20 @@ export function AppShell() {
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"   element={<Dashboard />} />
-          <Route path="bookings"    element={<Bookings />} />
-          <Route path="technicians" element={<Technicians />} />
-          <Route path="guarantee"   element={<Guarantee />} />
-          <Route path="support"     element={<Support />} />
-          <Route path="payouts"     element={<Payouts />} />
-          <Route path="withdrawals" element={<Withdrawals />} />
-          <Route path="reports"     element={<Reports />} />
-          <Route path="broadcast"   element={<Broadcast />} />
-          <Route path="admins"      element={<Admins />} />
-          <Route path="customers"   element={<Customers />} />
-          <Route path="quality"     element={<Quality />} />
-          <Route path="conduct"     element={<ConductReports />} />
-          <Route path="subscriptions" element={<Subscriptions />} />
-          <Route path="quotes"      element={<Quotes />} />
+          <Route path="bookings"    element={<RequireRole path="/bookings"><Bookings /></RequireRole>} />
+          <Route path="technicians" element={<RequireRole path="/technicians"><Technicians /></RequireRole>} />
+          <Route path="guarantee"   element={<RequireRole path="/guarantee"><Guarantee /></RequireRole>} />
+          <Route path="support"     element={<RequireRole path="/support"><Support /></RequireRole>} />
+          <Route path="payouts"     element={<RequireRole path="/payouts"><Payouts /></RequireRole>} />
+          <Route path="withdrawals" element={<RequireRole path="/withdrawals"><Withdrawals /></RequireRole>} />
+          <Route path="reports"     element={<RequireRole path="/reports"><Reports /></RequireRole>} />
+          <Route path="broadcast"   element={<RequireRole path="/broadcast"><Broadcast /></RequireRole>} />
+          <Route path="admins"      element={<RequireRole path="/admins"><Admins /></RequireRole>} />
+          <Route path="customers"   element={<RequireRole path="/customers"><Customers /></RequireRole>} />
+          <Route path="quality"     element={<RequireRole path="/quality"><Quality /></RequireRole>} />
+          <Route path="conduct"     element={<RequireRole path="/conduct"><ConductReports /></RequireRole>} />
+          <Route path="subscriptions" element={<RequireRole path="/subscriptions"><Subscriptions /></RequireRole>} />
+          <Route path="quotes"      element={<RequireRole path="/quotes"><Quotes /></RequireRole>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

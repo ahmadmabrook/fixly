@@ -3,7 +3,12 @@ import { body } from 'express-validator';
 import { authenticate, requireActiveUser } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
-import { TechnicianService } from '../../../application/technician/TechnicianService';
+import {
+  TechnicianService,
+  MIN_HOURLY_RATE_JOD,
+  MAX_HOURLY_RATE_JOD,
+  MIN_WITHDRAWAL_JOD,
+} from '../../../application/technician/TechnicianService';
 
 /** Technician self-service (the technician portal). Distinct from the public
  *  /technicians router (customer-facing tech cards + reviews). */
@@ -19,7 +24,7 @@ technicianRouter.post(
   validate([
     body('serviceIds').isArray({ min: 1, max: 10 }),
     body('serviceIds.*').isString().trim().notEmpty(),
-    body('hourlyRateJod').isFloat({ min: 40, max: 60 }).toFloat(),
+    body('hourlyRateJod').isFloat({ min: MIN_HOURLY_RATE_JOD, max: MAX_HOURLY_RATE_JOD }).toFloat(),
     body('vehicle').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
     body('bio').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
     body('idDocUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
@@ -95,7 +100,7 @@ technicianRouter.get(
 technicianRouter.post(
   '/withdrawals',
   validate([
-    body('amountJod').isFloat({ min: 20 }).toFloat(),
+    body('amountJod').isFloat({ min: MIN_WITHDRAWAL_JOD }).toFloat(),
     // Optional here (falls back to the saved profile IBAN), but when supplied it
     // must be a valid Jordan IBAN — same money-destination check as bank-account.
     body('iban')
@@ -200,7 +205,7 @@ technicianRouter.patch(
   validate([
     body('serviceIds').isArray({ min: 1, max: 10 }),
     body('serviceIds.*').isString().trim().notEmpty(),
-    body('hourlyRateJod').isFloat({ min: 40, max: 60 }).toFloat(),
+    body('hourlyRateJod').isFloat({ min: MIN_HOURLY_RATE_JOD, max: MAX_HOURLY_RATE_JOD }).toFloat(),
   ]),
   asyncHandler(async (req, res) => {
     const profile = await technicianService.updateServicesPricing(req.user!.userId, req.body.serviceIds, req.body.hourlyRateJod);

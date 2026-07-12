@@ -29,7 +29,7 @@ export default function Support() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-support', status],
     queryFn: () => api.list<SupportAdminItem>(`/support?${status ? `status=${status}&` : ''}limit=100`),
   });
@@ -51,8 +51,9 @@ export default function Support() {
       </div>
 
       {isLoading && <Card><Spinner /></Card>}
-      {!isLoading && items.length === 0 && <Card><EmptyState message="لا توجد تذاكر" /></Card>}
-      {!isLoading && items.length > 0 && (
+      {isError && <Card><EmptyState message="تعذّر تحميل تذاكر الدعم" /></Card>}
+      {!isLoading && !isError && items.length === 0 && <Card><EmptyState message="لا توجد تذاكر" /></Card>}
+      {!isLoading && !isError && items.length > 0 && (
         <div className="grid grid-cols-3 gap-4" style={{ height: 600 }}>
           <Card className="overflow-hidden flex flex-col">
             <div className="px-4 py-3 border-b" style={{ borderColor: '#F1F5F9' }}>
@@ -89,7 +90,7 @@ export default function Support() {
 
 function ConversationPanel({ id, onChanged }: { id: string; onChanged: () => void }) {
   const qc = useQueryClient();
-  const { data: ticket } = useQuery({ queryKey: ['admin-support', id], queryFn: () => api.get<SupportAdminItem>(`/support/${id}`) });
+  const { data: ticket, isError: ticketError } = useQuery({ queryKey: ['admin-support', id], queryFn: () => api.get<SupportAdminItem>(`/support/${id}`) });
   const [msg, setMsg] = useState('');
   const [showMacros, setShowMacros] = useState(false);
 
@@ -135,6 +136,7 @@ function ConversationPanel({ id, onChanged }: { id: string; onChanged: () => voi
     onError: (e) => notify(e instanceof Error ? e.message : 'تعذّر الاسترداد', 'error'),
   });
 
+  if (ticketError) return <Card className="h-full flex items-center justify-center"><EmptyState message="تعذّر تحميل المحادثة" /></Card>;
   if (!ticket) return <Card className="h-full flex items-center justify-center"><Spinner /></Card>;
 
   return (
