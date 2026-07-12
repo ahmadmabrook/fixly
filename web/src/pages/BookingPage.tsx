@@ -152,6 +152,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   }
 
   const price = Number(svc.priceJod);
+  // Mirrors BookingService.create.ts's subscriberPrice: list price minus the
+  // active subscription's percentage discount, rounded to the nearest cent.
+  const subDiscount = member ? Math.round(price * discountPercent) / 100 : 0;
+  const memberPrice = Math.round((price - subDiscount) * 100) / 100;
   return (
     <main className="max-w-[1200px] mx-auto px-6 py-10">
       <button onClick={onBack} className="flex items-center gap-1" style={{ color: '#1366D6', fontWeight: 600, fontSize: 14 }}>
@@ -269,12 +273,19 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
           {member && (
             <InlineRow
               label={`خصم العضوية −${discountPercent}%`}
-              value={<span style={{ color: '#15803D' }}>−{Math.round(price * discountPercent) / 100} دينار</span>}
+              value={<span style={{ color: '#15803D' }}>−{subDiscount} دينار</span>}
             />
           )}
           <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />
           <div className="my-2 h-px bg-slate-100" />
-          <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : price} دينار`} />
+          {/* No-promo total reflects the actual server-charged amount
+              (list price minus the subscription discount — see
+              BookingService.create.ts's subscriberPrice). The promo-applied
+              total still comes from /promo/validate, which quotes off the
+              raw list price rather than the member price BookingService
+              actually stacks the promo on — a real but separate backend
+              discrepancy, not fixed here. */}
+          <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : memberPrice} دينار`} />
           <p className="mt-3 p-3 rounded-lg" style={{ background: '#E8F1FE', color: '#0E4FA8', fontSize: 12 }}>
             سيتم حجز المبلغ الآن ويُخصم بعد إتمام الخدمة.
           </p>
@@ -295,7 +306,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
       {confirming && (
         <ConfirmDialog
           title="تأكيد الحجز"
-          body={`سيتم حجز ${promo ? Number(promo.finalJod) : price} دينار عبر البطاقة وخصمه بعد إتمام الخدمة.`}
+          body={`سيتم حجز ${promo ? Number(promo.finalJod) : memberPrice} دينار عبر البطاقة وخصمه بعد إتمام الخدمة.`}
           confirmLabel={isPending ? '...' : 'تأكيد والدفع'}
           onConfirm={submit}
           onCancel={() => setConfirming(false)}

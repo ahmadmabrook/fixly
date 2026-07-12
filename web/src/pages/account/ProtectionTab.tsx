@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Gift, Video, Check, Wallet } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -18,6 +19,7 @@ const CREDIT_REASON_AR: Record<string, string> = {
 };
 
 export function ProtectionTab() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<SubscriptionDto | null>('/subscriptions/me') });
   const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: () => api.get<{ balanceJod: string | number; items: CreditRow[] }>('/credits/me') });
@@ -45,9 +47,9 @@ export function ProtectionTab() {
   return (
     <div className="space-y-4">
       {/* Video pre-check entry point */}
-      <a href="/quotes" className="flex items-center gap-2 px-4 h-11 rounded-xl w-fit" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 14 }}>
+      <button onClick={() => navigate('/quotes')} className="flex items-center gap-2 px-4 h-11 rounded-xl w-fit" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 14 }}>
         <Video size={16} aria-hidden="true" /> احصل على سعر ثابت بالفيديو (فحص مرئي)
-      </a>
+      </button>
 
       {/* Service-credit wallet */}
       <Card className="p-6" style={{ background: 'linear-gradient(120deg,#1366D6,#0FB5A6)' }}>

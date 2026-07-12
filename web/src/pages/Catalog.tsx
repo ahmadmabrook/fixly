@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, ChevronDown } from 'lucide-react';
 import { useServices, type ServiceSort } from '../hooks/useServices';
 import { useT } from '../lib/i18n';
@@ -15,8 +15,10 @@ const SORT_OPTIONS: ReadonlyArray<readonly [ServiceSort, string]> = [
 export default function Catalog() {
   const navigate = useNavigate();
   const t = useT();
+  const [searchParams] = useSearchParams();
 
-  const [category, setCategory] = useState('');
+  // Deep-linkable category filter (e.g. footer service links -> /services?category=ELECTRICAL).
+  const [category, setCategory] = useState(searchParams.get('category') ?? '');
   const [sort, setSort] = useState<ServiceSort | ''>('');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');

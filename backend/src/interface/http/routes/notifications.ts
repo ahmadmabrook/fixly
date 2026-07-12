@@ -14,7 +14,9 @@ notificationsRouter.use(authenticate, requireActiveUser);
 notificationsRouter.get(
   '/',
   validate([
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    // min: 0 allowed — the unread-count badge (useUnreadCount) calls ?limit=0
+    // to fetch meta.unread without paying for the item list.
+    query('limit').optional().isInt({ min: 0, max: 100 }).toInt(),
     query('offset').optional().isInt({ min: 0 }).toInt(),
   ]),
   asyncHandler(async (req, res) => {

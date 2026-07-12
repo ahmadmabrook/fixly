@@ -3,13 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api, SupportTicketItem } from '../../lib/api';
 import { Card, notify, FaqAccordion } from '../../components/shared';
-
-const FAQ_ITEMS: ReadonlyArray<readonly [string, string]> = [
-  ['كيف يتم الدفع؟', 'الدفع إلكتروني بالكامل عبر البطاقة عند تأكيد الحجز. يتم حجز المبلغ فور التأكيد ولا يُخصم فعلياً إلا بعد إتمام الخدمة.'],
-  ['ما هو الضمان المشمول؟', 'كل خدمة مضمونة لمدة 30 يوماً من تاريخ إتمامها. إذا واجهت أي مشكلة متعلقة بالإصلاح خلال هذه المدة، افتح تذكرة ضمان وسنعيد الفني دون أي تكلفة إضافية.'],
-  ['هل يمكنني إلغاء الحجز؟', 'يمكنك إلغاء الحجز قبل بدء الفني بالعمل، وسيتم إصدار المبلغ المسترد وفق سياسة الاسترجاع. بعد وصول الفني قد تُطبّق رسوم كشف.'],
-  ['ماذا لو تأخر الفني؟', 'نراقب مواعيد الوصول عن كثب. إذا تأخر الفني بشكل ملحوظ عن الوقت المتوقع، قد تحصل على تعويض كرصيد خدمة تلقائياً.'],
-];
+import { FAQ_ITEMS } from '../../lib/faq';
 
 export function SupportTab() {
   const qc = useQueryClient();

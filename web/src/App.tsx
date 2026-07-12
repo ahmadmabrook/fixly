@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import {
   BrowserRouter, Routes, Route, Navigate, useNavigate, useParams,
 } from 'react-router-dom';
@@ -28,6 +28,13 @@ const ReferralPage = lazy(() => import('./pages/ReferralPage'));
 const QuotesPage = lazy(() => import('./pages/QuotesPage'));
 const TechPortal = lazy(() => import('./pages/tech/TechPortal'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const CareersPage = lazy(() => import('./pages/CareersPage'));
+const BlogPage = lazy(() => import('./pages/BlogPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 
 /** Centered spinner shown while a lazy route chunk loads. */
 function RouteSpinner() {
@@ -81,8 +88,17 @@ function AppShell() {
   // silently re-establish the session from the httpOnly refresh cookie — but
   // only if we previously had one (role hint), so anonymous visitors don't
   // fire a pointless refresh/401 on every page load.
+  //
+  // Route guards below read `authed` synchronously, so a hard reload (or any
+  // plain <a href> hitting an authed-only route) would otherwise render one
+  // frame with authed=false and bounce to "/" via <Navigate replace> before
+  // restoreSession resolves — a redirect that already happened and won't
+  // undo itself once the token comes back. `sessionReady` holds route
+  // rendering until that race is settled.
+  const [sessionReady, setSessionReady] = useState(() => !localStorage.getItem('role'));
   useEffect(() => {
-    if (localStorage.getItem('role')) void restoreSession();
+    if (!localStorage.getItem('role')) return;
+    void restoreSession().finally(() => setSessionReady(true));
   }, []);
 
   function requireLogin(returnTo: string) {
@@ -98,9 +114,19 @@ function AppShell() {
 
         <ErrorBoundary>
           <Suspense fallback={<RouteSpinner />}>
+            {!sessionReady ? (
+              <RouteSpinner />
+            ) : (
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/careers" element={<CareersPage />} />
+              <Route path="/blog" element={<BlogPage />} />
+              <Route path="/help" element={<HelpPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/services" element={<Catalog />} />
               <Route
                 path="/services/:id"
@@ -148,10 +174,11 @@ function AppShell() {
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            )}
           </Suspense>
         </ErrorBoundary>
 
-        <Footer />
+        <Footer authed={authed} onRequireLogin={requireLogin} />
       </div>
 
       <Toaster position="top-center" richColors />

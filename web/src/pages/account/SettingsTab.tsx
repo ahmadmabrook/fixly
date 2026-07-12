@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LogOut, Trash2 } from 'lucide-react';
 import { api, logout as apiLogout } from '../../lib/api';
 import { Card, ConfirmDialog, notify } from '../../components/shared';
 
 export function SettingsTab() {
+  const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   async function doDelete() {
     setConfirmDelete(false);
@@ -19,9 +21,9 @@ export function SettingsTab() {
   return (
     <div className="space-y-3">
       <Card className="p-5 space-y-2">
-        <a href="/terms" onClick={(e) => { e.preventDefault(); notify('الشروط والأحكام'); }} style={{ color: '#1366D6', fontSize: 14, fontWeight: 600 }}>الشروط والأحكام</a>
+        <button onClick={() => navigate('/terms')} className="text-start" style={{ color: '#1366D6', fontSize: 14, fontWeight: 600 }}>الشروط والأحكام</button>
         <div className="h-px bg-slate-100" />
-        <a href="/privacy" onClick={(e) => { e.preventDefault(); notify('سياسة الخصوصية'); }} style={{ color: '#1366D6', fontSize: 14, fontWeight: 600 }}>سياسة الخصوصية</a>
+        <button onClick={() => navigate('/privacy')} className="text-start" style={{ color: '#1366D6', fontSize: 14, fontWeight: 600 }}>سياسة الخصوصية</button>
       </Card>
       <button onClick={() => void apiLogout().then(() => window.location.assign('/'))} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
         <LogOut size={16} /> تسجيل الخروج
