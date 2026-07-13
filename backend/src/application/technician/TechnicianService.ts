@@ -281,9 +281,16 @@ export class TechnicianService {
     if (!profile) throw new NotFoundError('TechnicianProfile');
     if (profile.status !== TechnicianStatus.APPROVED) throw new ForbiddenError('Technician is not approved');
 
-    // Only bookings with an active OFFERED dispatch offer for this tech.
+    // Only bookings with an active OFFERED dispatch offer for this tech AND
+    // whose booking is still genuinely PENDING. A booking that exhausts
+    // dispatch (no technician found) or gets cancelled by the customer while
+    // a round is open moves straight out of PENDING without touching its
+    // DispatchOffer rows — without this booking-status check, that stale
+    // OFFERED row would show the technician a dead job forever, and any
+    // attempt to accept it would fail with a confusing generic "Booking no
+    // longer available" (BookingService.lifecycle.ts's own PENDING guard).
     const offers = await prisma.dispatchOffer.findMany({
-      where: { technicianId: profile.id, status: DispatchOfferStatus.OFFERED },
+      where: { technicianId: profile.id, status: DispatchOfferStatus.OFFERED, booking: { status: BookingStatus.PENDING } },
       select: {
         round: true,
         booking: {

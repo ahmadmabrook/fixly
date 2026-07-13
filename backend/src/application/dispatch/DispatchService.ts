@@ -311,6 +311,14 @@ export class DispatchService {
         },
       });
 
+      // Close out any offers still OFFERED for this booking — otherwise they'd
+      // linger forever and keep showing up in a technician's nearbyJobs list
+      // for a booking that's now cancelled (mirrors advanceRound's cleanup).
+      await tx.dispatchOffer.updateMany({
+        where: { bookingId, status: DispatchOfferStatus.OFFERED },
+        data: { status: DispatchOfferStatus.EXPIRED },
+      });
+
       // Reuse existing 'booking.cancelled' outbox flow (void hold + notify).
       await tx.outboxEvent.create({
         data: {

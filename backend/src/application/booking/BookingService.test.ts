@@ -440,6 +440,7 @@ describe('BookingService', () => {
         payment: { findUnique: jest.fn().mockResolvedValue(payment) },
         outboxEvent: { create },
         bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+        dispatchOffer: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       }),
     );
     return { update, create };
@@ -528,6 +529,27 @@ describe('BookingService', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.cancelled' }) }),
       );
+    });
+
+    it('closes out any still-OFFERED dispatch offers so a technician stops seeing this cancelled booking', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ id: 'b1', customerId: 'c1', technicianId: null, status: 'PENDING' });
+      const offerUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ id: 'b1', status: 'PENDING', version: 1 }), update: jest.fn().mockResolvedValue({}) },
+          payment: { findUnique: jest.fn().mockResolvedValue({ status: 'PRE_AUTHORIZED' }) },
+          outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+          dispatchOffer: { updateMany: offerUpdateMany },
+        }),
+      );
+
+      await service.cancel('b1', 'c1', 'changed mind');
+
+      expect(offerUpdateMany).toHaveBeenCalledWith({
+        where: { bookingId: 'b1', status: 'OFFERED' },
+        data: { status: 'EXPIRED' },
+      });
     });
   });
 

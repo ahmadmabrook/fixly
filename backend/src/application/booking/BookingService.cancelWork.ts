@@ -1,4 +1,4 @@
-import { Prisma, BookingStatus, AdditionalWorkStatus, PaymentStatus } from '@prisma/client';
+import { Prisma, BookingStatus, AdditionalWorkStatus, PaymentStatus, DispatchOfferStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
 import { paymentRequiresHostedCheckout } from '../../shared/env';
@@ -33,6 +33,14 @@ export class BookingCancelFlow {
         data: { status: BookingStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason, version: { increment: 1 } },
       });
       await recordBookingStatusHistory(tx, bookingId, fresh.status, BookingStatus.CANCELLED, userId);
+
+      // Close out any offers still OFFERED for this booking so a technician's
+      // nearbyJobs list doesn't keep showing a job the customer just cancelled
+      // (mirrors DispatchService.advanceRound/exhaust cleanup).
+      await tx.dispatchOffer.updateMany({
+        where: { bookingId, status: DispatchOfferStatus.OFFERED },
+        data: { status: DispatchOfferStatus.EXPIRED },
+      });
 
       await tx.outboxEvent.create({
         data: {

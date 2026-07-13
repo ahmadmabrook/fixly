@@ -512,10 +512,12 @@ describe('DispatchService', () => {
 
       const update = jest.fn().mockResolvedValue({});
       const create = jest.fn().mockResolvedValue({});
+      const txOfferUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
         fn({
           booking: { findUnique: jest.fn().mockResolvedValue({ id: 'b1', status: 'PENDING', version: 4 }), update },
           outboxEvent: { create },
+          dispatchOffer: { updateMany: txOfferUpdateMany },
         }),
       );
 
@@ -530,6 +532,12 @@ describe('DispatchService', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.cancelled', payload: expect.objectContaining({ reason: 'no_technician_available' }) }) }),
       );
+      // Regression: exhaust() must close out any still-OFFERED offer rows so a
+      // technician's nearbyJobs list doesn't keep showing this now-cancelled booking.
+      expect(txOfferUpdateMany).toHaveBeenCalledWith({
+        where: { bookingId: 'b1', status: 'OFFERED' },
+        data: { status: 'EXPIRED' },
+      });
       // No new round/offer transaction was opened — the exhaust tx is the only one.
       expect(mockedPrisma.dispatchOffer.updateMany).not.toHaveBeenCalled();
       expect(mockedRedis.del).toHaveBeenCalledWith('dispatch_lock:b1'); // lock still released

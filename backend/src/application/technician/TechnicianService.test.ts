@@ -94,8 +94,13 @@ describe('TechnicianService approval gates', () => {
     const jobs = await service.nearbyJobs('u1');
 
     // The query is scoped to this technician's OFFERED offers, NOT a free-for-all booking scan.
+    // Regression: must also require booking.status === PENDING, otherwise a booking that
+    // exhausted dispatch or was cancelled (leaving a dangling OFFERED offer row) would show
+    // up here forever as a phantom "nearby job".
     expect(mockedPrisma.dispatchOffer.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ technicianId: 'tp1', status: 'OFFERED' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ technicianId: 'tp1', status: 'OFFERED', booking: { status: 'PENDING' } }),
+      }),
     );
     expect(mockedPrisma.booking.findMany).not.toHaveBeenCalled();
     expect(jobs).toHaveLength(1);
