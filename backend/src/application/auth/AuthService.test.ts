@@ -138,6 +138,19 @@ describe('AuthService', () => {
       expect(mockedPrisma.user.create).not.toHaveBeenCalled();
     });
 
+    it('normalizes a local-format phone (0799000001) to the same E.164 key as the canonical form, so it matches the existing account instead of creating a duplicate', async () => {
+      mockedRedis.incr.mockResolvedValue(1);
+      mockedRedis.get.mockResolvedValue('000000');
+      mockedPrisma.user.findUnique.mockResolvedValue({ id: 'u1', role: 'CUSTOMER', isActive: true });
+      mockedPrisma.refreshToken.create.mockResolvedValue({});
+
+      await service.verifyOtp('0799000001', '000000');
+
+      expect(mockedPrisma.user.findUnique).toHaveBeenCalledWith({ where: { phone: '+962799000001' } });
+      expect(mockedPrisma.user.create).not.toHaveBeenCalled();
+      expect(mockedRedis.get).toHaveBeenCalledWith('otp:+962799000001');
+    });
+
     it('captures a referral code only for a brand-new signup', async () => {
       mockedRedis.incr.mockResolvedValue(1);
       mockedRedis.get.mockResolvedValue('000000');

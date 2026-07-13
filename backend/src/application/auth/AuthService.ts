@@ -10,6 +10,7 @@ import { signJwt } from '../../shared/jwt';
 import { logger } from '../../shared/logger';
 import type { IOtpProvider } from '../../domain/providers/IOtpProvider';
 import { ReferralService } from '../referral/ReferralService';
+import { normalizePhone } from '../../shared/phone';
 
 const REFRESH_EXPIRES_DAYS = 30;
 const OTP_TTL_SECONDS = 300;
@@ -32,7 +33,8 @@ export class AuthService {
     private readonly referralService: ReferralService = new ReferralService(),
   ) {}
 
-  async requestOtp(phone: string): Promise<void> {
+  async requestOtp(rawPhone: string): Promise<void> {
+    const phone = normalizePhone(rawPhone);
     const cooldownKey = `otp_cooldown:${phone}`;
     const onCooldown = await redis.set(cooldownKey, '1', 'EX', REQUEST_COOLDOWN_SECONDS, 'NX');
     if (onCooldown === null) {
@@ -52,7 +54,8 @@ export class AuthService {
     }
   }
 
-  async verifyOtp(phone: string, code: string, referralCode?: string) {
+  async verifyOtp(rawPhone: string, code: string, referralCode?: string) {
+    const phone = normalizePhone(rawPhone);
     const attemptsKey = `otp_attempts:${phone}`;
     const attempts = await redis.incr(attemptsKey);
     if (attempts === 1) await redis.expire(attemptsKey, OTP_TTL_SECONDS);
