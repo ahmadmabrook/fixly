@@ -11,6 +11,19 @@ import type { JwtKeyConfig } from './jwtKeys';
  * jwt.sign with an undefined secret, or a weak secret in production).
  */
 
+/** OTP delivery provider selector (OTP_PROVIDER) — closed to what the OTP
+ *  provider factory actually implements. */
+export type OtpProviderName = 'mock' | 'whatsapp';
+/** Payment provider selector (PAYMENT_PROVIDER) — closed to what
+ *  PaymentProviderFactory/PayoutProviderFactory actually implement. */
+export type PaymentProviderName = 'mock' | 'hyperpay';
+/** Masked-calling provider selector (MASKED_CALL_PROVIDER) — closed to what
+ *  MaskedCallProviderFactory actually implements. */
+export type MaskedCallProviderName = 'mock' | 'twilio';
+/** Media-upload provider selector (UPLOADS_PROVIDER) — closed to what the
+ *  uploads provider factory actually implements. */
+export type UploadsProviderName = 'mock' | 'r2';
+
 interface Env {
   NODE_ENV: string;
   PORT: number;
@@ -27,8 +40,8 @@ interface Env {
    *  keypair generated for local dev/test when unset. */
   JWT_KEYS: JwtKeyConfig;
   CORS_ORIGIN: string[] | '*';
-  OTP_PROVIDER: string;
-  PAYMENT_PROVIDER: string;
+  OTP_PROVIDER: OtpProviderName;
+  PAYMENT_PROVIDER: PaymentProviderName;
   OUTBOX_POLL_MS: number;
   OUTBOX_BATCH_SIZE: number;
   OUTBOX_MAX_BATCHES_PER_TICK: number;
@@ -76,14 +89,14 @@ interface Env {
   /** Graph API base URL (versioned). */
   WHATSAPP_API_BASE_URL: string;
   // ── Masked calling (Twilio Proxy). Only consulted when MASKED_CALL_PROVIDER=twilio. ──
-  MASKED_CALL_PROVIDER: string;
+  MASKED_CALL_PROVIDER: MaskedCallProviderName;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_PROXY_SERVICE_SID: string;
   /** Twilio Proxy API base URL. */
   TWILIO_API_BASE_URL: string;
   // ── Media uploads (Cloudflare R2, S3-compatible). Only consulted when UPLOADS_PROVIDER=r2. ──
-  UPLOADS_PROVIDER: string;
+  UPLOADS_PROVIDER: UploadsProviderName;
   /** Cloudflare account id — used to build the R2 S3-compatible endpoint. */
   R2_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
@@ -178,12 +191,16 @@ export function loadEnv(): Env {
     throw new Error('CORS_ORIGIN must be an explicit allowlist in production');
   }
 
-  const OTP_PROVIDER = process.env.OTP_PROVIDER ?? 'mock';
+  // Cast: value is validated against its closed provider set at the call sites
+  // that switch on it (PaymentProviderFactory et al. throw on an unknown name);
+  // the type here just gives every comparison site the same closed vocabulary
+  // instead of a bare `string`.
+  const OTP_PROVIDER = (process.env.OTP_PROVIDER ?? 'mock') as OtpProviderName;
   // The mock provider issues a constant, predictable code — never allow it in prod.
   if (isProd && OTP_PROVIDER === 'mock') {
     throw new Error('OTP_PROVIDER=mock is not allowed in production (predictable OTP)');
   }
-  const PAYMENT_PROVIDER = process.env.PAYMENT_PROVIDER ?? 'mock';
+  const PAYMENT_PROVIDER = (process.env.PAYMENT_PROVIDER ?? 'mock') as PaymentProviderName;
   if (isProd && PAYMENT_PROVIDER === 'mock') {
     throw new Error('PAYMENT_PROVIDER=mock is not allowed in production');
   }
@@ -200,7 +217,7 @@ export function loadEnv(): Env {
   }
 
   // Twilio Proxy (masked calling) configuration. Required only when selected.
-  const MASKED_CALL_PROVIDER = process.env.MASKED_CALL_PROVIDER ?? 'mock';
+  const MASKED_CALL_PROVIDER = (process.env.MASKED_CALL_PROVIDER ?? 'mock') as MaskedCallProviderName;
   const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID ?? '';
   const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN ?? '';
   const TWILIO_PROXY_SERVICE_SID = process.env.TWILIO_PROXY_SERVICE_SID ?? '';
@@ -276,7 +293,7 @@ export function loadEnv(): Env {
 
   // Cloudflare R2 (S3-compatible) media uploads. Required only when selected —
   // a mock/dev deploy needs none of it, same mock/real split as the other providers.
-  const UPLOADS_PROVIDER = process.env.UPLOADS_PROVIDER ?? 'mock';
+  const UPLOADS_PROVIDER = (process.env.UPLOADS_PROVIDER ?? 'mock') as UploadsProviderName;
   const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? '';
   const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? '';
   const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? '';

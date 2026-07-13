@@ -3,24 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, MapPin, ShieldCheck, Clock, CreditCard, Headphones, BadgeCheck, Star, Check, Wrench } from 'lucide-react';
 import { useServices } from '../hooks/useServices';
-import { api, BookingListItem, NearbyTechnician } from '../lib/api';
+import { api, BookingListItem, BookingStatus, NearbyTechnician } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { useT } from '../lib/i18n';
 import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid } from '../components/shared';
 import NearbyTechniciansMap from '../components/NearbyTechniciansMap';
+import { REALTIME_POLL_INTERVAL_MS } from '../lib/constants';
+import { COLOR_ACCENT_AMBER, COLOR_ACCENT_PURPLE, COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 // Amman, Jordan — sensible default until/unless the browser grants location.
 const DEFAULT_LAT = 31.9522;
 const DEFAULT_LNG = 35.9331;
 
+/** How often the "nearby technicians" map on the landing page refreshes pins
+ *  for a signed-in visitor. Slower than REALTIME_POLL_INTERVAL_MS since this
+ *  is a background map, not an active dispatch/tracking flow. */
+const NEARBY_TECHNICIANS_POLL_MS = 20_000;
+
 interface PublicReview { id: string; rating: number; comment: string | null; reviewerName: string | null }
 
 const VALUE_PROPS = [
-  { i: <BadgeCheck size={26} color="#1366D6" aria-hidden="true" />, tKey: 'vp.certified.t', bKey: 'vp.certified.b' },
-  { i: <CreditCard size={26} color="#0FB5A6" aria-hidden="true" />, tKey: 'vp.price.t', bKey: 'vp.price.b' },
-  { i: <ShieldCheck size={26} color="#15803D" aria-hidden="true" />, tKey: 'vp.guarantee.t', bKey: 'vp.guarantee.b' },
-  { i: <Clock size={26} color="#F5A623" aria-hidden="true" />, tKey: 'vp.speed.t', bKey: 'vp.speed.b' },
-  { i: <Headphones size={26} color="#7C3AED" aria-hidden="true" />, tKey: 'vp.support.t', bKey: 'vp.support.b' },
+  { i: <BadgeCheck size={26} color={COLOR_BRAND_PRIMARY} aria-hidden="true" />, tKey: 'vp.certified.t', bKey: 'vp.certified.b' },
+  { i: <CreditCard size={26} color={COLOR_BRAND_ACCENT_TEAL} aria-hidden="true" />, tKey: 'vp.price.t', bKey: 'vp.price.b' },
+  { i: <ShieldCheck size={26} color={COLOR_SUCCESS_TEXT} aria-hidden="true" />, tKey: 'vp.guarantee.t', bKey: 'vp.guarantee.b' },
+  { i: <Clock size={26} color={COLOR_ACCENT_AMBER} aria-hidden="true" />, tKey: 'vp.speed.t', bKey: 'vp.speed.b' },
+  { i: <Headphones size={26} color={COLOR_ACCENT_PURPLE} aria-hidden="true" />, tKey: 'vp.support.t', bKey: 'vp.support.b' },
 ];
 
 const PROTECTION_BENEFITS = ['أولوية خلال 30 دقيقة', 'خصم 15% على كل خدمة', 'ضمان ممتد 90 يوم', 'فحص مجاني كل 3 أشهر', 'دعم VIP'];
@@ -31,7 +38,7 @@ const STEPS = [
   { n: 3, tKey: 'step.3.t', bKey: 'step.3.b' },
 ];
 
-const ACTIVE_STATUSES = ['PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
+const ACTIVE_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -49,7 +56,7 @@ export default function Landing() {
       return active ?? null;
     },
     enabled: !!accessToken,
-    refetchInterval: 30_000,
+    refetchInterval: REALTIME_POLL_INTERVAL_MS,
   });
 
   // Real, verified reviews from the API (no fabricated identities). Section is
@@ -75,7 +82,7 @@ export default function Landing() {
     queryKey: ['nearby-technicians', center.lat, center.lng],
     queryFn: () => api.get<NearbyTechnician[]>(`/technicians/nearby?lat=${center.lat}&lng=${center.lng}`),
     enabled: !!accessToken,
-    refetchInterval: 20_000,
+    refetchInterval: NEARBY_TECHNICIANS_POLL_MS,
   });
 
   return (
@@ -84,7 +91,7 @@ export default function Landing() {
       {activeBooking && (
         <div
           className="mt-4 rounded-2xl p-4 flex items-center gap-4 flex-wrap"
-          style={{ background: '#1366D6', color: '#FFF' }}
+          style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE }}
         >
           <ServiceIcon nameAr={activeBooking.service?.nameAr ?? ''} size={18} />
           <div className="flex-1 min-w-0">
@@ -94,7 +101,7 @@ export default function Landing() {
           <button
             onClick={() => navigate(`/bookings/${activeBooking.id}`)}
             className="px-5 h-10 rounded-xl shrink-0"
-            style={{ background: '#FFF', color: '#1366D6', fontWeight: 700, fontSize: 14 }}
+            style={{ background: COLOR_WHITE, color: COLOR_BRAND_PRIMARY, fontWeight: 700, fontSize: 14 }}
           >
             تتبّع
           </button>
@@ -104,10 +111,10 @@ export default function Landing() {
       <section className="grid md:grid-cols-2 gap-8 items-center py-16">
         <div>
           <GuaranteePill />
-          <h1 className="mt-4 text-3xl sm:text-5xl" style={{ fontWeight: 800, lineHeight: 1.15, color: '#0F172A' }}>
-            {t('hero.title')} <span style={{ color: '#1366D6' }}>{t('hero.titleAccent')}</span>
+          <h1 className="mt-4 text-3xl sm:text-5xl" style={{ fontWeight: 800, lineHeight: 1.15, color: COLOR_TEXT_PRIMARY }}>
+            {t('hero.title')} <span style={{ color: COLOR_BRAND_PRIMARY }}>{t('hero.titleAccent')}</span>
           </h1>
-          <p className="mt-4" style={{ fontSize: 17, color: '#475569' }}>
+          <p className="mt-4" style={{ fontSize: 17, color: COLOR_TEXT_SECONDARY }}>
             {t('hero.sub')}
           </p>
 
@@ -121,18 +128,18 @@ export default function Landing() {
             role="search"
           >
             <div className="flex-1 flex items-center gap-2 px-3">
-              <Search size={18} color="#94A3B8" aria-hidden="true" />
+              <Search size={18} color={COLOR_TEXT_MUTED} aria-hidden="true" />
               <input className="flex-1 h-12 outline-none bg-transparent" placeholder={t('hero.searchPlaceholder')} aria-label={t('hero.searchPlaceholder')} style={{ fontSize: 15 }} />
             </div>
-            <div className="hidden sm:flex items-center gap-1 px-3 border-r border-slate-200" style={{ color: '#475569', fontSize: 14 }}>
+            <div className="hidden sm:flex items-center gap-1 px-3 border-r border-slate-200" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14 }}>
               <MapPin size={16} aria-hidden="true" /> عمّان
             </div>
-            <button type="submit" className="h-12 px-6 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>{t('hero.searchCta')}</button>
+            <button type="submit" className="h-12 px-6 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>{t('hero.searchCta')}</button>
           </form>
 
           <div className="mt-6 flex items-center gap-4 sm:gap-6 flex-wrap">
-            <div className="flex items-center gap-2"><Stars rating={4.8} /><span style={{ fontSize: 13, color: '#475569' }}>+5,000 تقييم</span></div>
-            <div className="flex items-center gap-2" style={{ color: '#475569', fontSize: 13 }}><ShieldCheck size={16} color="#15803D" aria-hidden="true" /> ضمان 30 يوم</div>
+            <div className="flex items-center gap-2"><Stars rating={4.8} /><span style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>+5,000 تقييم</span></div>
+            <div className="flex items-center gap-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}><ShieldCheck size={16} color={COLOR_SUCCESS_TEXT} aria-hidden="true" /> ضمان 30 يوم</div>
           </div>
         </div>
 
@@ -141,9 +148,9 @@ export default function Landing() {
             <NearbyTechniciansMap center={center} technicians={nearbyTechs ?? []} height={999} />
             <div className="absolute top-4 right-4 left-4 flex justify-between pointer-events-none">
               <Card className="p-3 flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#DCFCE7' }}><Wrench size={18} color="#15803D" aria-hidden="true" /></div>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: COLOR_SUCCESS_BG }}><Wrench size={18} color={COLOR_SUCCESS_TEXT} aria-hidden="true" /></div>
                 <div>
-                  <div style={{ fontSize: 11, color: '#475569' }}>فنيون قريبون منك</div>
+                  <div style={{ fontSize: 11, color: COLOR_TEXT_SECONDARY }}>فنيون قريبون منك</div>
                   <div style={{ fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{(nearbyTechs ?? []).length}</span> متاح الآن</div>
                 </div>
               </Card>
@@ -155,9 +162,9 @@ export default function Landing() {
       <section className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-16">
         {VALUE_PROPS.map((v) => (
           <Card key={v.tKey} className="p-5">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#F1F5F9' }}>{v.i}</div>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: COLOR_BG_SUBTLE }}>{v.i}</div>
             <div className="mt-3" style={{ fontWeight: 700, fontSize: 17 }}>{t(v.tKey)}</div>
-            <div style={{ color: '#475569', fontSize: 13 }} className="mt-1">{t(v.bKey)}</div>
+            <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }} className="mt-1">{t(v.bKey)}</div>
           </Card>
         ))}
       </section>
@@ -176,7 +183,7 @@ export default function Landing() {
               <Card className="p-5 transition hover:-translate-y-0.5">
                 <ServiceIcon nameAr={s.nameAr} size={28} />
                 <div className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>{s.nameAr}</div>
-                <div className="mt-1" style={{ color: '#94A3B8', fontSize: 12 }}>
+                <div className="mt-1" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>
                   المدة: <span style={{ fontFamily: 'Inter' }}>{s.durationMin}</span> د
                 </div>
                 <div className="mt-3"><PriceBadge amount={Number(s.priceJod)} /></div>
@@ -191,38 +198,38 @@ export default function Landing() {
         <div className="mt-6 grid md:grid-cols-3 gap-4">
           {STEPS.map((s) => (
             <Card key={s.n} className="p-6">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#1366D6', color: '#FFF', fontFamily: 'Inter', fontWeight: 800 }}>{s.n}</div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontFamily: 'Inter', fontWeight: 800 }}>{s.n}</div>
               <div className="mt-4" style={{ fontWeight: 700, fontSize: 18 }}>{t(s.tKey)}</div>
-              <div style={{ color: '#475569', fontSize: 14 }} className="mt-1.5">{t(s.bKey)}</div>
+              <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14 }} className="mt-1.5">{t(s.bKey)}</div>
             </Card>
           ))}
         </div>
       </section>
 
       <section className="pb-16">
-        <Card className="p-8 overflow-hidden relative" style={{ background: 'linear-gradient(120deg,#0E4FA8 0%,#1366D6 60%,#0FB5A6 100%)' }}>
+        <Card className="p-8 overflow-hidden relative" style={{ background: `linear-gradient(120deg,${COLOR_BRAND_PRIMARY_DARK} 0%,${COLOR_BRAND_PRIMARY} 60%,${COLOR_BRAND_ACCENT_TEAL} 100%)` }}>
           <div className="grid md:grid-cols-2 gap-6 items-center">
             <div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.2)', color: '#FFF', fontSize: 12, fontWeight: 700 }}>
-                <Star size={12} fill="#F5A623" strokeWidth={0} aria-hidden="true" /> خطة الحماية
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.2)', color: COLOR_WHITE, fontSize: 12, fontWeight: 700 }}>
+                <Star size={12} fill={COLOR_ACCENT_AMBER} strokeWidth={0} aria-hidden="true" /> خطة الحماية
               </span>
-              <h2 className="mt-3" style={{ fontWeight: 800, fontSize: 30, color: '#FFF' }}>اشترك ووفّر على كل خدمة</h2>
-              <div className="mt-2" style={{ color: '#DBEAFE', fontSize: 15 }}>
-                <span style={{ fontFamily: 'Inter', fontWeight: 800, fontSize: 22, color: '#FFF' }}>5</span> دنانير/شهر
+              <h2 className="mt-3" style={{ fontWeight: 800, fontSize: 30, color: COLOR_WHITE }}>اشترك ووفّر على كل خدمة</h2>
+              <div className="mt-2" style={{ color: COLOR_BADGE_INFO_BG, fontSize: 15 }}>
+                <span style={{ fontFamily: 'Inter', fontWeight: 800, fontSize: 22, color: COLOR_WHITE }}>5</span> دنانير/شهر
               </div>
               <button
                 onClick={() => navigate(accessToken ? '/account?tab=protection' : '/login?returnTo=%2Faccount%3Ftab%3Dprotection')}
                 className="mt-5 px-6 h-12 rounded-xl active:scale-[0.98] transition"
-                style={{ background: '#FFF', color: '#1366D6', fontWeight: 700 }}
+                style={{ background: COLOR_WHITE, color: COLOR_BRAND_PRIMARY, fontWeight: 700 }}
               >
                 اشترك الآن
               </button>
             </div>
             <div className="grid gap-2.5">
               {PROTECTION_BENEFITS.map((b) => (
-                <div key={b} className="flex items-center gap-2" style={{ color: '#FFF', fontSize: 15 }}>
+                <div key={b} className="flex items-center gap-2" style={{ color: COLOR_WHITE, fontSize: 15 }}>
                   <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.2)' }}>
-                    <Check size={14} color="#FFF" aria-hidden="true" />
+                    <Check size={14} color={COLOR_WHITE} aria-hidden="true" />
                   </span>
                   {b}
                 </div>
@@ -242,7 +249,7 @@ export default function Landing() {
               <Card key={r.id} className="p-5">
                 <Stars rating={r.rating} />
                 {r.comment && <p style={{ fontSize: 14 }} className="mt-3">«{r.comment}»</p>}
-                <div className="mt-3" style={{ fontWeight: 600, fontSize: 13, color: '#475569' }}>{r.reviewerName}</div>
+                <div className="mt-3" style={{ fontWeight: 600, fontSize: 13, color: COLOR_TEXT_SECONDARY }}>{r.reviewerName}</div>
               </Card>
             ))}
           </div>

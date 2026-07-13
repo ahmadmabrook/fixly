@@ -3,6 +3,7 @@ import type { Map as MbMap, Marker as MbMarker } from 'mapbox-gl';
 import type mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MAPBOX_TOKEN, hasMapbox } from '../lib/mapbox';
+import { COLOR_BG_MAP_PLACEHOLDER, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED } from '../lib/theme';
 
 interface Point { lat: number; lng: number }
 
@@ -34,7 +35,7 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
         const c = customerRef.current;
         map = new mapboxgl.Map({ container: el.current, style: 'mapbox://styles/mapbox/streets-v12', center: [c.lng, c.lat], zoom: 14 });
         mapRef.current = map;
-        new mapboxgl.Marker({ color: '#1366D6' }).setLngLat([c.lng, c.lat]).addTo(map);
+        new mapboxgl.Marker({ color: COLOR_BRAND_PRIMARY }).setLngLat([c.lng, c.lat]).addTo(map);
       } catch {
         // WebGL/jsdom/load failure → notice stays.
       }
@@ -53,7 +54,7 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
     const mapboxgl = gl.current;
     if (!map || !mapboxgl || !tech) return;
     if (!techMarker.current) {
-      techMarker.current = new mapboxgl.Marker({ color: '#0FB5A6' }).setLngLat([tech.lng, tech.lat]).addTo(map);
+      techMarker.current = new mapboxgl.Marker({ color: COLOR_BRAND_ACCENT_TEAL }).setLngLat([tech.lng, tech.lat]).addTo(map);
     } else {
       techMarker.current.setLngLat([tech.lng, tech.lat]);
     }
@@ -65,7 +66,7 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
 
   if (!hasMapbox) {
     return (
-      <div className="flex items-center justify-center rounded-xl" style={{ height, background: '#EEF2F7', color: '#94A3B8', fontSize: 13 }}>
+      <div className="flex items-center justify-center rounded-xl" style={{ height, background: COLOR_BG_MAP_PLACEHOLDER, color: COLOR_TEXT_MUTED, fontSize: 13 }}>
         الخريطة غير متاحة
       </div>
     );

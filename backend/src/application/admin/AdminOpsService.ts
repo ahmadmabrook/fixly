@@ -1,5 +1,14 @@
 import bcrypt from 'bcryptjs';
-import { Prisma, AdminRole, BookingStatus, BroadcastSegment, WithdrawalStatus } from '@prisma/client';
+import {
+  Prisma,
+  AdminRole,
+  BookingStatus,
+  BroadcastSegment,
+  WithdrawalStatus,
+  DispatchOfferStatus,
+  UserRole,
+  ConductStatus,
+} from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ConflictError } from '../../shared/errors';
 import { audit } from './adminAudit';
@@ -74,8 +83,8 @@ export class AdminOpsService {
       if (!admin) throw new NotFoundError('AdminUser');
       // Never demote the last active SUPER_ADMIN — that would permanently lock
       // out all admin-user management (the /admins surface is SUPER_ADMIN-only).
-      if (admin.role === 'SUPER_ADMIN' && role !== 'SUPER_ADMIN') {
-        const otherSupers = await tx.adminUser.count({ where: { role: 'SUPER_ADMIN', isActive: true, id: { not: id } } });
+      if (admin.role === AdminRole.SUPER_ADMIN && role !== AdminRole.SUPER_ADMIN) {
+        const otherSupers = await tx.adminUser.count({ where: { role: AdminRole.SUPER_ADMIN, isActive: true, id: { not: id } } });
         if (otherSupers === 0) throw new ConflictError('Cannot demote the last super admin');
       }
       const updated = await tx.adminUser.update({
@@ -182,14 +191,14 @@ export class AdminOpsService {
       repeatCustomerRows,
     ] = await Promise.all([
       prisma.dispatchOffer.count({ where: { offeredAt: { gte: since } } }),
-      prisma.dispatchOffer.count({ where: { offeredAt: { gte: since }, status: 'ACCEPTED' } }),
+      prisma.dispatchOffer.count({ where: { offeredAt: { gte: since }, status: DispatchOfferStatus.ACCEPTED } }),
       // Avg time from booking creation to first CONFIRMED (dispatch acceptance).
       // Booking has no separate "confirmedAt" column, so we use the accepted
       // DispatchOffer's respondedAt as the assignment moment.
       prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
         SELECT AVG(EXTRACT(EPOCH FROM (o."respondedAt" - b."createdAt")))::float AS avg_seconds
         FROM bookings b
-        JOIN dispatch_offers o ON o."bookingId" = b.id AND o.status = 'ACCEPTED'
+        JOIN dispatch_offers o ON o."bookingId" = b.id AND o.status = ${DispatchOfferStatus.ACCEPTED}
         WHERE b."createdAt" >= ${since}
       `,
       prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
@@ -200,9 +209,9 @@ export class AdminOpsService {
           AND "arrivedAt" > "slaArriveBy"
       `,
       prisma.booking.count({ where: { createdAt: { gte: since } } }),
-      prisma.booking.count({ where: { createdAt: { gte: since }, status: 'CANCELLED' } }),
-      prisma.booking.count({ where: { createdAt: { gte: since }, status: 'COMPLETED' } }),
-      prisma.conductReport.count({ where: { status: 'UPHELD', createdAt: { gte: since } } }),
+      prisma.booking.count({ where: { createdAt: { gte: since }, status: BookingStatus.CANCELLED } }),
+      prisma.booking.count({ where: { createdAt: { gte: since }, status: BookingStatus.COMPLETED } }),
+      prisma.conductReport.count({ where: { status: ConductStatus.UPHELD, createdAt: { gte: since } } }),
       // Repeat-booking rate: % of customers (among those with >=1 completed booking
       // in the window) who have more than one completed booking in the window.
       prisma.$queryRaw<Array<{ total: bigint; repeat: bigint }>>`
@@ -210,7 +219,7 @@ export class AdminOpsService {
         FROM (
           SELECT "customerId", COUNT(*) AS cnt
           FROM bookings
-          WHERE status = 'COMPLETED' AND "completedAt" >= ${since}
+          WHERE status = ${BookingStatus.COMPLETED} AND "completedAt" >= ${since}
           GROUP BY "customerId"
         ) per_customer
       `,
@@ -240,18 +249,18 @@ export class AdminOpsService {
 
   async sendBroadcast(adminId: string, titleAr: string, bodyAr: string, segment: BroadcastSegment, ip?: string) {
     const roleFilter: Prisma.UserWhereInput =
-      segment === 'CUSTOMERS'
-        ? { role: 'CUSTOMER' }
-        : segment === 'TECHNICIANS'
-          ? { role: 'TECHNICIAN' }
-          : { role: { in: ['CUSTOMER', 'TECHNICIAN'] } };
+      segment === BroadcastSegment.CUSTOMERS
+        ? { role: UserRole.CUSTOMER }
+        : segment === BroadcastSegment.TECHNICIANS
+          ? { role: UserRole.TECHNICIAN }
+          : { role: { in: [UserRole.CUSTOMER, UserRole.TECHNICIAN] } };
     // SQL predicate mirror of roleFilter (segment is a validated enum, no injection).
     const roleCond =
-      segment === 'CUSTOMERS'
-        ? Prisma.sql`"role" = 'CUSTOMER'`
-        : segment === 'TECHNICIANS'
-          ? Prisma.sql`"role" = 'TECHNICIAN'`
-          : Prisma.sql`"role" IN ('CUSTOMER', 'TECHNICIAN')`;
+      segment === BroadcastSegment.CUSTOMERS
+        ? Prisma.sql`"role" = ${UserRole.CUSTOMER}`
+        : segment === BroadcastSegment.TECHNICIANS
+          ? Prisma.sql`"role" = ${UserRole.TECHNICIAN}`
+          : Prisma.sql`"role" IN (${UserRole.CUSTOMER}, ${UserRole.TECHNICIAN})`;
 
     const broadcast = await prisma.$transaction(async (tx) => {
       const recipientCount = await tx.user.count({ where: { ...roleFilter, isActive: true } });
@@ -310,7 +319,7 @@ export class AdminOpsService {
     const updated = await prisma.$transaction(async (tx) => {
       const w = await tx.withdrawalRequest.findUnique({ where: { id } });
       if (!w) throw new NotFoundError('WithdrawalRequest');
-      if (w.status === 'PAID' || w.status === 'REJECTED') throw new ConflictError('Withdrawal already finalised');
+      if (w.status === WithdrawalStatus.PAID || w.status === WithdrawalStatus.REJECTED) throw new ConflictError('Withdrawal already finalised');
       const result = await tx.withdrawalRequest.update({
         where: { id },
         data: { status: decision, processedAt: new Date() },
@@ -360,7 +369,7 @@ export class AdminOpsService {
         select: bookingSelect,
       }),
       prisma.booking.findMany({
-        where: { status: 'PENDING', technicianId: null, createdAt: { lt: unassignedCutoff } },
+        where: { status: BookingStatus.PENDING, technicianId: null, createdAt: { lt: unassignedCutoff } },
         orderBy: { createdAt: 'asc' },
         take: boundedLimit,
         select: bookingSelect,
@@ -404,7 +413,7 @@ export class AdminOpsService {
         select: { id: true, createdAt: true },
       }),
       prisma.user.findMany({
-        where: { role: 'CUSTOMER', createdAt: { gte: since } },
+        where: { role: UserRole.CUSTOMER, createdAt: { gte: since } },
         orderBy: { createdAt: 'desc' },
         take: boundedLimit,
         select: { id: true, name: true, createdAt: true },

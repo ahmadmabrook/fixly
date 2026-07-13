@@ -2,15 +2,30 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
-import { api, CustomerItem, CustomerBookingItem } from '../lib/api';
+import { api, DEFAULT_PAGE_SIZE, CustomerItem, CustomerBookingItem } from '../lib/api';
 import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill, OpsStatTile } from '../components/shared';
+import {
+  COLOR_BRAND_PRIMARY,
+  COLOR_NEUTRAL_FAINT,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_SURFACE_MUTED,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 export default function Customers() {
   const [page, setPage] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
   // Pending confirmation for a block/unblock action.
   const [confirm, setConfirm] = useState<{ customer: CustomerItem; blocked: boolean } | null>(null);
-  const limit = 50;
+  const limit = DEFAULT_PAGE_SIZE;
   const qc = useQueryClient();
   // Deep-linkable from the global header search (`/customers?search=...`).
   const [searchParams, setSearchParams] = useSearchParams();
@@ -35,13 +50,13 @@ export default function Customers() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>العملاء</h1>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-            قائمة عملاء المنصة المسجلين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>العملاء</h1>
+          <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>
+            قائمة عملاء المنصة المسجلين {total > 0 && <>— <span style={{ color: COLOR_BRAND_PRIMARY }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 h-9 rounded-lg" style={{ background: '#F1F5F9', width: 260 }}>
-          <Search size={16} color="#94A3B8" />
+        <div className="flex items-center gap-2 px-3 h-9 rounded-lg" style={{ background: COLOR_SURFACE_MUTED, width: 260 }}>
+          <Search size={16} color={COLOR_TEXT_SUBTLE} />
           <input
             value={search}
             onChange={(e) => {
@@ -62,7 +77,7 @@ export default function Customers() {
         {!isLoading && !isError && customers.length > 0 && (
           <TableWrapper>
             <thead>
-              <tr style={{ background: '#F8FAFC' }}>
+              <tr style={{ background: COLOR_SURFACE_SUBTLE }}>
                 <Th>العميل</Th><Th>الجوال</Th><Th>الحالة</Th><Th>تاريخ التسجيل</Th><Th>إجراء</Th>
               </tr>
             </thead>
@@ -74,18 +89,18 @@ export default function Customers() {
                     <Td>
                       <button className="flex items-center gap-2" onClick={() => setDetailId(c.id)}>
                         <Avatar name={c.name} size={36} />
-                        <span style={{ fontWeight: 600, color: '#1366D6' }}>{c.name ?? c.phone ?? '—'}</span>
+                        <span style={{ fontWeight: 600, color: COLOR_BRAND_PRIMARY }}>{c.name ?? c.phone ?? '—'}</span>
                       </button>
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{c.phone ?? '—'}</span></Td>
                     <Td>
-                      {blocked ? <Pill label="محظور" bg="#FEE2E2" fg="#B91C1C" /> : <Pill label="نشط" bg="#DCFCE7" fg="#15803D" />}
+                      {blocked ? <Pill label="محظور" bg={COLOR_STATUS_DANGER_BG} fg={COLOR_STATUS_DANGER} /> : <Pill label="نشط" bg={COLOR_STATUS_SUCCESS_BG} fg={COLOR_STATUS_SUCCESS} />}
                     </Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(c.createdAt)}</span></Td>
                     <Td>
                       <div className="flex gap-2">
-                        <button onClick={() => setDetailId(c.id)} className="px-3 rounded-lg" style={{ border: '1px solid #CBD5E1', color: '#475569', fontSize: 12, fontWeight: 600 }}>الحجوزات</button>
-                        <button onClick={() => setConfirm({ customer: c, blocked: !blocked })} disabled={block.isPending} data-testid={`block-btn-${c.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: blocked ? '#DCFCE7' : '#FEE2E2', color: blocked ? '#15803D' : '#B91C1C', fontSize: 12, fontWeight: 600 }}>
+                        <button onClick={() => setDetailId(c.id)} className="px-3 rounded-lg" style={{ border: `1px solid ${COLOR_NEUTRAL_FAINT}`, color: COLOR_TEXT_SECONDARY, fontSize: 12, fontWeight: 600 }}>الحجوزات</button>
+                        <button onClick={() => setConfirm({ customer: c, blocked: !blocked })} disabled={block.isPending} data-testid={`block-btn-${c.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: blocked ? COLOR_STATUS_SUCCESS_BG : COLOR_STATUS_DANGER_BG, color: blocked ? COLOR_STATUS_SUCCESS : COLOR_STATUS_DANGER, fontSize: 12, fontWeight: 600 }}>
                           {blocked ? 'إلغاء الحظر' : 'حظر'}
                         </button>
                       </div>
@@ -144,7 +159,7 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
             <Avatar name={customer?.name ?? null} size={44} />
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{customer?.name ?? customer?.phone ?? '—'}</div>
-              {customer?.phone && <div style={{ color: '#64748B', fontSize: 12, fontFamily: 'Inter' }}>{customer.phone}</div>}
+              {customer?.phone && <div style={{ color: COLOR_TEXT_MUTED, fontSize: 12, fontFamily: 'Inter' }}>{customer.phone}</div>}
             </div>
           </div>
           {!isLoading && (
@@ -159,10 +174,10 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
           {!isLoading && !isError && items.length === 0 && <EmptyState message="لا توجد حجوزات" />}
           <div className="mt-4 space-y-2">
             {(data?.items ?? []).map((b) => (
-              <div key={b.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#F8FAFC' }}>
+              <div key={b.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: COLOR_SURFACE_SUBTLE }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{b.service?.nameAr ?? '—'}</div>
-                  <div style={{ color: '#94A3B8', fontSize: 12 }}>{new Date(b.createdAt).toLocaleDateString('ar-JO')}</div>
+                  <div style={{ color: COLOR_TEXT_SUBTLE, fontSize: 12 }}>{new Date(b.createdAt).toLocaleDateString('ar-JO')}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={b.status} />
@@ -171,7 +186,7 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
               </div>
             ))}
           </div>
-          <button onClick={onClose} className="mt-5 w-full h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إغلاق</button>
+          <button onClick={onClose} className="mt-5 w-full h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>إغلاق</button>
         </div>
       </div>
     </div>

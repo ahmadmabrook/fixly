@@ -1,7 +1,9 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, BookingStatus } from '@prisma/client';
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
+import { PrismaErrorCode } from '../../shared/errors';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 interface BookingEventPayload {
   bookingId: string;
@@ -9,15 +11,15 @@ interface BookingEventPayload {
 }
 
 /** Arabic copy per booking lifecycle event. */
-const NOTIFICATION_COPY: Record<string, { titleAr: string; bodyAr: string; status: string }> = {
-  'booking.created': { titleAr: 'تم استلام طلبك', bodyAr: 'جارٍ البحث عن أقرب فني متاح.', status: 'PENDING' },
-  'booking.confirmed': { titleAr: 'تم قبول طلبك', bodyAr: 'قبل أحد الفنيين طلبك وسيتواصل معك قريباً.', status: 'CONFIRMED' },
-  'booking.en_route': { titleAr: 'الفني في الطريق', bodyAr: 'الفني في طريقه إلى موقعك الآن.', status: 'EN_ROUTE' },
-  'booking.arrived': { titleAr: 'وصل الفني', bodyAr: 'وصل الفني إلى موقعك.', status: 'ARRIVED' },
-  'booking.in_progress': { titleAr: 'بدأت الخدمة', bodyAr: 'بدأ الفني تنفيذ الخدمة.', status: 'IN_PROGRESS' },
-  'booking.completed': { titleAr: 'اكتملت الخدمة', bodyAr: 'تم إنجاز طلبك بنجاح. نتمنى أن تكون راضياً.', status: 'COMPLETED' },
-  'booking.cancelled': { titleAr: 'تم إلغاء الطلب', bodyAr: 'تم إلغاء طلبك. إن كان لديك استفسار تواصل مع الدعم.', status: 'CANCELLED' },
-  'booking.no_show': { titleAr: 'لم يتم العثور عليك', bodyAr: 'أبلغ الفني بعدم تواجدك في العنوان. تم تحصيل رسوم الزيارة.', status: 'NO_SHOW' },
+const NOTIFICATION_COPY: Record<string, { titleAr: string; bodyAr: string; status: BookingStatus }> = {
+  [OutboxEventType.BOOKING_CREATED]: { titleAr: 'تم استلام طلبك', bodyAr: 'جارٍ البحث عن أقرب فني متاح.', status: BookingStatus.PENDING },
+  [OutboxEventType.BOOKING_CONFIRMED]: { titleAr: 'تم قبول طلبك', bodyAr: 'قبل أحد الفنيين طلبك وسيتواصل معك قريباً.', status: BookingStatus.CONFIRMED },
+  [OutboxEventType.BOOKING_EN_ROUTE]: { titleAr: 'الفني في الطريق', bodyAr: 'الفني في طريقه إلى موقعك الآن.', status: BookingStatus.EN_ROUTE },
+  [OutboxEventType.BOOKING_ARRIVED]: { titleAr: 'وصل الفني', bodyAr: 'وصل الفني إلى موقعك.', status: BookingStatus.ARRIVED },
+  [OutboxEventType.BOOKING_IN_PROGRESS]: { titleAr: 'بدأت الخدمة', bodyAr: 'بدأ الفني تنفيذ الخدمة.', status: BookingStatus.IN_PROGRESS },
+  [OutboxEventType.BOOKING_COMPLETED]: { titleAr: 'اكتملت الخدمة', bodyAr: 'تم إنجاز طلبك بنجاح. نتمنى أن تكون راضياً.', status: BookingStatus.COMPLETED },
+  [OutboxEventType.BOOKING_CANCELLED]: { titleAr: 'تم إلغاء الطلب', bodyAr: 'تم إلغاء طلبك. إن كان لديك استفسار تواصل مع الدعم.', status: BookingStatus.CANCELLED },
+  [OutboxEventType.BOOKING_NO_SHOW]: { titleAr: 'لم يتم العثور عليك', bodyAr: 'أبلغ الفني بعدم تواجدك في العنوان. تم تحصيل رسوم الزيارة.', status: BookingStatus.NO_SHOW },
 };
 
 /**
@@ -57,7 +59,7 @@ export class NotificationService {
         },
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
         logger.debug({ dedupeKey }, 'Notification already sent — skipping duplicate');
         return; // already delivered; don't re-emit
       }

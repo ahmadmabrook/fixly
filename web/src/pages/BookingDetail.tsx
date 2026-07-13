@@ -7,6 +7,7 @@ import {
   Card, ServiceIcon, StatusBadge, InlineRow, Modal, notify,
   ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
 } from '../components/shared';
+import { COLOR_ACCENT_AMBER, COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_ERROR_BG, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WARNING_BORDER, COLOR_WHITE } from '../lib/theme';
 
 const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
 const TIME_SLOTS = Array.from({ length: 13 }, (_, i) => {
@@ -78,14 +79,14 @@ export function generateReceiptHtml(b: FullBooking, extras: AdditionalWorkItem[]
 <title>إيصال Fixly</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;padding:32px;max-width:420px;margin:0 auto;color:#0F172A}
-h1{font-size:22px;color:#1366D6;margin-bottom:4px}
-.sub{color:#64748B;font-size:12px;margin-bottom:24px}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;padding:32px;max-width:420px;margin:0 auto;color:${COLOR_TEXT_PRIMARY}}
+h1{font-size:22px;color:${COLOR_BRAND_PRIMARY};margin-bottom:4px}
+.sub{color:${COLOR_TEXT_SUBTLE};font-size:12px;margin-bottom:24px}
 table{width:100%;border-collapse:collapse;margin-bottom:12px}
-td{padding:8px 0;font-size:14px;border-bottom:1px solid #E2E8F0}
+td{padding:8px 0;font-size:14px;border-bottom:1px solid ${COLOR_BORDER}}
 td:last-child{text-align:left;font-weight:600;font-family:'Inter',monospace}
 .total td{border-bottom:none;font-weight:800;font-size:16px;padding-top:12px}
-.meta{margin-top:20px;font-size:12px;color:#64748B;line-height:1.8}
+.meta{margin-top:20px;font-size:12px;color:${COLOR_TEXT_SUBTLE};line-height:1.8}
 @media print{body{padding:16px}}
 </style></head><body>
 <h1>Fixly</h1>
@@ -205,7 +206,7 @@ export default function BookingDetail() {
 
   return (
     <main className="max-w-[700px] mx-auto px-6 py-8">
-      <button onClick={() => navigate('/my-bookings')} className="flex items-center gap-1" style={{ color: '#1366D6', fontWeight: 600, fontSize: 14 }}>
+      <button onClick={() => navigate('/my-bookings')} className="flex items-center gap-1" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600, fontSize: 14 }}>
         <ChevronLeft size={18} /> طلباتي
       </button>
 
@@ -214,7 +215,7 @@ export default function BookingDetail() {
           <ServiceIcon nameAr={b.service?.nameAr ?? ''} size={24} />
           <div className="flex-1">
             <div style={{ fontWeight: 800, fontSize: 18 }}>{b.service?.nameAr}</div>
-            <div style={{ color: '#475569', fontSize: 12 }}>
+            <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>
               {b.scheduledAt ? new Date(b.scheduledAt).toLocaleString('ar-JO') : 'فوراً'}
             </div>
           </div>
@@ -231,28 +232,28 @@ export default function BookingDetail() {
         <div className="my-2 h-px bg-slate-100" />
         <InlineRow strong label="الإجمالي المدفوع" value={`${Number(b.totalJod)} دينار`} />
         {b.payment && (
-          <p className="mt-2" style={{ color: '#15803D', fontSize: 12 }}>حالة الدفع: {b.payment.status}</p>
+          <p className="mt-2" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 12 }}>حالة الدفع: {b.payment.status}</p>
         )}
         <button
           onClick={() => downloadReceipt(b, approvedExtras)}
           className="mt-3 w-full h-11 rounded-xl flex items-center justify-center gap-2"
-          style={{ background: '#F1F5F9', color: '#1366D6', fontWeight: 700, fontSize: 13 }}
+          style={{ background: COLOR_BG_SUBTLE, color: COLOR_BRAND_PRIMARY, fontWeight: 700, fontSize: 13 }}
         >
           <Download size={16} /> تحميل الإيصال
         </button>
       </Card>
 
       {proposedExtras.length > 0 && (
-        <Card className="mt-4 p-5" style={{ border: '1px solid #FDE68A' }}>
+        <Card className="mt-4 p-5" style={{ border: `1px solid ${COLOR_WARNING_BORDER}` }}>
           <h2 style={{ fontWeight: 700, fontSize: 15 }}>عمل إضافي بانتظار موافقتك</h2>
           {proposedExtras.map((e) => (
             <div key={e.id} className="mt-3 flex items-center gap-3">
               <div className="flex-1">
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{e.description}</div>
-                <div style={{ color: '#0E4FA8', fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{Number(e.amountJod)}</span> دينار</div>
+                <div style={{ color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{Number(e.amountJod)}</span> دينار</div>
               </div>
-              <button onClick={() => void respondExtra(e.id, true)} className="px-4 h-10 rounded-xl" style={{ background: '#15803D', color: '#FFF', fontWeight: 700, fontSize: 13 }}>موافقة</button>
-              <button onClick={() => void respondExtra(e.id, false)} className="px-4 h-10 rounded-xl" style={{ background: '#FEE2E2', color: '#B91C1C', fontWeight: 600, fontSize: 13 }}>رفض</button>
+              <button onClick={() => void respondExtra(e.id, true)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_SUCCESS_TEXT, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}>موافقة</button>
+              <button onClick={() => void respondExtra(e.id, false)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_ERROR_BG, color: COLOR_ERROR_TEXT, fontWeight: 600, fontSize: 13 }}>رفض</button>
             </div>
           ))}
         </Card>
@@ -260,17 +261,17 @@ export default function BookingDetail() {
 
       <div className="mt-4 space-y-2">
         {isActive && (
-          <button onClick={() => navigate(`/bookings/${id}/track`)} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+          <button onClick={() => navigate(`/bookings/${id}/track`)} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
             <Navigation size={18} /> تتبّع الحجز
           </button>
         )}
         {b.status === 'COMPLETED' && (
-          <button onClick={() => setShowRate(true)} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+          <button onClick={() => setShowRate(true)} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
             <Star size={18} /> قيّم الخدمة
           </button>
         )}
         {b.status === 'COMPLETED' && within30d && (
-          <button onClick={() => navigate('/guarantee')} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 700 }}>
+          <button onClick={() => navigate('/guarantee')} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT, fontWeight: 700 }}>
             <ShieldCheck size={18} /> فتح تذكرة ضمان
           </button>
         )}
@@ -279,20 +280,20 @@ export default function BookingDetail() {
         )}
         {isScheduled && (
           <Card className="p-4">
-            <label className="block" style={{ fontSize: 13, color: '#475569' }}>تغيير الموعد</label>
+            <label className="block" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>تغيير الموعد</label>
             <SlotPicker value={reschedule} onChange={setReschedule} />
             <button
               onClick={() => void doReschedule()}
               disabled={!reschedule}
               className="mt-3 w-full h-11 rounded-xl disabled:opacity-50"
-              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 13 }}
+              style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}
             >
               تأكيد
             </button>
           </Card>
         )}
         {isScheduled && (
-          <button onClick={() => setCancelling(true)} className="w-full h-12 rounded-xl" style={{ color: '#B91C1C', fontWeight: 600, border: '1px solid #FECACA' }}>
+          <button onClick={() => setCancelling(true)} className="w-full h-12 rounded-xl" style={{ color: COLOR_ERROR_TEXT, fontWeight: 600, border: `1px solid ${COLOR_ERROR_BORDER}` }}>
             إلغاء الحجز
           </button>
         )}
@@ -303,7 +304,7 @@ export default function BookingDetail() {
           <div className="mt-4 flex justify-center gap-2">
             {[1, 2, 3, 4, 5].map((n) => (
               <button key={n} onClick={() => setRating(n)} aria-label={`${n} نجوم`} aria-pressed={n <= rating}>
-                <Star size={36} fill={n <= rating ? '#F5A623' : 'none'} color="#F5A623" strokeWidth={n <= rating ? 0 : 2} />
+                <Star size={36} fill={n <= rating ? COLOR_ACCENT_AMBER : 'none'} color={COLOR_ACCENT_AMBER} strokeWidth={n <= rating ? 0 : 2} />
               </button>
             ))}
           </div>
@@ -320,7 +321,7 @@ export default function BookingDetail() {
             onClick={() => void submitReview()}
             disabled={rating === 0}
             className="mt-4 w-full h-12 rounded-xl disabled:opacity-50"
-            style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
+            style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
           >
             إرسال
           </button>
@@ -365,10 +366,10 @@ function SlotPicker({ value, onChange }: { value: string; onChange: (v: string) 
             className="flex-shrink-0 px-3 py-2 rounded-xl text-center"
             style={{
               minWidth: 72,
-              background: selectedDate === d.key ? '#1366D6' : '#FFF',
-              color: selectedDate === d.key ? '#FFF' : '#475569',
+              background: selectedDate === d.key ? COLOR_BRAND_PRIMARY : COLOR_WHITE,
+              color: selectedDate === d.key ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
               border: '1px solid',
-              borderColor: selectedDate === d.key ? '#1366D6' : '#E2E8F0',
+              borderColor: selectedDate === d.key ? COLOR_BRAND_PRIMARY : COLOR_BORDER,
               fontWeight: 600,
               fontSize: 13,
             }}
@@ -389,10 +390,10 @@ function SlotPicker({ value, onChange }: { value: string; onChange: (v: string) 
                 onClick={() => pickSlot(selectedDate, t)}
                 className="h-10 rounded-xl"
                 style={{
-                  background: isActive ? '#1366D6' : '#FFF',
-                  color: isActive ? '#FFF' : '#475569',
+                  background: isActive ? COLOR_BRAND_PRIMARY : COLOR_WHITE,
+                  color: isActive ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                   border: '1px solid',
-                  borderColor: isActive ? '#1366D6' : '#E2E8F0',
+                  borderColor: isActive ? COLOR_BRAND_PRIMARY : COLOR_BORDER,
                   fontWeight: 600,
                   fontSize: 13,
                   fontFamily: 'Inter',
@@ -409,5 +410,5 @@ function SlotPicker({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 function Centered({ children, tone = 'muted' }: { children: React.ReactNode; tone?: 'muted' | 'error' }) {
-  return <main className="max-w-[700px] mx-auto px-6 py-16 text-center"><p style={{ color: tone === 'error' ? '#B91C1C' : '#94A3B8', fontSize: 16 }}>{children}</p></main>;
+  return <main className="max-w-[700px] mx-auto px-6 py-16 text-center"><p style={{ color: tone === 'error' ? COLOR_ERROR_TEXT : COLOR_TEXT_MUTED, fontSize: 16 }}>{children}</p></main>;
 }

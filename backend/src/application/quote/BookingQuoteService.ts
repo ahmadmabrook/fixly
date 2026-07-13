@@ -32,7 +32,7 @@ export class BookingQuoteService {
       data: {
         customerId,
         serviceId: input.serviceId,
-        status: 'PENDING',
+        status: QuoteStatus.PENDING,
         videoUrl: input.videoUrl,
         description: input.description ?? null,
         addressLine: input.addressLine ?? null,
@@ -65,10 +65,10 @@ export class BookingQuoteService {
   async setQuote(id: string, quotedById: string, quotedJod: number | string) {
     const quote = await prisma.bookingQuote.findUnique({ where: { id } });
     if (!quote) throw new NotFoundError('Quote');
-    if (quote.status !== 'PENDING') throw new ConflictError('Quote is not pending');
+    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is not pending');
     const updated = await prisma.bookingQuote.update({
       where: { id },
-      data: { status: 'QUOTED', quotedJod: new Prisma.Decimal(quotedJod), quotedById },
+      data: { status: QuoteStatus.QUOTED, quotedJod: new Prisma.Decimal(quotedJod), quotedById },
     });
     await createUserNotification(prisma, {
       userId: quote.customerId,
@@ -87,11 +87,11 @@ export class BookingQuoteService {
     const quote = await prisma.bookingQuote.findUnique({ where: { id } });
     if (!quote) throw new NotFoundError('Quote');
     if (quote.customerId !== customerId) throw new ForbiddenError();
-    if (quote.status !== 'QUOTED' || quote.quotedJod == null) {
+    if (quote.status !== QuoteStatus.QUOTED || quote.quotedJod == null) {
       throw new ConflictError('Quote is not ready to accept');
     }
     if (quote.expiresAt.getTime() < Date.now()) {
-      await prisma.bookingQuote.update({ where: { id }, data: { status: 'EXPIRED' } });
+      await prisma.bookingQuote.update({ where: { id }, data: { status: QuoteStatus.EXPIRED } });
       throw new ConflictError('انتهت صلاحية العرض');
     }
 
@@ -106,7 +106,7 @@ export class BookingQuoteService {
 
     await prisma.bookingQuote.update({
       where: { id },
-      data: { status: 'ACCEPTED', bookingId: booking.id },
+      data: { status: QuoteStatus.ACCEPTED, bookingId: booking.id },
     });
     return booking;
   }

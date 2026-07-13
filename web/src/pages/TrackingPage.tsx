@@ -9,6 +9,7 @@ import {
   ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
 } from '../components/shared';
 import TrackingMap from '../components/TrackingMap';
+import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 const STEPS: ReadonlyArray<readonly [string, string]> = [
   ['CONFIRMED', 'تم القبول'],
@@ -67,14 +68,14 @@ export default function TrackingPage() {
     }
   }
 
-  if (isLoading) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: '#94A3B8' }}>جارٍ التحميل...</p></main>;
-  if (!booking) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: '#B91C1C' }}>الحجز غير موجود</p></main>;
+  if (isLoading) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: COLOR_TEXT_MUTED }}>جارٍ التحميل...</p></main>;
+  if (!booking) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: COLOR_ERROR_TEXT }}>الحجز غير موجود</p></main>;
 
   const cancellable = !['COMPLETED', 'CANCELLED'].includes(status);
 
   return (
     <main className="max-w-[1200px] mx-auto px-6 py-8">
-      <button onClick={() => navigate('/my-bookings')} className="flex items-center gap-1" style={{ color: '#1366D6', fontWeight: 600, fontSize: 14 }}>
+      <button onClick={() => navigate('/my-bookings')} className="flex items-center gap-1" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600, fontSize: 14 }}>
         <ChevronLeft size={18} /> طلباتي
       </button>
 
@@ -90,13 +91,13 @@ export default function TrackingPage() {
 
           {/* Dispatch-in-progress: no technician assigned yet */}
           {status === 'CONFIRMED' && !booking.technicianId && (
-            <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl" style={{ background: '#E8F1FE' }}>
+            <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl" style={{ background: COLOR_BRAND_PRIMARY_TINT }}>
               <span className="relative flex h-3 w-3 shrink-0">
-                <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ background: '#1366D6' }} />
-                <span className="relative inline-flex rounded-full h-3 w-3" style={{ background: '#1366D6' }} />
+                <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ background: COLOR_BRAND_PRIMARY }} />
+                <span className="relative inline-flex rounded-full h-3 w-3" style={{ background: COLOR_BRAND_PRIMARY }} />
               </span>
-              <Search size={18} color="#0E4FA8" />
-              <span style={{ color: '#0E4FA8', fontWeight: 700, fontSize: 14 }}>نبحث عن أقرب فني…</span>
+              <Search size={18} color={COLOR_BRAND_PRIMARY_DARK} />
+              <span style={{ color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 700, fontSize: 14 }}>نبحث عن أقرب فني…</span>
             </div>
           )}
         </div>
@@ -109,7 +110,7 @@ export default function TrackingPage() {
               <StatusBadge status={status} />
             </div>
             {status === 'EN_ROUTE' && (
-              <span className="mt-2 inline-block px-3 py-1 rounded-full" style={{ background: '#CCFBF1', color: '#0F766E', fontWeight: 700, fontSize: 13 }}>
+              <span className="mt-2 inline-block px-3 py-1 rounded-full" style={{ background: COLOR_ENROUTE_BG, color: COLOR_ENROUTE_TEXT, fontWeight: 700, fontSize: 13 }}>
                 الوصول خلال <span style={{ fontFamily: 'Inter' }}>5</span> دقائق
               </span>
             )}
@@ -119,11 +120,11 @@ export default function TrackingPage() {
                 const active = i === activeIdx;
                 return (
                   <div key={s} className="flex items-center gap-3 pb-4 last:pb-0 relative" role="listitem" aria-current={active ? 'step' : undefined}>
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10" style={{ background: done || active ? '#1366D6' : '#E2E8F0', color: '#FFF' }}>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10" style={{ background: done || active ? COLOR_BRAND_PRIMARY : COLOR_BORDER, color: COLOR_WHITE }}>
                       {done ? <Check size={15} aria-hidden="true" /> : <span style={{ fontFamily: 'Inter', fontWeight: 700, fontSize: 12 }}>{i + 1}</span>}
                     </div>
-                    {i < STEPS.length - 1 && <div className="absolute right-[13px] top-7 w-0.5 h-full" style={{ background: done ? '#1366D6' : '#E2E8F0' }} />}
-                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: active ? '#0F172A' : '#94A3B8' }}>{label}</span>
+                    {i < STEPS.length - 1 && <div className="absolute right-[13px] top-7 w-0.5 h-full" style={{ background: done ? COLOR_BRAND_PRIMARY : COLOR_BORDER }} />}
+                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: active ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED }}>{label}</span>
                   </div>
                 );
               })}
@@ -139,22 +140,22 @@ export default function TrackingPage() {
                   <div style={{ fontWeight: 700, fontSize: 17 }}>{tech.name}</div>
                   <div className="flex items-center gap-2 mt-1">
                     <Stars rating={Number(tech.rating)} />
-                    <span style={{ color: '#475569', fontSize: 12 }}>({tech.totalReviews} تقييم)</span>
+                    <span style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>({tech.totalReviews} تقييم)</span>
                   </div>
-                  {tech.vehicle && <div style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>{tech.vehicle}</div>}
+                  {tech.vehicle && <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, marginTop: 2 }}>{tech.vehicle}</div>}
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button onClick={() => void callTechnician()} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600, fontSize: 13 }}>
+                <button onClick={() => void callTechnician()} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 600, fontSize: 13 }}>
                   <Phone size={16} /> اتصال
                 </button>
                 {/* No booking-scoped chat endpoint exists yet (only /support
                     tickets, which aren't tied to a specific technician) — say
                     so honestly instead of a fake "chat opened" toast. */}
-                <button onClick={() => notify('المحادثة داخل التطبيق غير متاحة بعد — يمكنك الاتصال أو التواصل مع الدعم', 'info')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 13 }}>
+                <button onClick={() => notify('المحادثة داخل التطبيق غير متاحة بعد — يمكنك الاتصال أو التواصل مع الدعم', 'info')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 600, fontSize: 13 }}>
                   <MessageCircle size={16} /> رسالة
                 </button>
-                <button onClick={() => setShowReviews(true)} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600, fontSize: 13 }}>
+                <button onClick={() => setShowReviews(true)} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13 }}>
                   <Star size={16} /> التقييمات
                 </button>
                 <ReportTechnicianButton onClick={() => setShowReport(true)} />
@@ -163,12 +164,12 @@ export default function TrackingPage() {
           )}
 
           {cancellable && (
-            <button onClick={() => setCancelling(true)} className="w-full h-12 rounded-xl" style={{ color: '#B91C1C', fontWeight: 600, border: '1px solid #FECACA' }}>
+            <button onClick={() => setCancelling(true)} className="w-full h-12 rounded-xl" style={{ color: COLOR_ERROR_TEXT, fontWeight: 600, border: `1px solid ${COLOR_ERROR_BORDER}` }}>
               إلغاء الحجز
             </button>
           )}
           {status === 'COMPLETED' && (
-            <button onClick={() => navigate(`/bookings/${id}`)} className="w-full h-12 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+            <button onClick={() => navigate(`/bookings/${id}`)} className="w-full h-12 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
               عرض الإيصال وتقييم الخدمة
             </button>
           )}
@@ -201,28 +202,28 @@ function TechReviewsModal({ technicianId, onClose }: { technicianId: string; onC
   });
   return (
     <Modal title="التقييمات الموثّقة" variant="sheet" maxWidth="md" onClose={onClose}>
-      {!data && <p className="mt-4" style={{ color: '#94A3B8', fontSize: 14 }}>جارٍ التحميل…</p>}
+      {!data && <p className="mt-4" style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>جارٍ التحميل…</p>}
       {data && (
         <>
           <div className="mt-2 flex items-center gap-2">
             <Stars rating={Number(data.summary.rating)} size={18} />
-            <span style={{ color: '#475569', fontSize: 13 }}>({data.summary.totalReviews})</span>
+            <span style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>({data.summary.totalReviews})</span>
           </div>
           <div className="mt-4 space-y-3">
-            {data.items.length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
+            {data.items.length === 0 && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
             {data.items.map((r) => (
               <div key={r.id} className="border-b border-slate-100 pb-3">
                 <div className="flex items-center justify-between">
                   <span style={{ fontWeight: 600, fontSize: 14 }}>{r.reviewerName ?? 'عميل'}</span>
                   <Stars rating={r.rating} />
                 </div>
-                {r.comment && <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
+                {r.comment && <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
               </div>
             ))}
           </div>
         </>
       )}
-      <button onClick={onClose} className="mt-4 w-full h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إغلاق</button>
+      <button onClick={onClose} className="mt-4 w-full h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>إغلاق</button>
     </Modal>
   );
 }

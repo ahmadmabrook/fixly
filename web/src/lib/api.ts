@@ -136,9 +136,22 @@ export interface Service {
   calloutFeeJod?: string | number;
 }
 
+/** Mirrors the backend `BookingStatus` enum (backend/prisma/schema.prisma). */
+export type BookingStatus =
+  | 'AWAITING_PAYMENT'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'EN_ROUTE'
+  | 'ARRIVED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'DISPUTED'
+  | 'NO_SHOW';
+
 export interface Booking {
   id: string;
-  status: string;
+  status: BookingStatus;
   scheduledAt: string | null;
   totalJod: string | number;
   service: Service;
@@ -147,7 +160,7 @@ export interface Booking {
 /** Booking row as returned by GET /bookings (service included). */
 export interface BookingListItem {
   id: string;
-  status: string;
+  status: BookingStatus;
   scheduledAt: string | null;
   totalJod: string | number;
   service?: Pick<Service, 'nameAr' | 'nameEn'> | null;
@@ -250,9 +263,12 @@ export interface NearbyTechnician {
   vehicle: string | null;
 }
 
+/** Mirrors the backend `GuaranteeStatus` enum (backend/prisma/schema.prisma). */
+export type GuaranteeTicketStatus = 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'REJECTED';
+
 export interface GuaranteeTicketItem {
   id: string;
-  status: string;
+  status: GuaranteeTicketStatus;
   description: string | null;
   mediaUrls: string[];
   adminNote: string | null;
@@ -276,28 +292,37 @@ export interface SupportMessage {
   createdAt: string;
 }
 
+/** Mirrors the backend `SupportStatus` enum (backend/prisma/schema.prisma). */
+export type SupportTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+
 export interface SupportTicketItem {
   id: string;
   subject: string;
-  status: string;
+  status: SupportTicketStatus;
   createdAt: string;
   updatedAt: string;
   messages?: SupportMessage[];
 }
 
+/** Mirrors the backend `AdditionalWorkStatus` enum (backend/prisma/schema.prisma). */
+export type AdditionalWorkStatus = 'PROPOSED' | 'APPROVED' | 'DECLINED';
+
 export interface AdditionalWorkItem {
   id: string;
   description: string;
   amountJod: string | number;
-  status: string;
+  status: AdditionalWorkStatus;
   createdAt: string;
 }
 
 export type TrustTier = 'PROBATION' | 'VERIFIED' | 'PRO' | 'ELITE';
 
+/** Mirrors the backend `TechnicianStatus` enum (backend/prisma/schema.prisma). */
+export type TechnicianStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
 export interface TechnicianProfileMe {
   id: string;
-  status: string;
+  status: TechnicianStatus;
   isVerified: boolean;
   isAvailable: boolean;
   rejectionReason: string | null;
@@ -369,6 +394,19 @@ export interface ReferralStats {
 
 /** POST /conduct-reports `kind` enum. */
 export type ConductReportKind = 'OFF_PLATFORM_SOLICIT' | 'NO_SHOW' | 'QUALITY' | 'SAFETY' | 'OTHER';
+
+/** Mirrors the backend `SubscriptionStatus` enum (backend/prisma/schema.prisma). */
+export type SubscriptionStatus = 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'EXPIRED';
+
+/** GET /subscriptions/me — the caller's Protection-plan subscription, or null if not subscribed. */
+export interface Subscription {
+  status: SubscriptionStatus;
+  priceJod: string | number;
+  discountPercent: number;
+  guaranteeDays: number;
+  currentPeriodEnd: string;
+  cancelledAt: string | null;
+}
 
 export interface NearbyJob {
   id: string;

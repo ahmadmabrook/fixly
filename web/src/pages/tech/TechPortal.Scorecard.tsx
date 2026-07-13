@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, TechnicianScorecard } from '../../lib/api';
 import { Card } from '../../components/shared';
+import { COLOR_ACCENT_AMBER, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE } from '../../lib/theme';
 
 export function Scorecard() {
   const { data } = useQuery({ queryKey: ['tech-scorecard'], queryFn: () => api.get<TechnicianScorecard>('/technician/scorecard') });
@@ -8,20 +9,20 @@ export function Scorecard() {
   return (
     <div className="grid grid-cols-2 gap-3">
       <Card className="p-4 text-center">
-        <div style={{ color: '#475569', fontSize: 12 }}>الالتزام بالموعد</div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: '#0F172A', fontFamily: 'Inter' }}>{data ? pct(data.onTimeRate) : '—'}</div>
+        <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>الالتزام بالموعد</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{data ? pct(data.onTimeRate) : '—'}</div>
       </Card>
       <Card className="p-4 text-center">
-        <div style={{ color: '#475569', fontSize: 12 }}>نسبة إعادة الخدمة</div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: '#0F172A', fontFamily: 'Inter' }}>{data ? pct(data.redoRate) : '—'}</div>
+        <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>نسبة إعادة الخدمة</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{data ? pct(data.redoRate) : '—'}</div>
       </Card>
       <Card className="p-4 text-center">
-        <div style={{ color: '#475569', fontSize: 12 }}>نسبة الشكاوى</div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: '#0F172A', fontFamily: 'Inter' }}>{data ? pct(data.complaintRate) : '—'}</div>
+        <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>نسبة الشكاوى</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{data ? pct(data.complaintRate) : '—'}</div>
       </Card>
       <Card className="p-4 text-center">
-        <div style={{ color: '#475569', fontSize: 12 }}>نسبة قبول الطلبات</div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: '#0F172A', fontFamily: 'Inter' }}>{data ? pct(data.acceptanceRate) : '—'}</div>
+        <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>نسبة قبول الطلبات</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{data ? pct(data.acceptanceRate) : '—'}</div>
       </Card>
     </div>
   );
@@ -36,20 +37,20 @@ export function Ratings({ technicianId }: { technicianId: string }) {
     <div className="space-y-3">
       {data && (
         <Card className="p-5 text-center">
-          <div style={{ fontWeight: 800, fontSize: 32, color: '#F5A623', fontFamily: 'Inter' }}>{Number(data.summary.rating).toFixed(1)}</div>
-          <div style={{ color: '#64748B', fontSize: 13 }}>{data.summary.totalReviews} تقييم</div>
+          <div style={{ fontWeight: 800, fontSize: 32, color: COLOR_ACCENT_AMBER, fontFamily: 'Inter' }}>{Number(data.summary.rating).toFixed(1)}</div>
+          <div style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13 }}>{data.summary.totalReviews} تقييم</div>
         </Card>
       )}
       {(data?.items ?? []).map((r) => (
         <Card key={r.id} className="p-4">
           <div className="flex items-center justify-between">
             <span style={{ fontWeight: 600, fontSize: 14 }}>{r.reviewerName ?? 'عميل'}</span>
-            <span style={{ color: '#F5A623', fontWeight: 700, fontFamily: 'Inter' }}>{r.rating}★</span>
+            <span style={{ color: COLOR_ACCENT_AMBER, fontWeight: 700, fontFamily: 'Inter' }}>{r.rating}★</span>
           </div>
-          {r.comment && <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
+          {r.comment && <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13, marginTop: 4 }}>{r.comment}</p>}
         </Card>
       ))}
-      {data && data.items.length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
+      {data && data.items.length === 0 && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>لا توجد تقييمات بعد.</p>}
     </div>
   );
 }

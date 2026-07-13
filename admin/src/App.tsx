@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { useAuth } from './lib/store';
 import { onAuthExpired, restoreSession } from './lib/api';
 import { canAccessRoute } from './lib/permissions';
+import { COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY } from './lib/theme';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 
@@ -44,8 +45,8 @@ function RequireRole({ path, children }: { path: string; children: React.ReactNo
     return (
       <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
         <div className="text-center" style={{ maxWidth: 360 }}>
-          <p style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>ليست لديك صلاحية للوصول لهذه الصفحة</p>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 8 }}>
+          <p style={{ fontSize: 17, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>ليست لديك صلاحية للوصول لهذه الصفحة</p>
+          <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 8 }}>
             هذا القسم مخصص لدور آخر. تواصل مع المدير العام إذا كنت تعتقد أن هذا غير صحيح.
           </p>
         </div>
@@ -94,7 +95,7 @@ export function AppShell() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ color: '#64748B', fontSize: 14 }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>
         جارٍ التحميل…
       </div>
     );

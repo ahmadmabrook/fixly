@@ -54,7 +54,7 @@ export class BookingService {
    */
   async expireUnpaidBookings(ttlMinutes: number): Promise<number> {
     const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000);
-    const where = { status: 'AWAITING_PAYMENT' as const, createdAt: { lt: cutoff } };
+    const where = { status: BookingStatus.AWAITING_PAYMENT, createdAt: { lt: cutoff } };
     // Snapshot the ids before the bulk update so we can append one status-history
     // row per booking below (a set-based updateMany can't return affected rows).
     const candidates = await prisma.booking.findMany({ where, select: { id: true } });
@@ -66,11 +66,11 @@ export class BookingService {
     // hold would have promoted it) — silent cleanup, no outbox/notification.
     const { count } = await prisma.booking.updateMany({
       where,
-      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: 'Payment not completed in time' },
+      data: { status: BookingStatus.CANCELLED, cancelledAt: new Date(), cancelReason: 'Payment not completed in time' },
     });
     if (count > 0) {
       await prisma.bookingStatusHistory.createMany({
-        data: candidates.map((b) => ({ bookingId: b.id, fromStatus: 'AWAITING_PAYMENT' as const, toStatus: 'CANCELLED' as const })),
+        data: candidates.map((b) => ({ bookingId: b.id, fromStatus: BookingStatus.AWAITING_PAYMENT, toStatus: BookingStatus.CANCELLED })),
       });
     }
     return count;

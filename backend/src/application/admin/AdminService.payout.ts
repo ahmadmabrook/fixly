@@ -1,3 +1,4 @@
+import { PayoutStatus, LedgerType, LedgerDirection } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { audit } from './adminAudit';
 import { ConflictError, NotFoundError } from '../../shared/errors';
@@ -45,7 +46,7 @@ export class AdminPayoutFlow {
       include: { technician: { select: { user: { select: { isActive: true } } } } },
     });
     if (!payout) throw new NotFoundError('Payout');
-    if (payout.status === 'COMPLETED') {
+    if (payout.status === PayoutStatus.COMPLETED) {
       return prisma.payout.findUniqueOrThrow({ where: { id }, include: PAYOUT_INCLUDE });
     }
     // N-6: never disburse to a deactivated technician — funds stay PENDING until
@@ -56,12 +57,12 @@ export class AdminPayoutFlow {
 
     // Phase 1 — atomic claim.
     const claimed = await prisma.payout.updateMany({
-      where: { id, status: 'PENDING' },
-      data: { status: 'PROCESSING' },
+      where: { id, status: PayoutStatus.PENDING },
+      data: { status: PayoutStatus.PROCESSING },
     });
     if (claimed.count === 0) {
       const current = await prisma.payout.findUnique({ where: { id } });
-      if (current?.status === 'COMPLETED') {
+      if (current?.status === PayoutStatus.COMPLETED) {
         return prisma.payout.findUniqueOrThrow({ where: { id }, include: PAYOUT_INCLUDE });
       }
       throw new ConflictError(`Payout is ${current?.status ?? 'unknown'}`);
@@ -73,7 +74,7 @@ export class AdminPayoutFlow {
       ({ providerRef } = await this.payoutProvider.disburse(id, Number(payout.amountJod)));
     } catch {
       // Provider rejected outright → no money moved → safe to mark FAILED.
-      await prisma.payout.updateMany({ where: { id, status: 'PROCESSING' }, data: { status: 'FAILED' } });
+      await prisma.payout.updateMany({ where: { id, status: PayoutStatus.PROCESSING }, data: { status: PayoutStatus.FAILED } });
       throw new ConflictError('Payout disbursement failed');
     }
 
@@ -98,12 +99,12 @@ export class AdminPayoutFlow {
   ): Promise<boolean> {
     return prisma.$transaction(async (tx) => {
       const claim = await tx.payout.updateMany({
-        where: { id, status: 'PROCESSING' },
-        data: { status: 'COMPLETED', processedAt: new Date() },
+        where: { id, status: PayoutStatus.PROCESSING },
+        data: { status: PayoutStatus.COMPLETED, processedAt: new Date() },
       });
       if (claim.count === 0) return false; // someone else already finalized it
       await tx.ledgerEntry.create({
-        data: { payoutId: id, type: 'PAYOUT', direction: 'DEBIT', currency: env().CURRENCY, amountJod, description: `Payout ${id} (${providerRef})` },
+        data: { payoutId: id, type: LedgerType.PAYOUT, direction: LedgerDirection.DEBIT, currency: env().CURRENCY, amountJod, description: `Payout ${id} (${providerRef})` },
       });
       if (actorId) {
         await audit(tx, actorId, 'payout.process', { type: 'Payout', id }, { amountJod, providerRef }, ip);
@@ -122,7 +123,7 @@ export class AdminPayoutFlow {
    * Runs on a timer from main.ts. Returns the number resolved.
    */
   async reconcileStuckPayouts(): Promise<number> {
-    const stuck = await prisma.payout.findMany({ where: { status: 'PROCESSING' }, select: { id: true, amountJod: true } });
+    const stuck = await prisma.payout.findMany({ where: { status: PayoutStatus.PROCESSING }, select: { id: true, amountJod: true } });
     payoutStuckGauge.set(stuck.length);
     let resolved = 0;
 
@@ -144,7 +145,7 @@ export class AdminPayoutFlow {
           logger.warn({ payoutId: payout.id }, 'reconcile: finalized a stuck payout (provider COMPLETED)');
         }
       } else if (state === 'FAILED') {
-        const failed = await prisma.payout.updateMany({ where: { id: payout.id, status: 'PROCESSING' }, data: { status: 'FAILED' } });
+        const failed = await prisma.payout.updateMany({ where: { id: payout.id, status: PayoutStatus.PROCESSING }, data: { status: PayoutStatus.FAILED } });
         if (failed.count > 0) {
           resolved++;
           payoutReconciledTotal.inc({ outcome: 'failed' });

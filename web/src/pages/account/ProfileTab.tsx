@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { Card, notify } from '../../components/shared';
+import { COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 export function ProfileTab() {
   const qc = useQueryClient();
@@ -17,11 +18,11 @@ export function ProfileTab() {
   }
   return (
     <Card className="p-6">
-      <label className="block" style={{ fontSize: 13, color: '#475569' }}>الاسم</label>
+      <label className="block" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>الاسم</label>
       <input value={value} onChange={(e) => setName(e.target.value)} className="mt-1 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none" style={{ fontSize: 14 }} />
-      <label className="block mt-4" style={{ fontSize: 13, color: '#475569' }}>رقم الهاتف</label>
+      <label className="block mt-4" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>رقم الهاتف</label>
       <input value={me?.phone ?? ''} readOnly className="mt-1 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none bg-slate-50" style={{ fontSize: 14, direction: 'ltr' }} />
-      <button onClick={() => void save()} className="mt-5 w-full h-12 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
+      <button onClick={() => void save()} className="mt-5 w-full h-12 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>حفظ</button>
     </Card>
   );
 }

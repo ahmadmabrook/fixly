@@ -1,4 +1,4 @@
-import { BgCheckStatus, TrustTier } from '@prisma/client';
+import { BgCheckStatus, TrustTier, TechnicianStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError } from '../../shared/errors';
 
@@ -23,12 +23,12 @@ interface TierInputs {
  */
 export function computeTier(t: TierInputs): TrustTier {
   const rating = Number(t.rating);
-  if (t.offPlatformFlags >= SUSPEND_FLAG_THRESHOLD) return 'PROBATION';
-  const vetted = t.bgCheckStatus === 'PASSED' && t.skillsTestPassedAt != null;
-  if (vetted && t.offPlatformFlags === 0 && rating >= 4.8 && t.jobsCompleted >= 100) return 'ELITE';
-  if (vetted && t.offPlatformFlags === 0 && rating >= 4.7 && t.jobsCompleted >= 30) return 'PRO';
-  if (vetted && t.offPlatformFlags < 2) return 'VERIFIED';
-  return 'PROBATION';
+  if (t.offPlatformFlags >= SUSPEND_FLAG_THRESHOLD) return TrustTier.PROBATION;
+  const vetted = t.bgCheckStatus === BgCheckStatus.PASSED && t.skillsTestPassedAt != null;
+  if (vetted && t.offPlatformFlags === 0 && rating >= 4.8 && t.jobsCompleted >= 100) return TrustTier.ELITE;
+  if (vetted && t.offPlatformFlags === 0 && rating >= 4.7 && t.jobsCompleted >= 30) return TrustTier.PRO;
+  if (vetted && t.offPlatformFlags < 2) return TrustTier.VERIFIED;
+  return TrustTier.PROBATION;
 }
 
 export class TrustService {
@@ -69,10 +69,10 @@ export class TrustService {
     });
     if (!t) throw new NotFoundError('Technician');
     const tier = computeTier(t);
-    const suspend = t.offPlatformFlags >= SUSPEND_FLAG_THRESHOLD && t.status === 'APPROVED';
+    const suspend = t.offPlatformFlags >= SUSPEND_FLAG_THRESHOLD && t.status === TechnicianStatus.APPROVED;
     return prisma.technicianProfile.update({
       where: { id: techId },
-      data: { trustTier: tier, ...(suspend ? { status: 'SUSPENDED' } : {}) },
+      data: { trustTier: tier, ...(suspend ? { status: TechnicianStatus.SUSPENDED } : {}) },
     });
   }
 
@@ -82,7 +82,7 @@ export class TrustService {
    */
   async recomputeAll(): Promise<{ scanned: number; changed: number; suspended: number }> {
     const techs = await prisma.technicianProfile.findMany({
-      where: { status: 'APPROVED' },
+      where: { status: TechnicianStatus.APPROVED },
       select: { id: true, trustTier: true, rating: true, jobsCompleted: true, offPlatformFlags: true, bgCheckStatus: true, skillsTestPassedAt: true },
     });
     let changed = 0;
@@ -93,7 +93,7 @@ export class TrustService {
       if (tier !== t.trustTier || suspend) {
         await prisma.technicianProfile.update({
           where: { id: t.id },
-          data: { trustTier: tier, ...(suspend ? { status: 'SUSPENDED' } : {}) },
+          data: { trustTier: tier, ...(suspend ? { status: TechnicianStatus.SUSPENDED } : {}) },
         });
         if (tier !== t.trustTier) changed++;
         if (suspend) suspended++;

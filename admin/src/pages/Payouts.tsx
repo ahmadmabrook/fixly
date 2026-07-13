@@ -1,8 +1,19 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, PayoutItem } from '../lib/api';
+import { api, DEFAULT_PAGE_SIZE, PayoutItem } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination } from '../components/shared';
-import { fmtJod } from '../lib/format';
+import { fmtJod, shortId } from '../lib/format';
+import {
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_BRAND_PRIMARY_DARK,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 const STATUSES = ['', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'];
 const STATUS_LABELS: Record<string, string> = { '': 'الكل', PENDING: 'معلّق', PROCESSING: 'قيد المعالجة', COMPLETED: 'مكتمل', FAILED: 'فشل' };
@@ -10,7 +21,7 @@ const STATUS_LABELS: Record<string, string> = { '': 'الكل', PENDING: 'معل
 export default function Payouts() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
-  const limit = 50;
+  const limit = DEFAULT_PAGE_SIZE;
   const [confirmPayout, setConfirmPayout] = useState<PayoutItem | null>(null);
   const qc = useQueryClient();
 
@@ -46,9 +57,9 @@ export default function Payouts() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>المدفوعات</h1>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-            إدارة مدفوعات الفنيين {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>المدفوعات</h1>
+          <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>
+            إدارة مدفوعات الفنيين {total > 0 && <>— <span style={{ color: COLOR_BRAND_PRIMARY }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
           </p>
         </div>
 
@@ -64,8 +75,8 @@ export default function Payouts() {
                 fontWeight: 600,
                 border: 'none',
                 cursor: 'pointer',
-                background: status === s ? '#1366D6' : '#E2E8F0',
-                color: status === s ? '#FFF' : '#475569',
+                background: status === s ? COLOR_BRAND_PRIMARY : COLOR_BORDER_LIGHT,
+                color: status === s ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                 transition: 'all .15s',
               }}
             >
@@ -82,7 +93,7 @@ export default function Payouts() {
         {!isLoading && !isError && payouts.length > 0 && (
           <TableWrapper>
             <thead>
-              <tr style={{ background: '#F8FAFC' }}>
+              <tr style={{ background: COLOR_SURFACE_SUBTLE }}>
                 <Th>المعرف</Th>
                 <Th>الفني</Th>
                 <Th>المبلغ</Th>
@@ -95,10 +106,10 @@ export default function Payouts() {
             <tbody>
               {payouts.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <Td><span style={{ fontFamily: 'Inter', fontSize: 12, color: '#94A3B8' }}>{p.id.slice(0, 8)}…</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter', fontSize: 12, color: COLOR_TEXT_SUBTLE }}>{shortId(p.id)}…</span></Td>
                   <Td>{p.technician?.user?.name ?? '—'}</Td>
                   <Td>
-                    <span style={{ fontFamily: 'Inter', fontWeight: 700, color: '#0E4FA8' }}>
+                    <span style={{ fontFamily: 'Inter', fontWeight: 700, color: COLOR_BRAND_PRIMARY_DARK }}>
                       {fmtJod(p.amountJod)} JD
                     </span>
                   </Td>

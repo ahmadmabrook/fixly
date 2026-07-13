@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, BookingListItem } from '../lib/api';
+import { api, BookingListItem, BookingStatus } from '../lib/api';
 import { getSharedSocket } from '../lib/socket';
+import { REALTIME_POLL_INTERVAL_MS } from '../lib/constants';
 
 // Same order-of-magnitude as the backend's write-through cooldown
 // (LOCATION_WRITETHROUGH_COOLDOWN_SECONDS) — no point pinging more often
 // than the server would persist it.
 const PUSH_THROTTLE_MS = 10_000;
-const TRACKABLE_STATUSES = ['EN_ROUTE', 'ARRIVED'];
+const TRACKABLE_STATUSES: BookingStatus[] = ['EN_ROUTE', 'ARRIVED'];
 
 /**
  * While a technician is marked available, periodically push their real
@@ -25,7 +26,7 @@ export function useTechnicianLocationPush(available: boolean) {
   const { data: jobs } = useQuery({
     queryKey: ['tech-active'],
     queryFn: () => api.get<BookingListItem[]>('/bookings'),
-    refetchInterval: 30_000,
+    refetchInterval: REALTIME_POLL_INTERVAL_MS,
     enabled: available,
   });
   const trackedBookingId = (jobs ?? []).find((b) => TRACKABLE_STATUSES.includes(b.status))?.id ?? null;

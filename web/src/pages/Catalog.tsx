@@ -4,6 +4,9 @@ import { Search, ChevronDown } from 'lucide-react';
 import { useServices, type ServiceSort } from '../hooks/useServices';
 import { useT } from '../lib/i18n';
 import { Card, ServiceIcon, PriceBadge, SkeletonList } from '../components/shared';
+import { COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 const SORT_OPTIONS: ReadonlyArray<readonly [ServiceSort, string]> = [
   ['price_asc', 'السعر: الأقل'],
@@ -24,9 +27,9 @@ export default function Catalog() {
   const [debouncedQ, setDebouncedQ] = useState('');
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Debounce search input (300ms)
+  // Debounce search input
   useEffect(() => {
-    timerRef.current = setTimeout(() => setDebouncedQ(q.trim()), 300);
+    timerRef.current = setTimeout(() => setDebouncedQ(q.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timerRef.current);
   }, [q]);
 
@@ -45,7 +48,7 @@ export default function Catalog() {
 
       {/* Search */}
       <div className="mt-5 relative max-w-md">
-        <Search size={18} color="#94A3B8" style={{ position: 'absolute', insetInlineStart: 14, top: 15 }} />
+        <Search size={18} color={COLOR_TEXT_MUTED} style={{ position: 'absolute', insetInlineStart: 14, top: 15 }} />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -72,12 +75,12 @@ export default function Catalog() {
               onClick={() => setCategory('')}
               className="shrink-0 px-4 h-9 rounded-full"
               style={{
-                background: !category ? '#1366D6' : '#FFF',
-                color: !category ? '#FFF' : '#475569',
+                background: !category ? COLOR_BRAND_PRIMARY : COLOR_WHITE,
+                color: !category ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                 fontWeight: 600,
                 fontSize: 13,
                 border: '1px solid',
-                borderColor: !category ? '#1366D6' : '#E2E8F0',
+                borderColor: !category ? COLOR_BRAND_PRIMARY : COLOR_BORDER,
               }}
             >
               الكل
@@ -90,12 +93,12 @@ export default function Catalog() {
                 onClick={() => setCategory(cat)}
                 className="shrink-0 px-4 h-9 rounded-full"
                 style={{
-                  background: category === cat ? '#1366D6' : '#FFF',
-                  color: category === cat ? '#FFF' : '#475569',
+                  background: category === cat ? COLOR_BRAND_PRIMARY : COLOR_WHITE,
+                  color: category === cat ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                   fontWeight: 600,
                   fontSize: 13,
                   border: '1px solid',
-                  borderColor: category === cat ? '#1366D6' : '#E2E8F0',
+                  borderColor: category === cat ? COLOR_BRAND_PRIMARY : COLOR_BORDER,
                 }}
               >
                 {cat}
@@ -114,10 +117,10 @@ export default function Catalog() {
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: '#475569',
+              color: COLOR_TEXT_SECONDARY,
               paddingInlineStart: 14,
               paddingInlineEnd: 32,
-              background: '#FFF',
+              background: COLOR_WHITE,
             }}
           >
             <option value="">الترتيب</option>
@@ -127,7 +130,7 @@ export default function Catalog() {
           </select>
           <ChevronDown
             size={14}
-            style={{ position: 'absolute', insetInlineEnd: 10, top: 12, pointerEvents: 'none', color: '#94A3B8' }}
+            style={{ position: 'absolute', insetInlineEnd: 10, top: 12, pointerEvents: 'none', color: COLOR_TEXT_MUTED }}
           />
         </div>
       </div>
@@ -136,15 +139,15 @@ export default function Catalog() {
 
       {isError && (
         <div className="mt-6 text-center">
-          <p style={{ color: '#B91C1C' }}>تعذّر تحميل الخدمات.</p>
-          <button onClick={() => refetch()} className="mt-2 px-4 py-2 rounded-lg" style={{ background: '#1366D6', color: '#FFF', fontWeight: 600 }}>
+          <p style={{ color: COLOR_ERROR_TEXT }}>تعذّر تحميل الخدمات.</p>
+          <button onClick={() => refetch()} className="mt-2 px-4 py-2 rounded-lg" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 600 }}>
             إعادة المحاولة
           </button>
         </div>
       )}
 
       {!isLoading && !isError && services.length === 0 && (
-        <p className="mt-6 text-center" style={{ color: '#94A3B8' }}>{t('catalog.empty')}</p>
+        <p className="mt-6 text-center" style={{ color: COLOR_TEXT_MUTED }}>{t('catalog.empty')}</p>
       )}
 
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -159,7 +162,7 @@ export default function Catalog() {
               <ServiceIcon nameAr={s.nameAr} size={24} />
               <div className="flex-1 min-w-0">
                 <div style={{ fontWeight: 700, fontSize: 17 }}>{s.nameAr}</div>
-                <div style={{ color: '#475569', fontSize: 12 }}>
+                <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>
                   {t('catalog.duration')}: <span style={{ fontFamily: 'Inter' }}>{s.durationMin}</span> {t('catalog.minutes')}
                 </div>
               </div>

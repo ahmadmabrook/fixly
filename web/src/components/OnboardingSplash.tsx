@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_BRAND_PRIMARY, COLOR_TEXT_PRIMARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../lib/theme';
 
 const STORAGE_KEY = 'fixly_onboarded';
 
@@ -76,11 +77,11 @@ export default function OnboardingSplash() {
     >
       <div
         className="w-full max-w-[380px] mx-4 rounded-2xl p-8 text-center"
-        style={{ background: '#FFF' }}
+        style={{ background: COLOR_WHITE }}
       >
         <div style={{ fontSize: 64, lineHeight: 1 }} aria-hidden="true">{slide.emoji}</div>
-        <h2 className="mt-5" style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>{slide.title}</h2>
-        <p className="mt-2" style={{ color: '#64748B', fontSize: 14, lineHeight: 1.6 }}>{slide.subtitle}</p>
+        <h2 className="mt-5" style={{ fontWeight: 800, fontSize: 20, color: COLOR_TEXT_PRIMARY }}>{slide.title}</h2>
+        <p className="mt-2" style={{ color: COLOR_TEXT_SUBTLE, fontSize: 14, lineHeight: 1.6 }}>{slide.subtitle}</p>
 
         {/* Dot indicators — progress controls, not a real tablist (no tabpanels) */}
         <div className="mt-6 flex justify-center gap-2" role="group" aria-label="شرائح التعريف">
@@ -95,7 +96,7 @@ export default function OnboardingSplash() {
               style={{
                 width: i === current ? 24 : 8,
                 height: 8,
-                background: i === current ? '#1366D6' : '#CBD5E1',
+                background: i === current ? COLOR_BRAND_PRIMARY : COLOR_BORDER_STRONG,
                 border: 'none',
                 transition: 'width 0.2s, background 0.2s',
               }}
@@ -107,7 +108,7 @@ export default function OnboardingSplash() {
           <button
             onClick={dismiss}
             className="mt-6 w-full h-12 rounded-xl"
-            style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 15 }}
+            style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 15 }}
           >
             ابدأ الآن
           </button>
@@ -116,14 +117,14 @@ export default function OnboardingSplash() {
             <button
               onClick={dismiss}
               className="flex-1 h-12 rounded-xl"
-              style={{ color: '#64748B', fontWeight: 600, fontSize: 14, border: '1px solid #E2E8F0' }}
+              style={{ color: COLOR_TEXT_SUBTLE, fontWeight: 600, fontSize: 14, border: `1px solid ${COLOR_BORDER}` }}
             >
               تخطّي
             </button>
             <button
               onClick={next}
               className="flex-1 h-12 rounded-xl"
-              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 14 }}
+              style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 14 }}
             >
               التالي
             </button>

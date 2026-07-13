@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, TechEarnings, BankAccount } from '../../lib/api';
 import { Card, notify } from '../../components/shared';
+import { MIN_WITHDRAWAL_JOD } from '../../lib/constants';
+import { COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 export function Earnings({ onChange }: { onChange: () => void }) {
   const qc = useQueryClient();
@@ -38,14 +40,14 @@ export function Earnings({ onChange }: { onChange: () => void }) {
       </div>
       <Card className="p-5">
         <h3 style={{ fontWeight: 700, fontSize: 16 }}>سحب الرصيد</h3>
-        <p style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>الحد الأدنى 20 ديناراً — مرة كل 24 ساعة.</p>
+        <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, marginTop: 2 }}>الحد الأدنى {MIN_WITHDRAWAL_JOD} ديناراً — مرة كل 24 ساعة.</p>
         <input value={amount} onChange={(ev) => setAmount(ev.target.value.replace(/[^\d.]/g, ''))} placeholder="المبلغ (دينار)" className="mt-3 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
         <input value={iban} onChange={(ev) => { setIban(ev.target.value); setPrefilled(false); }} placeholder="IBAN" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
         {prefilled && (
-          <p className="mt-1" style={{ color: '#1366D6', fontSize: 11 }}>تم استخدام آخر IBAN مُسجّل</p>
+          <p className="mt-1" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 11 }}>تم استخدام آخر IBAN مُسجّل</p>
         )}
         <input value={bankName} onChange={(ev) => setBankName(ev.target.value)} placeholder="اسم البنك (اختياري)" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
-        <button onClick={() => void withdraw()} disabled={Number(amount) < 20} className="mt-3 w-full h-12 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>سحب الرصيد</button>
+        <button onClick={() => void withdraw()} disabled={Number(amount) < MIN_WITHDRAWAL_JOD} className="mt-3 w-full h-12 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>سحب الرصيد</button>
       </Card>
     </div>
   );
@@ -53,9 +55,9 @@ export function Earnings({ onChange }: { onChange: () => void }) {
 
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <Card className="p-4 text-center" style={highlight ? { background: '#E8F1FE' } : undefined}>
-      <div style={{ color: '#475569', fontSize: 12 }}>{label}</div>
-      <div style={{ fontWeight: 800, fontSize: 20, color: highlight ? '#0E4FA8' : '#0F172A' }}>
+    <Card className="p-4 text-center" style={highlight ? { background: COLOR_BRAND_PRIMARY_TINT } : undefined}>
+      <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>{label}</div>
+      <div style={{ fontWeight: 800, fontSize: 20, color: highlight ? COLOR_BRAND_PRIMARY_DARK : COLOR_TEXT_PRIMARY }}>
         <span style={{ fontFamily: 'Inter' }}>{Number(value)}</span> <span style={{ fontSize: 12 }}>د</span>
       </div>
     </Card>

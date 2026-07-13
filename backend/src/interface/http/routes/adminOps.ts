@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { GuaranteeStatus, SupportStatus, SupportCategory, WithdrawalStatus } from '@prisma/client';
+import { GuaranteeStatus, SupportStatus, SupportCategory, WithdrawalStatus, AdminRole, BroadcastSegment } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
-import { validate } from '../validate';
+import { validate, paginationQuery } from '../validate';
 import { requireAdminRole } from '../middleware/auth';
 import { AdminService } from '../../../application/admin/AdminService';
 import { AdminOpsService } from '../../../application/admin/AdminOpsService';
@@ -14,6 +14,7 @@ const GUARANTEE_STATUSES = Object.values(GuaranteeStatus);
 const SUPPORT_STATUSES = Object.values(SupportStatus);
 const SUPPORT_CATEGORIES = Object.values(SupportCategory);
 const WITHDRAWAL_STATUSES = Object.values(WithdrawalStatus);
+const BROADCAST_SEGMENTS = Object.values(BroadcastSegment);
 
 /**
  * Extended admin surface (guarantee, support, broadcast, financial reports,
@@ -81,7 +82,7 @@ adminOpsRouter.get(
 adminOpsRouter.get(
   '/customers/:id/bookings',
   requireAdminRole('OPS', 'SUPPORT'),
-  validate([param('id').isUUID(), query('limit').optional().isInt({ min: 1, max: 200 }).toInt(), query('offset').optional().isInt({ min: 0 }).toInt()]),
+  validate([param('id').isUUID(), ...paginationQuery()]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -112,7 +113,7 @@ adminOpsRouter.post(
 adminOpsRouter.get(
   '/guarantee',
   requireAdminRole('OPS'),
-  validate([query('status').optional().isIn(GUARANTEE_STATUSES), query('limit').optional().isInt({ min: 1, max: 200 }).toInt(), query('offset').optional().isInt({ min: 0 }).toInt()]),
+  validate([query('status').optional().isIn(GUARANTEE_STATUSES), ...paginationQuery()]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -149,7 +150,7 @@ adminOpsRouter.post(
 adminOpsRouter.get(
   '/support',
   requireAdminRole('SUPPORT'),
-  validate([query('status').optional().isIn(SUPPORT_STATUSES), query('limit').optional().isInt({ min: 1, max: 200 }).toInt(), query('offset').optional().isInt({ min: 0 }).toInt()]),
+  validate([query('status').optional().isIn(SUPPORT_STATUSES), ...paginationQuery()]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -210,7 +211,7 @@ adminOpsRouter.post(
   validate([
     body('titleAr').isString().trim().isLength({ min: 1, max: 140 }),
     body('bodyAr').isString().trim().isLength({ min: 1, max: 1000 }),
-    body('segment').isIn(['ALL', 'CUSTOMERS', 'TECHNICIANS']),
+    body('segment').isIn(BROADCAST_SEGMENTS),
   ]),
   asyncHandler(async (req, res) => {
     const bc = await adminOpsService.sendBroadcast(req.user!.userId, req.body.titleAr, req.body.bodyAr, req.body.segment, req.ip);
@@ -221,7 +222,7 @@ adminOpsRouter.post(
 adminOpsRouter.get(
   '/broadcasts',
   requireAdminRole('OPS'),
-  validate([query('limit').optional().isInt({ min: 1, max: 200 }).toInt(), query('offset').optional().isInt({ min: 0 }).toInt()]),
+  validate(paginationQuery()),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -231,7 +232,8 @@ adminOpsRouter.get(
 );
 
 // ── Admin user management (SUPER_ADMIN only) ──────────────
-const ADMIN_ROLES = ['SUPER_ADMIN', 'OPS', 'FINANCE', 'SUPPORT'];
+// Derived from the Prisma enum so it can never drift from the schema.
+const ADMIN_ROLES = Object.values(AdminRole);
 
 adminOpsRouter.get(
   '/admins',
@@ -345,7 +347,7 @@ adminOpsRouter.get(
 adminOpsRouter.get(
   '/withdrawals',
   requireAdminRole('FINANCE'),
-  validate([query('status').optional().isIn(WITHDRAWAL_STATUSES), query('limit').optional().isInt({ min: 1, max: 200 }).toInt(), query('offset').optional().isInt({ min: 0 }).toInt()]),
+  validate([query('status').optional().isIn(WITHDRAWAL_STATUSES), ...paginationQuery()]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;

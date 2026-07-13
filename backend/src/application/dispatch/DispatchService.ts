@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, TechnicianStatus, TrustTier, BookingStatus, PaymentStatus, DispatchOfferStatus } from '@prisma/client';
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis, pruneStaleTechnicians, TECH_LOCATIONS_KEY } from '../../infrastructure/cache/redis';
@@ -6,7 +6,8 @@ import { env } from '../../shared/env';
 import { logger } from '../../shared/logger';
 import { haversineKm } from '../../shared/geo';
 import { PROBATION_MAX_RADIUS_KM } from '../technician/TrustService';
-import { ConflictError, NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError, PrismaErrorCode } from '../../shared/errors';
+import { OutboxEventType } from '../../shared/outboxEvents';
 import {
   dispatchOffersTotal, dispatchRoundsTotal,
   dispatchExhaustedTotal,
@@ -53,7 +54,7 @@ export class DispatchService {
     const techs = await prisma.technicianProfile.findMany({
       where: {
         id: { in: candidateIds },
-        status: 'APPROVED',
+        status: TechnicianStatus.APPROVED,
         isAvailable: true,
         services: { some: { id: serviceId } },
         currentLat: { not: null },
@@ -64,7 +65,7 @@ export class DispatchService {
     // GEOSEARCH already bounded candidates by radiusKm; PROBATION still needs
     // the tighter cap, which requires the actual distance.
     return techs.filter((t) => {
-      const cap = t.trustTier === 'PROBATION' ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
+      const cap = t.trustTier === TrustTier.PROBATION ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
       return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
     });
   }
@@ -77,7 +78,7 @@ export class DispatchService {
   ) {
     const techs = await prisma.technicianProfile.findMany({
       where: {
-        status: 'APPROVED',
+        status: TechnicianStatus.APPROVED,
         isAvailable: true,
         services: { some: { id: serviceId } },
         currentLat: { not: null },
@@ -87,7 +88,7 @@ export class DispatchService {
       select: { id: true, userId: true, currentLat: true, currentLng: true, trustTier: true },
     });
     return techs.filter((t) => {
-      const cap = t.trustTier === 'PROBATION' ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
+      const cap = t.trustTier === TrustTier.PROBATION ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
       return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
     });
   }
@@ -118,14 +119,14 @@ export class DispatchService {
       select: { status: true, dispatchRound: true, serviceId: true, addressLat: true, addressLng: true },
     });
     if (!booking) return;
-    if (booking.status !== 'PENDING' || booking.dispatchRound !== 0) return;
+    if (booking.status !== BookingStatus.PENDING || booking.dispatchRound !== 0) return;
 
     // Only dispatch if payment is authorized (money safety).
     const payment = await prisma.payment.findUnique({
       where: { bookingId },
       select: { status: true },
     });
-    if (!payment || payment.status !== 'PRE_AUTHORIZED') return;
+    if (!payment || payment.status !== PaymentStatus.PRE_AUTHORIZED) return;
 
     await this.openRound(bookingId, 1, env().DISPATCH_INITIAL_RADIUS_KM);
   }
@@ -158,7 +159,7 @@ export class DispatchService {
 
       await tx.dispatchOffer.createMany({
         data: techs.map((t) => ({
-          bookingId, technicianId: t.id, round, radiusKm, status: 'OFFERED' as const,
+          bookingId, technicianId: t.id, round, radiusKm, status: DispatchOfferStatus.OFFERED,
         })),
         skipDuplicates: true,
       });
@@ -199,7 +200,7 @@ export class DispatchService {
           serviceId: true, addressLat: true, addressLng: true,
         },
       });
-      if (!booking || booking.status !== 'PENDING') return;
+      if (!booking || booking.status !== BookingStatus.PENDING) return;
 
       const { DISPATCH_INITIAL_RADIUS_KM, DISPATCH_RADIUS_STEP_KM, DISPATCH_MAX_RADIUS_KM } = env();
       const nextRadius = Math.min(
@@ -225,8 +226,8 @@ export class DispatchService {
 
       // Expire still-OFFERED offers from the previous round.
       const expired = await prisma.dispatchOffer.updateMany({
-        where: { bookingId, status: 'OFFERED' },
-        data: { status: 'EXPIRED' },
+        where: { bookingId, status: DispatchOfferStatus.OFFERED },
+        data: { status: DispatchOfferStatus.EXPIRED },
       });
       if (expired.count > 0) dispatchOffersTotal.inc({ result: 'expired' }, expired.count);
 
@@ -245,8 +246,8 @@ export class DispatchService {
     if (!profile) throw new NotFoundError('TechnicianProfile');
 
     const updated = await prisma.dispatchOffer.updateMany({
-      where: { bookingId, technicianId: profile.id, status: 'OFFERED' },
-      data: { status: 'REJECTED', respondedAt: new Date() },
+      where: { bookingId, technicianId: profile.id, status: DispatchOfferStatus.OFFERED },
+      data: { status: DispatchOfferStatus.REJECTED, respondedAt: new Date() },
     });
     if (updated.count === 0) throw new ConflictError('No active offer for this booking');
     dispatchOffersTotal.inc({ result: 'rejected' });
@@ -260,7 +261,7 @@ export class DispatchService {
 
     // If zero OFFERED offers remain, advance immediately.
     const remaining = await prisma.dispatchOffer.count({
-      where: { bookingId, status: 'OFFERED' },
+      where: { bookingId, status: DispatchOfferStatus.OFFERED },
     });
     if (remaining === 0) await this.advanceRound(bookingId);
   }
@@ -274,7 +275,7 @@ export class DispatchService {
 
     // (a) Bookings whose current round has expired.
     const expired = await prisma.booking.findMany({
-      where: { status: 'PENDING', dispatchExpiresAt: { lt: now } },
+      where: { status: BookingStatus.PENDING, dispatchExpiresAt: { lt: now } },
       select: { id: true },
     });
     for (const b of expired) {
@@ -284,7 +285,7 @@ export class DispatchService {
 
     // (b) Bootstrap: PENDING bookings with no dispatch yet + authorized payment.
     const unstarted = await prisma.booking.findMany({
-      where: { status: 'PENDING', dispatchRound: 0 },
+      where: { status: BookingStatus.PENDING, dispatchRound: 0 },
       select: { id: true },
     });
     for (const b of unstarted) {
@@ -297,12 +298,12 @@ export class DispatchService {
   private async exhaust(bookingId: string): Promise<void> {
     await prisma.$transaction(async (tx) => {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
-      if (!fresh || fresh.status !== 'PENDING') return;
+      if (!fresh || fresh.status !== BookingStatus.PENDING) return;
 
       await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
         data: {
-          status: 'CANCELLED',
+          status: BookingStatus.CANCELLED,
           cancelledAt: new Date(),
           cancelReason: 'no_technician_available',
           dispatchExpiresAt: null,
@@ -314,7 +315,7 @@ export class DispatchService {
       await tx.outboxEvent.create({
         data: {
           bookingId,
-          eventType: 'booking.cancelled',
+          eventType: OutboxEventType.BOOKING_CANCELLED,
           payload: { bookingId, reason: 'no_technician_available' },
         },
       });
@@ -343,7 +344,7 @@ export class DispatchService {
         sentAt: new Date(),
       },
     }).catch((err) => {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return;
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) return;
       logger.warn({ err, dedupeKey }, 'broadcastOffer: notification insert failed');
     });
   }

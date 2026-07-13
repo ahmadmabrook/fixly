@@ -4,6 +4,7 @@ import { api, ApiError, TechnicianProfileMe } from '../../lib/api';
 import { SkeletonList } from '../../components/shared';
 import { Onboarding } from './TechPortal.Onboarding';
 import { Dashboard } from './TechPortal.Dashboard';
+import { COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 export default function TechPortal() {
   const { data: me, isLoading, error, refetch } = useQuery({
@@ -25,12 +26,12 @@ export default function TechPortal() {
 function StatusScreen({ title, body, tone, retry }: { title: string; body: string; tone: 'info' | 'error'; retry?: () => void }) {
   return (
     <main className="max-w-[500px] mx-auto px-6 py-16 text-center">
-      <div className="inline-flex w-16 h-16 rounded-full items-center justify-center" style={{ background: tone === 'error' ? '#FEE2E2' : '#E8F1FE' }}>
-        <Clock size={28} color={tone === 'error' ? '#B91C1C' : '#1366D6'} />
+      <div className="inline-flex w-16 h-16 rounded-full items-center justify-center" style={{ background: tone === 'error' ? COLOR_ERROR_BG : COLOR_BRAND_PRIMARY_TINT }}>
+        <Clock size={28} color={tone === 'error' ? COLOR_ERROR_TEXT : COLOR_BRAND_PRIMARY} />
       </div>
       <h1 className="mt-4" style={{ fontWeight: 800, fontSize: 22 }}>{title}</h1>
-      <p className="mt-2" style={{ color: '#475569', fontSize: 15 }}>{body}</p>
-      {retry && <button onClick={retry} className="mt-5 px-5 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إعادة التقديم</button>}
+      <p className="mt-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 15 }}>{body}</p>
+      {retry && <button onClick={retry} className="mt-5 px-5 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>إعادة التقديم</button>}
     </main>
   );
 }

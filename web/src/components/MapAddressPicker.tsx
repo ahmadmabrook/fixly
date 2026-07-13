@@ -3,6 +3,7 @@ import type { Map as MbMap, Marker as MbMarker } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Search, LocateFixed } from 'lucide-react';
 import { MAPBOX_TOKEN, hasMapbox, AMMAN, forwardGeocode, reverseGeocode, type GeocodeResult } from '../lib/mapbox';
+import { COLOR_BG_MAP_PLACEHOLDER, COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WARNING_TEXT } from '../lib/theme';
 
 export interface AddressValue {
   address: string;
@@ -63,7 +64,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
         });
         mapRef.current = map;
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left');
-        const marker = new mapboxgl.Marker({ draggable: true, color: '#1366D6' }).setLngLat([start.lng, start.lat]).addTo(map);
+        const marker = new mapboxgl.Marker({ draggable: true, color: COLOR_BRAND_PRIMARY }).setLngLat([start.lng, start.lat]).addTo(map);
         markerRef.current = marker;
         marker.on('dragend', () => {
           const ll = marker.getLngLat();
@@ -156,7 +157,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
       <div className="relative">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search size={16} color="#94A3B8" style={{ position: 'absolute', insetInlineStart: 12, top: 13 }} aria-hidden="true" />
+            <Search size={16} color={COLOR_TEXT_MUTED} style={{ position: 'absolute', insetInlineStart: 12, top: 13 }} aria-hidden="true" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -176,7 +177,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
             type="button"
             onClick={useMyLocation}
             className="px-3 h-11 rounded-xl flex items-center gap-1 shrink-0"
-            style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 13 }}
+            style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 600, fontSize: 13 }}
             aria-label="استخدم موقعي الحالي"
           >
             <LocateFixed size={16} /> موقعي
@@ -196,7 +197,7 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
                   tabIndex={-1}
                   onClick={() => selectSuggestion(i)}
                   className="w-full text-start px-3 py-2 hover:bg-slate-50"
-                  style={{ fontSize: 13, background: i === activeIndex ? '#F1F5F9' : undefined }}
+                  style={{ fontSize: 13, background: i === activeIndex ? COLOR_BG_SUBTLE : undefined }}
                 >
                   {s.address}
                 </button>
@@ -211,23 +212,23 @@ export default function MapAddressPicker({ value, onChange, height = 280 }: { va
         <div className="mt-3 rounded-xl overflow-hidden relative" style={{ height }}>
           <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="خريطة لتحديد الموقع" />
           {!ready && (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ background: '#EEF2F7', color: '#94A3B8', fontSize: 13 }}>
+            <div className="absolute inset-0 flex items-center justify-center" style={{ background: COLOR_BG_MAP_PLACEHOLDER, color: COLOR_TEXT_MUTED, fontSize: 13 }}>
               جارٍ تحميل الخريطة…
             </div>
           )}
         </div>
       ) : mapError ? (
-        <p className="mt-3 p-3 rounded-xl" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>
+        <p className="mt-3 p-3 rounded-xl" style={{ background: COLOR_ERROR_BG, color: COLOR_ERROR_TEXT, fontSize: 13 }}>
           تعذّر تحميل الخريطة — أدخل عنوانك يدوياً أدناه.
         </p>
       ) : (
-        <p className="mt-3 p-3 rounded-xl" style={{ background: '#FEF3C7', color: '#B45309', fontSize: 13 }}>
+        <p className="mt-3 p-3 rounded-xl" style={{ background: COLOR_WARNING_BG, color: COLOR_WARNING_TEXT, fontSize: 13 }}>
           الخريطة غير متاحة — أدخل عنوانك يدوياً أدناه.
         </p>
       )}
 
       {/* Always-present, editable address line (source for addressLine). */}
-      <label htmlFor="addr-line" className="block mt-3" style={{ fontSize: 12, color: '#475569' }}>العنوان</label>
+      <label htmlFor="addr-line" className="block mt-3" style={{ fontSize: 12, color: COLOR_TEXT_SECONDARY }}>العنوان</label>
       <input
         id="addr-line"
         value={value.address}

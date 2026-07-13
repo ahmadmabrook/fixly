@@ -8,11 +8,34 @@ import {
 import { DollarSign, ClipboardList, Users, Star, TrendingUp, UserCheck, ShieldCheck, Wallet } from 'lucide-react';
 import { api, AdminStats, FinancialReport, OperationalStats, ActivityFeedItem, AtRiskOrder } from '../lib/api';
 import { KpiCard, OpsStatTile, Card, SkeletonKpiRow, SkeletonChart, EmptyState } from '../components/shared';
-import { fmtJod } from '../lib/format';
-
-function isoDaysAgo(days: number): string {
-  return new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-}
+import { fmtJod, isoDaysAgo } from '../lib/format';
+import {
+  COLOR_ACCENT_TEAL,
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_CHART_AMBER,
+  COLOR_CHART_EMERALD,
+  COLOR_CHART_GREEN,
+  COLOR_CHART_INDIGO,
+  COLOR_CHART_ORANGE,
+  COLOR_CHART_PINK,
+  COLOR_CHART_PURPLE,
+  COLOR_CHART_RED,
+  COLOR_CHART_ROSE,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_WARNING,
+  COLOR_STATUS_WARNING_BG,
+  COLOR_SURFACE_MUTED,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_BODY,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 /** Format a 0-100 percent value (backend already scales via rate()) as a whole-number string, e.g. 87.3 → "87%". */
 function fmtRate(rate: number): string {
@@ -50,20 +73,22 @@ function fmtOverdueAr(iso: string): string {
 }
 
 const ACTIVITY_META: Record<ActivityFeedItem['type'], { icon: string; color: string }> = {
-  booking_status: { icon: '✅', color: '#15803D' },
-  payment_captured: { icon: '💰', color: '#1366D6' },
-  guarantee_opened: { icon: '⚠️', color: '#B91C1C' },
-  new_customer: { icon: '👤', color: '#0FB5A6' },
+  booking_status: { icon: '✅', color: COLOR_STATUS_SUCCESS },
+  payment_captured: { icon: '💰', color: COLOR_BRAND_PRIMARY },
+  guarantee_opened: { icon: '⚠️', color: COLOR_STATUS_DANGER },
+  new_customer: { icon: '👤', color: COLOR_ACCENT_TEAL },
 };
 
 const RISK_LABEL: Record<AtRiskOrder['riskType'], { ar: string; bg: string; fg: string }> = {
-  late: { ar: 'متأخر', bg: '#FEE2E2', fg: '#B91C1C' },
-  unassigned: { ar: 'غير معيّن', bg: '#FEF3C7', fg: '#B45309' },
+  late: { ar: 'متأخر', bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
+  unassigned: { ar: 'غير معيّن', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
 };
 
-const BRAND_BLUE = '#1366D6';
-const ACCENT_TEAL = '#0FB5A6';
-const SERVICE_CHART_COLORS = ['#1366D6', '#0FB5A6', '#F59E0B', '#8B5CF6', '#EC4899', '#10B981', '#EF4444', '#6366F1'];
+const SERVICE_CHART_COLORS = [COLOR_BRAND_PRIMARY, COLOR_ACCENT_TEAL, COLOR_CHART_AMBER, COLOR_CHART_PURPLE, COLOR_CHART_PINK, COLOR_CHART_EMERALD, COLOR_CHART_RED, COLOR_CHART_INDIGO];
+
+/** Poll interval for the live-activity feed and at-risk-orders widgets —
+ *  frequent enough to feel "live" without hammering the API. */
+const LIVE_POLL_INTERVAL_MS = 30_000;
 
 export default function Dashboard() {
   const { data: stats, isLoading, isError } = useQuery<AdminStats>({
@@ -90,14 +115,14 @@ export default function Dashboard() {
     queryKey: ['admin-activity-feed'],
     queryFn: () => api.get<ActivityFeedItem[]>('/activity-feed?limit=20'),
     enabled: !isLoading && !isError,
-    refetchInterval: 30_000,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
   });
 
   const { data: atRisk, isError: atRiskError } = useQuery<{ items: AtRiskOrder[]; total: number }>({
     queryKey: ['admin-at-risk'],
     queryFn: () => api.list<AtRiskOrder>('/orders/at-risk?limit=20'),
     enabled: !isLoading && !isError,
-    refetchInterval: 30_000,
+    refetchInterval: LIVE_POLL_INTERVAL_MS,
   });
 
   const [riskFilter, setRiskFilter] = useState<'' | AtRiskOrder['riskType']>('');
@@ -128,8 +153,8 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>لوحة التحكم</h1>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>نظرة عامة على المنصة</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>لوحة التحكم</h1>
+          <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>نظرة عامة على المنصة</p>
         </div>
         <SkeletonKpiRow />
         <SkeletonKpiRow />
@@ -143,7 +168,7 @@ export default function Dashboard() {
 
   if (isError || !stats) {
     return (
-      <div style={{ color: '#B91C1C', padding: 24 }}>
+      <div style={{ color: COLOR_STATUS_DANGER, padding: 24 }}>
         تعذّر تحميل الإحصائيات
       </div>
     );
@@ -152,38 +177,38 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>لوحة التحكم</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>نظرة عامة على المنصة</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>لوحة التحكم</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>نظرة عامة على المنصة</p>
       </div>
 
       {/* Primary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="إيرادات اليوم"       value={`${fmtJod(stats.todayRevenueJod)} JD`} icon={<DollarSign size={18} />} color="#1366D6" />
-        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} icon={<ClipboardList size={18} />} color="#0FB5A6" />
-        <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} icon={<Users size={18} />} color="#F5A623" />
-        <KpiCard label="متوسط التقييم"       value={fmtJod(stats.avgRating)} icon={<Star size={18} />} color="#1FAA59" />
+        <KpiCard label="إيرادات اليوم"       value={`${fmtJod(stats.todayRevenueJod)} JD`} icon={<DollarSign size={18} />} color={COLOR_BRAND_PRIMARY} />
+        <KpiCard label="إجمالي الحجوزات"     value={stats.totalBookings} sub={`${stats.pendingBookings} معلّقة`} icon={<ClipboardList size={18} />} color={COLOR_ACCENT_TEAL} />
+        <KpiCard label="فنيون متاحون الآن"   value={stats.activeTechnicians} icon={<Users size={18} />} color={COLOR_CHART_ORANGE} />
+        <KpiCard label="متوسط التقييم"       value={fmtJod(stats.avgRating)} icon={<Star size={18} />} color={COLOR_CHART_GREEN} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="الإيرادات الإجمالية" value={`${fmtJod(stats.totalRevenueJod)} JD`} icon={<TrendingUp size={18} />} color="#1366D6" />
+        <KpiCard label="الإيرادات الإجمالية" value={`${fmtJod(stats.totalRevenueJod)} JD`} icon={<TrendingUp size={18} />} color={COLOR_BRAND_PRIMARY} />
         <KpiCard
           label="فنيون موثّقون"
           value={stats.verifiedTechnicians}
           sub={`${stats.totalTechnicians > 0 ? Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100) : 0}% من ${stats.totalTechnicians}`}
-          icon={<UserCheck size={18} />} color="#0FB5A6"
+          icon={<UserCheck size={18} />} color={COLOR_ACCENT_TEAL}
         />
-        <KpiCard label="تذاكر ضمان مفتوحة"   value={stats.openGuarantees} icon={<ShieldCheck size={18} />} color="#E5484D" />
-        <KpiCard label="مدفوعات معلّقة"      value={stats.pendingPayouts} icon={<Wallet size={18} />} color="#F5A623" />
+        <KpiCard label="تذاكر ضمان مفتوحة"   value={stats.openGuarantees} icon={<ShieldCheck size={18} />} color={COLOR_CHART_ROSE} />
+        <KpiCard label="مدفوعات معلّقة"      value={stats.pendingPayouts} icon={<Wallet size={18} />} color={COLOR_CHART_ORANGE} />
       </div>
 
       {/* Operational KPIs */}
       <div>
-        <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 12 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY, marginBottom: 12 }}>
           مؤشرات تشغيلية
         </h2>
         {operationalError ? (
           <Card className="p-6">
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center' }}>تعذّر تحميل المؤشرات التشغيلية</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center' }}>تعذّر تحميل المؤشرات التشغيلية</p>
           </Card>
         ) : !operational ? (
           <SkeletonKpiRow />
@@ -202,20 +227,20 @@ export default function Dashboard() {
       {/* Live activity + at-risk orders */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-5 lg:col-span-2">
-          <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 12 }}>نشاط مباشر</h2>
+          <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY, marginBottom: 12 }}>نشاط مباشر</h2>
           {activityError ? (
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 24 }}>تعذّر تحميل النشاط</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center', padding: 24 }}>تعذّر تحميل النشاط</p>
           ) : activityItems.length === 0 ? (
             <EmptyState message="لا يوجد نشاط حديث" />
           ) : (
             <div>
               {activityItems.map((a, i) => {
-                const meta = ACTIVITY_META[a.type] ?? { icon: '•', color: '#64748B' };
+                const meta = ACTIVITY_META[a.type] ?? { icon: '•', color: COLOR_TEXT_MUTED };
                 return (
                   <div
                     key={i}
                     className="flex items-center gap-3 py-2"
-                    style={{ borderBottom: i < activityItems.length - 1 ? '1px solid #F1F5F9' : undefined }}
+                    style={{ borderBottom: i < activityItems.length - 1 ? `1px solid ${COLOR_SURFACE_MUTED}` : undefined }}
                   >
                     <span
                       className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
@@ -223,8 +248,8 @@ export default function Dashboard() {
                     >
                       {meta.icon}
                     </span>
-                    <span className="flex-1" style={{ fontSize: 13, color: '#1E293B' }}>{a.message}</span>
-                    <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>{fmtRelativeAr(a.at)}</span>
+                    <span className="flex-1" style={{ fontSize: 13, color: COLOR_TEXT_BODY }}>{a.message}</span>
+                    <span style={{ fontSize: 12, color: COLOR_TEXT_SUBTLE, whiteSpace: 'nowrap' }}>{fmtRelativeAr(a.at)}</span>
                   </div>
                 );
               })}
@@ -234,7 +259,7 @@ export default function Dashboard() {
 
         <Card className="p-5">
           <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-            <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A' }}>طلبات معرّضة للخطر</h2>
+            <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY }}>طلبات معرّضة للخطر</h2>
           </div>
           <div className="flex gap-1.5 flex-wrap" style={{ marginBottom: 12 }}>
             {([
@@ -247,9 +272,9 @@ export default function Dashboard() {
                 onClick={() => setRiskFilter(key)}
                 className="px-2.5 py-1 rounded-full"
                 style={{
-                  fontSize: 11, fontWeight: 600, border: '1px solid #E2E8F0',
-                  background: riskFilter === key ? '#1366D6' : '#FFF',
-                  color: riskFilter === key ? '#FFF' : '#475569',
+                  fontSize: 11, fontWeight: 600, border: `1px solid ${COLOR_BORDER_LIGHT}`,
+                  background: riskFilter === key ? COLOR_BRAND_PRIMARY : COLOR_WHITE,
+                  color: riskFilter === key ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                 }}
               >
                 {label}
@@ -257,7 +282,7 @@ export default function Dashboard() {
             ))}
           </div>
           {atRiskError ? (
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 24 }}>تعذّر تحميل الطلبات المعرّضة للخطر</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center', padding: 24 }}>تعذّر تحميل الطلبات المعرّضة للخطر</p>
           ) : filteredAtRisk.length === 0 ? (
             <EmptyState message="لا توجد طلبات معرّضة للخطر" />
           ) : (
@@ -269,10 +294,10 @@ export default function Dashboard() {
                     key={o.id}
                     to="/bookings"
                     className="block p-2.5 rounded-lg"
-                    style={{ background: '#F8FAFC', textDecoration: 'none' }}
+                    style={{ background: COLOR_SURFACE_SUBTLE, textDecoration: 'none' }}
                   >
                     <div className="flex items-center justify-between">
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{o.customer?.name ?? '—'}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: COLOR_TEXT_PRIMARY }}>{o.customer?.name ?? '—'}</span>
                       <span
                         className="px-2 py-0.5 rounded-full"
                         style={{ background: risk.bg, color: risk.fg, fontSize: 10, fontWeight: 700 }}
@@ -281,7 +306,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between" style={{ marginTop: 4 }}>
-                      <span style={{ fontSize: 11, color: '#64748B' }}>
+                      <span style={{ fontSize: 11, color: COLOR_TEXT_MUTED }}>
                         {o.technician?.user?.name ? `الفني: ${o.technician.user.name}` : 'بدون فني'}
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 600, color: risk.fg }}>
@@ -300,39 +325,39 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Revenue trend (30 days) */}
         <Card className="p-6">
-          <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 16 }}>
+          <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY, marginBottom: 16 }}>
             اتجاه الإيرادات (30 يوم)
           </h2>
           {financialsError ? (
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>تعذّر تحميل بيانات الإيرادات</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center', padding: 40 }}>تعذّر تحميل بيانات الإيرادات</p>
           ) : revenueSeries.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
           ) : (
             <div role="img" aria-label="رسم بياني لاتجاه الإيرادات خلال آخر 30 يوماً">
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={revenueSeries} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                <CartesianGrid strokeDasharray="3 3" stroke={COLOR_SURFACE_MUTED} />
                 <XAxis
                   dataKey="period"
-                  tick={{ fontSize: 11, fill: '#64748B' }}
-                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fontSize: 11, fill: COLOR_TEXT_MUTED }}
+                  axisLine={{ stroke: COLOR_BORDER_LIGHT }}
                   tickLine={false}
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#64748B' }}
+                  tick={{ fontSize: 11, fill: COLOR_TEXT_MUTED }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v: number) => `${fmtJod(v)}`}
-                  label={{ value: 'دينار', angle: -90, position: 'insideRight', style: { fontSize: 11, fill: '#94A3B8' } }}
+                  label={{ value: 'دينار', angle: -90, position: 'insideRight', style: { fontSize: 11, fill: COLOR_TEXT_SUBTLE } }}
                 />
                 <Tooltip
-                  contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 13, direction: 'rtl' }}
+                  contentStyle={{ borderRadius: 12, border: `1px solid ${COLOR_BORDER_LIGHT}`, fontSize: 13, direction: 'rtl' }}
                   formatter={(v, name) => [`${fmtJod(Number(v))} JD`, name === 'grossJod' ? 'الإيراد الإجمالي' : 'عمولة المنصة']}
-                  labelStyle={{ fontWeight: 600, color: '#0F172A' }}
+                  labelStyle={{ fontWeight: 600, color: COLOR_TEXT_PRIMARY }}
                 />
-                <Line type="monotone" dataKey="grossJod" stroke={BRAND_BLUE} strokeWidth={2} dot={false} name="grossJod" />
-                <Line type="monotone" dataKey="platformFeeJod" stroke={ACCENT_TEAL} strokeWidth={2} dot={false} name="platformFeeJod" />
+                <Line type="monotone" dataKey="grossJod" stroke={COLOR_BRAND_PRIMARY} strokeWidth={2} dot={false} name="grossJod" />
+                <Line type="monotone" dataKey="platformFeeJod" stroke={COLOR_ACCENT_TEAL} strokeWidth={2} dot={false} name="platformFeeJod" />
               </LineChart>
             </ResponsiveContainer>
             </div>
@@ -341,11 +366,11 @@ export default function Dashboard() {
 
         {/* Bookings by service */}
         <Card className="p-6">
-          <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 16 }}>
+          <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY, marginBottom: 16 }}>
             الحجوزات حسب الخدمة
           </h2>
           {serviceData.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
+            <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, textAlign: 'center', padding: 40 }}>لا توجد بيانات</p>
           ) : (
             <div role="img" aria-label="رسم بياني دائري لعدد الحجوزات حسب الخدمة">
             <ResponsiveContainer width="100%" height={280}>
@@ -356,7 +381,7 @@ export default function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 13, direction: 'rtl' }}
+                  contentStyle={{ borderRadius: 12, border: `1px solid ${COLOR_BORDER_LIGHT}`, fontSize: 13, direction: 'rtl' }}
                   formatter={(v) => [`${v}`, 'عدد الحجوزات']}
                 />
               </PieChart>
@@ -368,7 +393,7 @@ export default function Dashboard() {
 
       {/* Quick summary card */}
       <Card className="p-6">
-        <h2 style={{ fontWeight: 700, fontSize: 16, color: '#0F172A', marginBottom: 16 }}>ملخص سريع</h2>
+        <h2 style={{ fontWeight: 700, fontSize: 16, color: COLOR_TEXT_PRIMARY, marginBottom: 16 }}>ملخص سريع</h2>
         <div className="grid grid-cols-2 gap-x-8 gap-y-3">
           {[
             { label: 'معدل إتمام الحجوزات', value: stats.totalBookings > 0 ? `${Math.round((stats.completedBookings / stats.totalBookings) * 100)}%` : 'لا بيانات' },
@@ -376,9 +401,9 @@ export default function Dashboard() {
             { label: 'متوسط قيمة الحجز',   value: stats.completedBookings > 0 ? `${fmtJod(stats.totalRevenueJod / stats.completedBookings)} JD` : 'لا بيانات' },
             { label: 'مدفوعات قيد الانتظار', value: stats.pendingPayouts },
           ].map(({ label, value }) => (
-            <div key={label} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #F1F5F9' }}>
-              <span style={{ fontSize: 13, color: '#64748B' }}>{label}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', fontFamily: 'Inter' }}>{value}</span>
+            <div key={label} className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+              <span style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>{label}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{value}</span>
             </div>
           ))}
         </div>

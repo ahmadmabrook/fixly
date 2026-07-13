@@ -5,6 +5,7 @@ import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { NotFoundError } from '../../../shared/errors';
+import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 export const addressesRouter: Router = Router();
 
@@ -17,8 +18,8 @@ function addressFields(allOptional: boolean) {
   return [
     req('label').isString().trim().isLength({ min: 1, max: 60 }),
     req('line').isString().trim().isLength({ min: 1, max: 500 }),
-    req('lat').isFloat({ min: -90, max: 90 }),
-    req('lng').isFloat({ min: -180, max: 180 }),
+    req('lat').isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }),
+    req('lng').isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE }),
     body('building').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
     body('apartment').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
     body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),

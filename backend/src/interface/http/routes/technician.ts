@@ -9,6 +9,7 @@ import {
   MAX_HOURLY_RATE_JOD,
   MIN_WITHDRAWAL_JOD,
 } from '../../../application/technician/TechnicianService';
+import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 /** Technician self-service (the technician portal). Distinct from the public
  *  /technicians router (customer-facing tech cards + reviews). */
@@ -74,7 +75,7 @@ technicianRouter.patch(
 // POST /technician/location — push current location (also broadcast live via socket).
 technicianRouter.post(
   '/location',
-  validate([body('lat').isFloat({ min: -90, max: 90 }), body('lng').isFloat({ min: -180, max: 180 })]),
+  validate([body('lat').isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }), body('lng').isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE })]),
   asyncHandler(async (req, res) => {
     res.json({ data: await technicianService.updateLocation(req.user!.userId, req.body.lat, req.body.lng) });
   }),
@@ -146,7 +147,7 @@ technicianRouter.get(
 technicianRouter.get(
   '/notification-preferences',
   asyncHandler(async (req, res) => {
-    res.json({ data: await technicianService.getNotificationPrefs(req.user!.userId) });
+    res.json({ data: await technicianService.getOrCreateNotificationPrefs(req.user!.userId) });
   }),
 );
 

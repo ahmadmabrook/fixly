@@ -1,10 +1,11 @@
-import { GuaranteeStatus, Prisma } from '@prisma/client';
+import { GuaranteeStatus, BookingStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { createUserNotification } from '../notification/notify';
 import { guaranteeTicketsTotal } from '../../shared/metrics';
 import { SubscriptionService } from '../subscription/SubscriptionService';
 import { env } from '../../shared/env';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 /** Default post-service guarantee window (days); 2-hour admin response SLA.
  *  Protection subscribers get an extended window (§0.3, subscription.guaranteeDays). */
@@ -27,7 +28,7 @@ export class GuaranteeService {
     return prisma.booking.findMany({
       where: {
         customerId,
-        status: 'COMPLETED',
+        status: BookingStatus.COMPLETED,
         completedAt: { gte: cutoff },
         guarantee: null,
       },
@@ -41,7 +42,7 @@ export class GuaranteeService {
     const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { guarantee: true } });
     if (!booking) throw new NotFoundError('Booking');
     if (booking.customerId !== customerId) throw new ForbiddenError();
-    if (booking.status !== 'COMPLETED' || !booking.completedAt) {
+    if (booking.status !== BookingStatus.COMPLETED || !booking.completedAt) {
       throw new ValidationError('Only completed bookings are covered by the guarantee');
     }
     const days = await this.windowDays(customerId);
@@ -53,7 +54,7 @@ export class GuaranteeService {
 
     const expiresAt = new Date(Date.now() + SLA_HOURS * 60 * 60 * 1000);
     const ticket = await prisma.guaranteeTicket.create({
-      data: { bookingId, description: description?.trim() || null, mediaUrls, expiresAt, status: 'OPEN' },
+      data: { bookingId, description: description?.trim() || null, mediaUrls, expiresAt, status: GuaranteeStatus.OPEN },
     });
     guaranteeTicketsTotal.inc({ action: 'opened' });
     return ticket;
@@ -109,7 +110,7 @@ export class GuaranteeService {
       },
     });
     if (!ticket) throw new NotFoundError('GuaranteeTicket');
-    if (ticket.status === 'RESOLVED' || ticket.status === 'REJECTED') {
+    if (ticket.status === GuaranteeStatus.RESOLVED || ticket.status === GuaranteeStatus.REJECTED) {
       throw new ConflictError('Ticket already finalised');
     }
     const scheduleFollowup = decision === 'APPROVED' && !!scheduledVisitAt;
@@ -130,7 +131,7 @@ export class GuaranteeService {
             addressLng: ticket.booking.addressLng,
             scheduledAt: new Date(scheduledVisitAt as string),
             totalJod: 0,
-            status: ticket.booking.technicianId ? 'CONFIRMED' : 'PENDING',
+            status: ticket.booking.technicianId ? BookingStatus.CONFIRMED : BookingStatus.PENDING,
           },
         });
         followupBookingId = followup.id;
@@ -143,7 +144,7 @@ export class GuaranteeService {
         await tx.payment.create({
           data: {
             bookingId: followup.id,
-            status: 'PRE_AUTHORIZED',
+            status: PaymentStatus.PRE_AUTHORIZED,
             provider: 'none',
             currency: env().CURRENCY,
             amountJod: new Prisma.Decimal(0),
@@ -155,7 +156,7 @@ export class GuaranteeService {
         await tx.outboxEvent.create({
           data: {
             bookingId: followup.id,
-            eventType: 'booking.created',
+            eventType: OutboxEventType.BOOKING_CREATED,
             payload: { bookingId: followup.id, customerId: ticket.booking.customerId },
           },
         });
@@ -164,7 +165,7 @@ export class GuaranteeService {
       const result = await tx.guaranteeTicket.update({
         where: { id },
         data: {
-          status: decision === 'APPROVED' ? 'RESOLVED' : 'REJECTED',
+          status: decision === 'APPROVED' ? GuaranteeStatus.RESOLVED : GuaranteeStatus.REJECTED,
           adminNote: adminNote?.trim() || null,
           scheduledVisitAt: decision === 'APPROVED' && scheduledVisitAt ? new Date(scheduledVisitAt) : null,
           followupBookingId,
@@ -188,7 +189,7 @@ export class GuaranteeService {
   async markInReview(id: string) {
     const ticket = await prisma.guaranteeTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundError('GuaranteeTicket');
-    if (ticket.status !== 'OPEN') return ticket;
-    return prisma.guaranteeTicket.update({ where: { id }, data: { status: 'IN_REVIEW' } });
+    if (ticket.status !== GuaranteeStatus.OPEN) return ticket;
+    return prisma.guaranteeTicket.update({ where: { id }, data: { status: GuaranteeStatus.IN_REVIEW } });
   }
 }

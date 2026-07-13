@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Bell } from 'lucide-react';
 import { useAuth } from '../lib/store';
+import {
+  COLOR_BRAND_PRIMARY,
+  COLOR_BRAND_PRIMARY_TINT,
+  COLOR_SURFACE_MUTED,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+} from '../lib/theme';
 import { adminRoleLabel } from './shared';
 
 /**
@@ -18,8 +25,8 @@ export default function Header() {
 
   return (
     <header className="h-14 bg-white border-b border-slate-200 flex items-center px-6 gap-4" dir="rtl">
-      <div className="flex-1 flex items-center gap-2 max-w-md px-3 h-9 rounded-lg" style={{ background: '#F1F5F9' }}>
-        <Search size={16} color="#94A3B8" />
+      <div className="flex-1 flex items-center gap-2 max-w-md px-3 h-9 rounded-lg" style={{ background: COLOR_SURFACE_MUTED }}>
+        <Search size={16} color={COLOR_TEXT_SUBTLE} />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -34,7 +41,7 @@ export default function Header() {
         />
       </div>
       {admin?.role && (
-        <span className="text-xs px-2 py-1 rounded-full" style={{ background: '#E8F1FE', color: '#1366D6', fontWeight: 700 }}>
+        <span className="text-xs px-2 py-1 rounded-full" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY, fontWeight: 700 }}>
           {adminRoleLabel(admin.role)}
         </span>
       )}
@@ -42,7 +49,7 @@ export default function Header() {
         onClick={() => navigate('/dashboard')}
         aria-label="النشاط الأخير"
         className="relative w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center"
-        style={{ color: '#475569' }}
+        style={{ color: COLOR_TEXT_SECONDARY }}
       >
         <Bell size={18} />
       </button>

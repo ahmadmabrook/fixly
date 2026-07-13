@@ -1,6 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
-import { validationResult, ValidationChain } from 'express-validator';
+import { query, validationResult, ValidationChain } from 'express-validator';
 import { ValidationError } from '../../shared/errors';
+
+/** Default page-size ceiling for admin list endpoints (dashboard tables). */
+export const DEFAULT_LIST_LIMIT_MAX = 200;
+
+/**
+ * Standard `limit`/`offset` pagination validators, reused by every admin list
+ * endpoint so the bounds can't drift between routes copy-pasting the same
+ * `isInt({ min: 1, max: 200 })` / `isInt({ min: 0 })` chain.
+ */
+export function paginationQuery(maxLimit: number = DEFAULT_LIST_LIMIT_MAX): ValidationChain[] {
+  return [
+    query('limit').optional().isInt({ min: 1, max: maxLimit }).toInt(),
+    query('offset').optional().isInt({ min: 0 }).toInt(),
+  ];
+}
 
 /**
  * Runs express-validator chains sequentially (so sanitizers mutate `req`

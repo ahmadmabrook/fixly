@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, PaymentStatus, PayoutStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
@@ -40,7 +40,7 @@ export class PaymentCaptureRefundFlow {
       paymentOpsTotal.inc({ op: 'capture', result: 'skipped' });
       return;
     }
-    if (payment.status !== 'PRE_AUTHORIZED') {
+    if (payment.status !== PaymentStatus.PRE_AUTHORIZED) {
       logger.debug({ bookingId, status: payment.status }, 'capture: not PRE_AUTHORIZED, skipping');
       paymentOpsTotal.inc({ op: 'capture', result: 'skipped' });
       return;
@@ -72,7 +72,7 @@ export class PaymentCaptureRefundFlow {
         const reauth = await this.provider.preAuthorize(bookingId, authorized.toString(), `reauth:${bookingId}`);
         providerRef = reauth.providerRef;
         await prisma.payment.updateMany({
-          where: { id: payment.id, status: 'PRE_AUTHORIZED' },
+          where: { id: payment.id, status: PaymentStatus.PRE_AUTHORIZED },
           data: { providerRef, preAuthorizedAt: new Date() },
         });
       } catch (err) {
@@ -156,10 +156,10 @@ export class PaymentCaptureRefundFlow {
       // semantic, and ensures the ledger-entry writes below are covered by the same lock.
       await tx.$queryRaw`SELECT id FROM payments WHERE id = ${paymentId}::uuid FOR UPDATE`;
       const claim = await tx.payment.updateMany({
-        where: { id: paymentId, status: 'PRE_AUTHORIZED' },
+        where: { id: paymentId, status: PaymentStatus.PRE_AUTHORIZED },
         // Persist the capture transaction id (when the PSP mints a new one) so later
         // refunds reference the capture, not the original pre-authorization.
-        data: { status: 'CAPTURED', capturedAmountJod: captured, feeJod: fee, capturedAt: new Date(), ...(captureProviderRef ? { providerRef: captureProviderRef } : {}) },
+        data: { status: PaymentStatus.CAPTURED, capturedAmountJod: captured, feeJod: fee, capturedAt: new Date(), ...(captureProviderRef ? { providerRef: captureProviderRef } : {}) },
       });
       if (claim.count === 0) return false;
 
@@ -194,11 +194,11 @@ export class PaymentCaptureRefundFlow {
       return;
     }
 
-    if (payment.status === 'PRE_AUTHORIZED') {
+    if (payment.status === PaymentStatus.PRE_AUTHORIZED) {
       await this.voidHold(bookingId, payment.id, payment.providerRef, toDecimal(payment.amountJod));
       return;
     }
-    if (payment.status === 'CAPTURED' || payment.status === 'PARTIALLY_REFUNDED') {
+    if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.PARTIALLY_REFUNDED) {
       const captured = getCapturedAmount(payment);
       const outstanding = captured.minus(toDecimal(payment.refundedAmountJod));
       if (isPositive(outstanding)) {
@@ -220,8 +220,8 @@ export class PaymentCaptureRefundFlow {
     }
     const applied = await prisma.$transaction(async (tx: Tx) => {
       const claim = await tx.payment.updateMany({
-        where: { id: paymentId, status: 'PRE_AUTHORIZED' },
-        data: { status: 'REFUNDED', refundedAt: new Date() },
+        where: { id: paymentId, status: PaymentStatus.PRE_AUTHORIZED },
+        data: { status: PaymentStatus.REFUNDED, refundedAt: new Date() },
       });
       if (claim.count === 0) return false;
       await postLedgerEntry(tx, paymentId, 'REFUND', amount, 'Hold released on cancellation');
@@ -249,18 +249,18 @@ export class PaymentCaptureRefundFlow {
     const applied = await prisma.$transaction(async (tx: Tx) => {
       // Guard on the refunded total we read, so concurrent refunds can't stack.
       const claim = await tx.payment.updateMany({
-        where: { id: paymentId, refundedAmountJod: priorRefunded, status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] } },
-        data: { status: 'REFUNDED', refundedAmountJod: captured, refundedAt: new Date() },
+        where: { id: paymentId, refundedAmountJod: priorRefunded, status: { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] } },
+        data: { status: PaymentStatus.REFUNDED, refundedAmountJod: captured, refundedAt: new Date() },
       });
       if (claim.count === 0) return false;
       await postLedgerEntry(tx, paymentId, 'REFUND', amount, 'Refund on cancellation');
       // Claw back the technician's payout if it hasn't been disbursed yet.
       const clawed = await tx.payout.updateMany({
-        where: { paymentId, status: 'PENDING' },
-        data: { status: 'FAILED' },
+        where: { paymentId, status: PayoutStatus.PENDING },
+        data: { status: PayoutStatus.FAILED },
       });
       if (clawed.count === 0) {
-        const paid = await tx.payout.findFirst({ where: { paymentId, status: { in: ['PROCESSING', 'COMPLETED'] } } });
+        const paid = await tx.payout.findFirst({ where: { paymentId, status: { in: [PayoutStatus.PROCESSING, PayoutStatus.COMPLETED] } } });
         if (paid) logger.error({ bookingId, payoutId: paid.id }, 'cancel: payout already disbursed — manual clawback required');
       }
       return true;
@@ -274,7 +274,7 @@ export class PaymentCaptureRefundFlow {
   async refundBooking(bookingId: string, amountJod: number | string) {
     const payment = await prisma.payment.findUnique({ where: { bookingId } });
     if (!payment || !payment.providerRef) throw new NotFoundError('Captured payment');
-    if (payment.status !== 'CAPTURED' && payment.status !== 'PARTIALLY_REFUNDED') {
+    if (payment.status !== PaymentStatus.CAPTURED && payment.status !== PaymentStatus.PARTIALLY_REFUNDED) {
       throw new ConflictError(`Cannot refund a payment in status ${payment.status}`);
     }
     const captured = getCapturedAmount(payment);
@@ -291,9 +291,9 @@ export class PaymentCaptureRefundFlow {
     const fullyRefunded = newRefunded.greaterThanOrEqualTo(captured);
     const applied = await prisma.$transaction(async (tx) => {
       const claim = await tx.payment.updateMany({
-        where: { id: payment.id, refundedAmountJod: priorRefunded, status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] } },
+        where: { id: payment.id, refundedAmountJod: priorRefunded, status: { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] } },
         data: {
-          status: fullyRefunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+          status: fullyRefunded ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED,
           refundedAmountJod: newRefunded,
           refundedAt: fullyRefunded ? new Date() : payment.refundedAt,
         },
@@ -301,7 +301,7 @@ export class PaymentCaptureRefundFlow {
       if (claim.count === 0) return false;
       await postLedgerEntry(tx, payment.id, 'REFUND', amount, fullyRefunded ? 'Full refund' : 'Partial refund');
       if (fullyRefunded) {
-        await tx.payout.updateMany({ where: { paymentId: payment.id, status: 'PENDING' }, data: { status: 'FAILED' } });
+        await tx.payout.updateMany({ where: { paymentId: payment.id, status: PayoutStatus.PENDING }, data: { status: PayoutStatus.FAILED } });
       }
       return true;
     });

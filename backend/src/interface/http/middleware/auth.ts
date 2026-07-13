@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { AdminRole, UserRole } from '@prisma/client';
 import { UnauthorizedError, ForbiddenError } from '../../../shared/errors';
 import { verifyJwt } from '../../../shared/jwt';
 import { prisma } from '../../../infrastructure/database/prisma';
@@ -6,8 +7,10 @@ import { prisma } from '../../../infrastructure/database/prisma';
 export interface AuthPayload {
   userId: string;
   role: string;
-  /** Fine-grained admin RBAC role (only present on admin-class tokens). */
-  adminRole?: 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT';
+  /** Fine-grained admin RBAC role (only present on admin-class tokens). Typed
+   *  against the Prisma enum (not a duplicated inline literal union) so it
+   *  can never drift from the actual set of admin roles. */
+  adminRole?: AdminRole;
   typ?: 'user' | 'admin';
 }
 
@@ -43,7 +46,7 @@ export function requireRole(...roles: string[]) {
     if (!roles.includes(req.user.role)) throw new ForbiddenError('Insufficient permissions');
     // Admin endpoints require an admin-class token, not just role=ADMIN.
     // This prevents a user-class token from ever satisfying the admin guard.
-    if (roles.includes('ADMIN') && req.user.typ !== 'admin') {
+    if (roles.includes(UserRole.ADMIN) && req.user.typ !== 'admin') {
       throw new ForbiddenError('Admin token required');
     }
     next();
@@ -82,11 +85,11 @@ export function requireActiveUser(req: Request, _res: Response, next: NextFuncti
  * SUPER_ADMIN passes every gate; others must be in the allowed set. Use to scope
  * finance routes to FINANCE, support routes to SUPPORT, etc.
  */
-export function requireAdminRole(...roles: Array<'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT'>) {
+export function requireAdminRole(...roles: AdminRole[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user || req.user.typ !== 'admin') throw new UnauthorizedError();
     const adminRole = req.user.adminRole;
-    if (adminRole === 'SUPER_ADMIN' || (adminRole && roles.includes(adminRole))) {
+    if (adminRole === AdminRole.SUPER_ADMIN || (adminRole && roles.includes(adminRole))) {
       return next();
     }
     throw new ForbiddenError('Insufficient admin role');

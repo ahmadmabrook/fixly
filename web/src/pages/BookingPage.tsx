@@ -4,12 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
 import { useBookingSocket } from '../lib/socket';
-import { api, ApiError, PromoQuote, CheckoutSession } from '../lib/api';
+import { api, ApiError, PromoQuote, CheckoutSession, Subscription } from '../lib/api';
 import { Card, ServiceIcon, PriceBadge, InlineRow, ConfirmDialog, StatusBadge, notify } from '../components/shared';
 import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 import HyperPayWidget from '../components/HyperPayWidget';
-
-interface SubscriptionDto { status: string; discountPercent: number; guaranteeDays: number }
+import { DEFAULT_GUARANTEE_DAYS, DEFAULT_PROTECTION_DISCOUNT_PERCENT, PROTECTION_GUARANTEE_DAYS } from '../lib/constants';
+import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../lib/theme';
 
 interface BookingPageProps {
   serviceId: string;
@@ -52,10 +52,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const { mutate: createBooking, isPending } = useCreateBooking();
   const [createdId, setCreatedId] = useState<string | null>(null);
   const liveStatus = useBookingSocket(createdId);
-  const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<SubscriptionDto | null>('/subscriptions/me') });
+  const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<Subscription | null>('/subscriptions/me') });
   const member = sub?.status === 'ACTIVE';
-  const discountPercent = sub?.discountPercent ?? 15;
-  const guaranteeDays = member ? sub?.guaranteeDays ?? 90 : 30;
+  const discountPercent = sub?.discountPercent ?? DEFAULT_PROTECTION_DISCOUNT_PERCENT;
+  const guaranteeDays = member ? sub?.guaranteeDays ?? PROTECTION_GUARANTEE_DAYS : DEFAULT_GUARANTEE_DAYS;
 
   // After a successful create, push the live status into the toast flow.
   useEffect(() => {
@@ -129,8 +129,8 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
     const returnUrl = `${window.location.origin}/payment/return?bookingId=${createdId}`;
     return (
       <main className="max-w-[640px] mx-auto px-6 py-10">
-        <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A' }}>إتمام الدفع</h1>
-        <p style={{ fontSize: 13, color: '#64748B', margin: '6px 0 16px' }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>إتمام الدفع</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_SUBTLE, margin: '6px 0 16px' }}>
           أدخل بيانات بطاقتك لإتمام الحجز. سيتم حجز المبلغ ويُخصم بعد إتمام الخدمة.
         </p>
         <Card className="p-6">
@@ -158,7 +158,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const memberPrice = Math.round((price - subDiscount) * 100) / 100;
   return (
     <main className="max-w-[1200px] mx-auto px-6 py-10">
-      <button onClick={onBack} className="flex items-center gap-1" style={{ color: '#1366D6', fontWeight: 600, fontSize: 14 }}>
+      <button onClick={onBack} className="flex items-center gap-1" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600, fontSize: 14 }}>
         <ChevronLeft size={18} aria-hidden="true" /> رجوع
       </button>
 
@@ -174,10 +174,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
                   aria-checked={when === k}
                   onClick={() => setWhen(k)}
                   className="p-4 rounded-xl border-2 text-start"
-                  style={{ borderColor: when === k ? '#1366D6' : '#E2E8F0', background: when === k ? '#E8F1FE' : '#FFF' }}
+                  style={{ borderColor: when === k ? COLOR_BRAND_PRIMARY : COLOR_BORDER, background: when === k ? COLOR_BRAND_PRIMARY_TINT : COLOR_WHITE }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 15, color: when === k ? '#1366D6' : '#0F172A' }}>{label}</div>
-                  <div style={{ fontSize: 12, color: '#475569' }}>{sub}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: when === k ? COLOR_BRAND_PRIMARY : COLOR_TEXT_PRIMARY }}>{label}</div>
+                  <div style={{ fontSize: 12, color: COLOR_TEXT_SECONDARY }}>{sub}</div>
                 </button>
               ))}
             </div>
@@ -185,7 +185,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
 
           <Card className="p-6">
             <h2 style={{ fontWeight: 700, fontSize: 16 }}>الموقع</h2>
-            <p style={{ color: '#475569', fontSize: 12, marginTop: 4 }}>اسحب الدبوس أو ابحث لتحديد عنوانك بدقة.</p>
+            <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, marginTop: 4 }}>اسحب الدبوس أو ابحث لتحديد عنوانك بدقة.</p>
             <div className="mt-3">
               <MapAddressPicker value={addr} onChange={setAddr} height={260} />
             </div>
@@ -207,7 +207,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
                 form, which is worse than a single accurate option. */}
             <div
               className="mt-3 p-4 rounded-xl border-2 text-center"
-              style={{ borderColor: '#1366D6', background: '#E8F1FE', fontWeight: 700, fontSize: 14, color: '#0E4FA8' }}
+              style={{ borderColor: COLOR_BRAND_PRIMARY, background: COLOR_BRAND_PRIMARY_TINT, fontWeight: 700, fontSize: 14, color: COLOR_BRAND_PRIMARY_DARK }}
             >
               بطاقة ائتمان (Visa / Mastercard)
             </div>
@@ -220,19 +220,19 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
             <ServiceIcon nameAr={svc.nameAr} size={20} />
             <div className="flex-1">
               <div style={{ fontWeight: 700, fontSize: 14 }}>{svc.nameAr}</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>سعر ثابت</div>
+              <div style={{ fontSize: 12, color: COLOR_TEXT_SECONDARY }}>سعر ثابت</div>
             </div>
             <PriceBadge amount={price} />
           </div>
           {liveStatus && (
             <div className="mt-3 flex items-center gap-2">
-              <span style={{ fontSize: 12, color: '#475569' }}>الحالة الآن:</span>
+              <span style={{ fontSize: 12, color: COLOR_TEXT_SECONDARY }}>الحالة الآن:</span>
               <StatusBadge status={liveStatus} />
             </div>
           )}
           <div className="my-4 h-px bg-slate-100" />
           {/* Promo / discount code */}
-          <label htmlFor="promo" className="block" style={{ fontSize: 12, color: '#475569' }}>رمز الخصم</label>
+          <label htmlFor="promo" className="block" style={{ fontSize: 12, color: COLOR_TEXT_SECONDARY }}>رمز الخصم</label>
           <div className="mt-1 flex gap-2">
             <input
               id="promo"
@@ -247,13 +247,13 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
               onClick={() => void applyPromo()}
               disabled={promoChecking || !promoInput.trim()}
               className="px-4 h-11 rounded-xl disabled:opacity-50"
-              style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 700, fontSize: 13 }}
+              style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 700, fontSize: 13 }}
             >
               {promoChecking ? '...' : 'تطبيق'}
             </button>
           </div>
           {promo && (
-            <p className="mt-2" style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>
+            <p className="mt-2" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 12, fontWeight: 600 }}>
               تم تطبيق {promo.code} ✓
             </p>
           )}
@@ -263,7 +263,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
               type="button"
               onClick={() => { setPromoInput('WELCOME10'); }}
               className="mt-2 px-3 py-1.5 rounded-full"
-              style={{ background: '#F1F5F9', color: '#475569', fontSize: 12, fontWeight: 600, border: '1px dashed #CBD5E1' }}
+              style={{ background: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY, fontSize: 12, fontWeight: 600, border: `1px dashed ${COLOR_BORDER_STRONG}` }}
             >
               جرّب: WELCOME10 للحصول على خصم 10%
             </button>
@@ -273,7 +273,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
           {member && (
             <InlineRow
               label={`خصم العضوية −${discountPercent}%`}
-              value={<span style={{ color: '#15803D' }}>−{subDiscount} دينار</span>}
+              value={<span style={{ color: COLOR_SUCCESS_TEXT }}>−{subDiscount} دينار</span>}
             />
           )}
           <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />
@@ -286,17 +286,17 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
               actually stacks the promo on — a real but separate backend
               discrepancy, not fixed here. */}
           <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : memberPrice} دينار`} />
-          <p className="mt-3 p-3 rounded-lg" style={{ background: '#E8F1FE', color: '#0E4FA8', fontSize: 12 }}>
+          <p className="mt-3 p-3 rounded-lg" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontSize: 12 }}>
             سيتم حجز المبلغ الآن ويُخصم بعد إتمام الخدمة.
           </p>
-          <p className="mt-2 flex items-center gap-1.5" style={{ color: '#15803D', fontSize: 12 }}>
+          <p className="mt-2 flex items-center gap-1.5" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 12 }}>
             <ShieldCheck size={14} aria-hidden="true" /> ضمان <span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوم مشمول
           </p>
           <button
             onClick={() => setConfirming(true)}
             disabled={isPending}
             className="mt-4 w-full h-12 rounded-xl disabled:opacity-50"
-            style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
+            style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
           >
             تأكيد الحجز
           </button>
@@ -317,7 +317,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
 }
 
 function CenteredMessage({ children, tone = 'muted' }: { children: React.ReactNode; tone?: 'muted' | 'error' }) {
-  const color = tone === 'error' ? '#B91C1C' : '#94A3B8';
+  const color = tone === 'error' ? COLOR_ERROR_TEXT : COLOR_TEXT_MUTED;
   return (
     <main className="max-w-[1200px] mx-auto px-6 py-16 text-center">
       <p style={{ color, fontSize: 16 }}>{children}</p>

@@ -1,7 +1,16 @@
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  TechnicianStatus,
+  UserRole,
+  DispatchOfferStatus,
+  WithdrawalStatus,
+  BookingStatus,
+  GuaranteeStatus,
+  ConductStatus,
+} from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis, TECH_LOCATIONS_KEY, TECH_HEARTBEAT_KEY, pruneStaleTechnicians } from '../../infrastructure/cache/redis';
-import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
+import { NotFoundError, ForbiddenError, ConflictError, ValidationError, PrismaErrorCode } from '../../shared/errors';
 import { withdrawalsRequestedTotal } from '../../shared/metrics';
 import { haversineKm } from '../../shared/geo';
 import { encryptField } from '../../shared/crypto';
@@ -59,12 +68,12 @@ export class TechnicianService {
 
     return prisma.$transaction(async (tx) => {
       const existing = await tx.technicianProfile.findUnique({ where: { userId } });
-      if (existing && (existing.status === 'APPROVED' || existing.status === 'SUSPENDED')) {
+      if (existing && (existing.status === TechnicianStatus.APPROVED || existing.status === TechnicianStatus.SUSPENDED)) {
         throw new ConflictError('لا يمكن تعديل الطلب بعد الموافقة أو الإيقاف');
       }
-      await tx.user.update({ where: { id: userId }, data: { role: 'TECHNICIAN' } });
+      await tx.user.update({ where: { id: userId }, data: { role: UserRole.TECHNICIAN } });
       const data = {
-        status: 'PENDING' as const,
+        status: TechnicianStatus.PENDING,
         isVerified: false,
         rejectionReason: null,
         hourlyRateJod: input.hourlyRateJod,
@@ -112,7 +121,7 @@ export class TechnicianService {
   private async requireApproved(userId: string) {
     const profile = await prisma.technicianProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundError('TechnicianProfile');
-    if (profile.status !== 'APPROVED') throw new ForbiddenError('Technician is not approved');
+    if (profile.status !== TechnicianStatus.APPROVED) throw new ForbiddenError('Technician is not approved');
     return profile;
   }
 
@@ -203,7 +212,7 @@ export class TechnicianService {
 
     if (ids && ids.length > 0) {
       const techs = await prisma.technicianProfile.findMany({
-        where: { id: { in: ids }, status: 'APPROVED', isAvailable: true },
+        where: { id: { in: ids }, status: TechnicianStatus.APPROVED, isAvailable: true },
         select: {
           id: true,
           currentLat: true,
@@ -235,7 +244,7 @@ export class TechnicianService {
     }
 
     const candidates = await prisma.technicianProfile.findMany({
-      where: { status: 'APPROVED', isAvailable: true, currentLat: { not: null }, currentLng: { not: null } },
+      where: { status: TechnicianStatus.APPROVED, isAvailable: true, currentLat: { not: null }, currentLng: { not: null } },
       select: {
         id: true,
         currentLat: true,
@@ -270,11 +279,11 @@ export class TechnicianService {
       include: { services: { select: { id: true } } },
     });
     if (!profile) throw new NotFoundError('TechnicianProfile');
-    if (profile.status !== 'APPROVED') throw new ForbiddenError('Technician is not approved');
+    if (profile.status !== TechnicianStatus.APPROVED) throw new ForbiddenError('Technician is not approved');
 
     // Only bookings with an active OFFERED dispatch offer for this tech.
     const offers = await prisma.dispatchOffer.findMany({
-      where: { technicianId: profile.id, status: 'OFFERED' },
+      where: { technicianId: profile.id, status: DispatchOfferStatus.OFFERED },
       select: {
         round: true,
         booking: {
@@ -320,8 +329,8 @@ export class TechnicianService {
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id } }),
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, createdAt: { gte: startOfToday } } }),
       prisma.payout.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, createdAt: { gte: startOfMonth } } }),
-      prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: 'PAID' } }),
-      prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: { in: ['REQUESTED', 'PROCESSING'] } } }),
+      prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: WithdrawalStatus.PAID } }),
+      prisma.withdrawalRequest.aggregate({ _sum: { amountJod: true }, where: { technicianId: profile.id, status: { in: [WithdrawalStatus.REQUESTED, WithdrawalStatus.PROCESSING] } } }),
       prisma.withdrawalRequest.findFirst({ where: { technicianId: profile.id, iban: { not: null } }, orderBy: { createdAt: 'desc' }, select: { iban: true, bankName: true } }),
     ]);
 
@@ -365,7 +374,7 @@ export class TechnicianService {
     try {
       const withdrawal = await prisma.$transaction(async (tx) => {
         const created = await tx.withdrawalRequest.create({
-          data: { technicianId: profile.id, amountJod, iban: resolvedIban ?? null, bankName: resolvedBankName ?? null, status: 'REQUESTED' },
+          data: { technicianId: profile.id, amountJod, iban: resolvedIban ?? null, bankName: resolvedBankName ?? null, status: WithdrawalStatus.REQUESTED },
         });
         await tx.technicianProfile.update({ where: { id: profile.id }, data: { lastWithdrawalAt: new Date() } });
         return created;
@@ -373,7 +382,7 @@ export class TechnicianService {
       withdrawalsRequestedTotal.inc();
       return withdrawal;
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
         throw new ConflictError('لديك طلب سحب قيد المعالجة بالفعل');
       }
       throw err;
@@ -431,12 +440,12 @@ export class TechnicianService {
           AND "slaArriveBy" IS NOT NULL
           AND "arrivedAt" <= "slaArriveBy"
       `,
-      prisma.booking.count({ where: { technicianId, status: 'COMPLETED' } }),
-      prisma.guaranteeTicket.count({ where: { status: { not: 'OPEN' }, booking: { technicianId } } }),
+      prisma.booking.count({ where: { technicianId, status: BookingStatus.COMPLETED } }),
+      prisma.guaranteeTicket.count({ where: { status: { not: GuaranteeStatus.OPEN }, booking: { technicianId } } }),
       prisma.booking.count({ where: { technicianId } }),
-      prisma.conductReport.count({ where: { status: 'UPHELD', subjectTechId: technicianId } }),
+      prisma.conductReport.count({ where: { status: ConductStatus.UPHELD, subjectTechId: technicianId } }),
       prisma.dispatchOffer.count({ where: { technicianId } }),
-      prisma.dispatchOffer.count({ where: { technicianId, status: 'ACCEPTED' } }),
+      prisma.dispatchOffer.count({ where: { technicianId, status: DispatchOfferStatus.ACCEPTED } }),
     ]);
     const onTimeCount = Number(onTimeRows[0]?.count ?? 0);
 
@@ -457,8 +466,9 @@ export class TechnicianService {
   }
 
   /** Notification toggles (Figma TechNotifications screen). Row is created
-   *  lazily with all-true defaults on first read. */
-  async getNotificationPrefs(userId: string) {
+   *  lazily with all-true defaults on first read (hence "OrCreate" — this
+   *  isn't a pure read, mirroring ReferralService.getOrCreateCode). */
+  async getOrCreateNotificationPrefs(userId: string) {
     const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });
     if (!profile) throw new NotFoundError('TechnicianProfile');
     const prefs = await prisma.technicianNotificationPrefs.upsert({
@@ -526,7 +536,7 @@ export class TechnicianService {
 
     const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (!profile) throw new NotFoundError('TechnicianProfile');
-    if (profile.status !== 'APPROVED') throw new ForbiddenError('Technician is not approved');
+    if (profile.status !== TechnicianStatus.APPROVED) throw new ForbiddenError('Technician is not approved');
 
     const validServices = await prisma.service.findMany({ where: { id: { in: serviceIds }, isActive: true }, select: { id: true } });
     if (validServices.length !== serviceIds.length) throw new ValidationError('خدمة غير صالحة');

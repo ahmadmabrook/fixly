@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body, query, param } from 'express-validator';
 import { Prisma, TrustTier, ConductStatus, QuoteStatus } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
-import { validate } from '../validate';
+import { validate, paginationQuery } from '../validate';
 import { requireAdminRole } from '../middleware/auth';
 import { TrustService } from '../../../application/technician/TrustService';
 import { ConductReportService } from '../../../application/conduct/ConductReportService';
@@ -47,10 +47,7 @@ const moneyBody = (field: string) =>
 // GET /quality/techs — trust-tier board.
 adminBusinessRouter.get(
   '/quality/techs',
-  validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
-  ]),
+  validate(paginationQuery()),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 100;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -101,8 +98,7 @@ adminBusinessRouter.get(
   '/conduct-reports',
   validate([
     query('status').optional().isIn(CONDUCT_STATUSES),
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
   ]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
@@ -129,10 +125,7 @@ adminBusinessRouter.post(
 
 adminBusinessRouter.get(
   '/subscriptions',
-  validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
-  ]),
+  validate(paginationQuery()),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
@@ -147,8 +140,7 @@ adminBusinessRouter.get(
   '/quotes',
   validate([
     query('status').optional().isIn(QUOTE_STATUSES),
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
   ]),
   asyncHandler(async (req, res) => {
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;

@@ -4,6 +4,11 @@ import { NotFoundError } from '../../shared/errors';
 import { createUserNotification } from '../notification/notify';
 import { supportTicketsTotal } from '../../shared/metrics';
 
+/** `SupportMessage.senderRole` is a plain string column (not a Prisma enum),
+ *  but only these two values are ever written — named here so both call
+ *  sites reference the same constant instead of a repeated literal. */
+const SUPPORT_SENDER_ROLE = { CUSTOMER: 'CUSTOMER', ADMIN: 'ADMIN' } as const;
+
 export class SupportService {
   /** Open a support ticket with its first message (from the customer). */
   async createTicket(userId: string, subject: string, body: string) {
@@ -11,7 +16,7 @@ export class SupportService {
       data: {
         userId,
         subject: subject.trim(),
-        messages: { create: { senderRole: 'CUSTOMER', body: body.trim() } },
+        messages: { create: { senderRole: SUPPORT_SENDER_ROLE.CUSTOMER, body: body.trim() } },
       },
       include: { messages: true },
     });
@@ -43,10 +48,10 @@ export class SupportService {
       // by a stale reopen decision.
       const ticket = await tx.supportTicket.findUnique({ where: { id } });
       if (!ticket || ticket.userId !== userId) throw new NotFoundError('SupportTicket');
-      await tx.supportMessage.create({ data: { ticketId: id, senderRole: 'CUSTOMER', body: body.trim() } });
+      await tx.supportMessage.create({ data: { ticketId: id, senderRole: SUPPORT_SENDER_ROLE.CUSTOMER, body: body.trim() } });
       return tx.supportTicket.update({
         where: { id },
-        data: { status: ticket.status === 'CLOSED' ? 'OPEN' : ticket.status },
+        data: { status: ticket.status === SupportStatus.CLOSED ? SupportStatus.OPEN : ticket.status },
         include: { messages: { orderBy: { createdAt: 'asc' } } },
       });
     });
@@ -83,10 +88,10 @@ export class SupportService {
     const ticket = await prisma.supportTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundError('SupportTicket');
     return prisma.$transaction(async (tx) => {
-      await tx.supportMessage.create({ data: { ticketId: id, senderRole: 'ADMIN', body: body.trim() } });
+      await tx.supportMessage.create({ data: { ticketId: id, senderRole: SUPPORT_SENDER_ROLE.ADMIN, body: body.trim() } });
       const updated = await tx.supportTicket.update({
         where: { id },
-        data: { status: ticket.status === 'OPEN' ? 'IN_PROGRESS' : ticket.status },
+        data: { status: ticket.status === SupportStatus.OPEN ? SupportStatus.IN_PROGRESS : ticket.status },
         include: { messages: { orderBy: { createdAt: 'asc' } } },
       });
       await createUserNotification(tx, {

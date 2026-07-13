@@ -1,3 +1,4 @@
+import { OutboxStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
 import { outboxEventsProcessedTotal, outboxDrainedPerTick } from '../../shared/metrics';
@@ -150,8 +151,8 @@ export class OutboxWorker {
   async reapStale(): Promise<number> {
     const cutoff = new Date(Date.now() - PROCESSING_TIMEOUT_MS);
     const reaped = await prisma.outboxEvent.updateMany({
-      where: { status: 'PROCESSING', lockedAt: { lt: cutoff } },
-      data: { status: 'PENDING', lockedAt: null },
+      where: { status: OutboxStatus.PROCESSING, lockedAt: { lt: cutoff } },
+      data: { status: OutboxStatus.PENDING, lockedAt: null },
     });
     if (reaped.count > 0) logger.warn({ count: reaped.count }, 'OutboxWorker: requeued stale PROCESSING events');
     return reaped.count;
@@ -172,7 +173,7 @@ export class OutboxWorker {
     }
 
     const events = await prisma.outboxEvent.findMany({
-      where: { status: 'PENDING' },
+      where: { status: OutboxStatus.PENDING },
       orderBy: { createdAt: 'asc' },
       take: this.options.batchSize,
     });
@@ -218,8 +219,8 @@ export class OutboxWorker {
     // worker (another instance) that already claimed it yields count 0, so we
     // skip — this removes the read-then-write double-process race.
     const claim = await prisma.outboxEvent.updateMany({
-      where: { id: event.id, status: 'PENDING' },
-      data: { status: 'PROCESSING', attempts: { increment: 1 }, lockedAt: new Date() },
+      where: { id: event.id, status: OutboxStatus.PENDING },
+      data: { status: OutboxStatus.PROCESSING, attempts: { increment: 1 }, lockedAt: new Date() },
     });
     if (claim.count === 0) return false;
 
@@ -231,7 +232,7 @@ export class OutboxWorker {
       await Promise.all(handlers.map((h) => this.runWithTimeout(h, event.payload, event.eventType)));
       await prisma.outboxEvent.update({
         where: { id: event.id },
-        data: { status: 'DONE', processedAt: new Date(), lockedAt: null },
+        data: { status: OutboxStatus.DONE, processedAt: new Date(), lockedAt: null },
       });
       outboxEventsProcessedTotal.inc({ event_type: event.eventType, result: 'done' });
       return true;
@@ -242,8 +243,8 @@ export class OutboxWorker {
       await prisma.outboxEvent.update({
         where: { id: event.id },
         data: terminal
-          ? { status: 'FAILED', failedAt: new Date(), errorMsg, lockedAt: null }
-          : { status: 'PENDING', errorMsg, lockedAt: null }, // back to the queue for retry
+          ? { status: OutboxStatus.FAILED, failedAt: new Date(), errorMsg, lockedAt: null }
+          : { status: OutboxStatus.PENDING, errorMsg, lockedAt: null }, // back to the queue for retry
       });
       outboxEventsProcessedTotal.inc({ event_type: event.eventType, result: terminal ? 'failed' : 'retry' });
       logger.error({ eventId: event.id, eventType: event.eventType, attempts, terminal, errorMsg }, 'Outbox handler failed');

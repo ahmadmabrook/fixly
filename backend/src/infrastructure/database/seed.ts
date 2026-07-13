@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { PromoType, UserRole, TechnicianStatus, AdminRole } from '@prisma/client';
 import { prisma } from './prisma';
 import { logger } from '../../shared/logger';
 
@@ -61,12 +62,12 @@ async function seed() {
     prisma.promoCode.upsert({
       where: { code: 'WELCOME10' },
       update: {},
-      create: { code: 'WELCOME10', type: 'PERCENT', value: 10, perUserLimit: 1, isActive: true },
+      create: { code: 'WELCOME10', type: PromoType.PERCENT, value: 10, perUserLimit: 1, isActive: true },
     }),
     prisma.promoCode.upsert({
       where: { code: 'FIXLY5' },
       update: {},
-      create: { code: 'FIXLY5', type: 'FIXED', value: 5, minOrderJod: 30, perUserLimit: 3, isActive: true },
+      create: { code: 'FIXLY5', type: PromoType.FIXED, value: 5, minOrderJod: 30, perUserLimit: 3, isActive: true },
     }),
   ]);
   logger.info('Promo codes seeded');
@@ -79,21 +80,21 @@ async function seed() {
     await prisma.user.upsert({
       where: { phone: '+962799000001' },
       update: {},
-      create: { phone: '+962799000001', name: 'أحمد الطالب', role: 'CUSTOMER' },
+      create: { phone: '+962799000001', name: 'أحمد الطالب', role: UserRole.CUSTOMER },
     });
 
     const techUser = await prisma.user.upsert({
       where: { phone: '+962799000002' },
       update: {},
-      create: { phone: '+962799000002', name: 'محمد الفني', role: 'TECHNICIAN' },
+      create: { phone: '+962799000002', name: 'محمد الفني', role: UserRole.TECHNICIAN },
     });
 
     await prisma.technicianProfile.upsert({
       where: { userId: techUser.id },
-      update: { status: 'APPROVED', isVerified: true, services: { set: services.map((s) => ({ id: s.id })) } },
+      update: { status: TechnicianStatus.APPROVED, isVerified: true, services: { set: services.map((s) => ({ id: s.id })) } },
       create: {
         userId: techUser.id,
-        status: 'APPROVED',
+        status: TechnicianStatus.APPROVED,
         approvedAt: new Date(),
         isVerified: true,
         isAvailable: true,
@@ -132,12 +133,12 @@ async function seed() {
     where: { email: adminEmail },
     // Ensure the bootstrap admin is SUPER_ADMIN even on an existing row (the
     // column default is least-privilege SUPPORT, so it must be set explicitly).
-    update: { role: 'SUPER_ADMIN' },
+    update: { role: AdminRole.SUPER_ADMIN },
     create: {
       email: adminEmail,
       passwordHash,
       name: 'مدير Fixly',
-      role: 'SUPER_ADMIN',
+      role: AdminRole.SUPER_ADMIN,
     },
   });
 

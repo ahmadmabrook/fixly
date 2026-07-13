@@ -1,3 +1,4 @@
+import { PaymentStatus, DisputeStatus, PayoutStatus, BookingStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
 import { toDecimal } from '../../shared/money';
@@ -42,7 +43,7 @@ export class PaymentWebhookFlow {
         // Hosted-checkout authorization confirmed by the PSP (source of truth). Promote
         // even if the customer never returned to our status-query page. Idempotent:
         // applyAuthorization no-ops if the status query already promoted it.
-        if (payment.status === 'PENDING') {
+        if (payment.status === PaymentStatus.PENDING) {
           await this.authFlow.applyAuthorization(payment.id, payment.bookingId, {
             state: 'authorized',
             providerRef: event.providerRef,
@@ -59,7 +60,7 @@ export class PaymentWebhookFlow {
       case 'payment.captured': {
         // N-4: capture initiated out-of-band at the PSP (e.g. dashboard) →
         // reconcile into our state via the same finalize path.
-        if (payment.status === 'PRE_AUTHORIZED') {
+        if (payment.status === PaymentStatus.PRE_AUTHORIZED) {
           const captured = toDecimal(event.amountJod ?? payment.amountJod);
           await this.captureFlow.finalizeCapture(payment.id, payment.bookingId, captured, event.providerRef);
         }
@@ -67,8 +68,8 @@ export class PaymentWebhookFlow {
       }
       case 'payment.auth.expired': {
         const r = await prisma.payment.updateMany({
-          where: { id: payment.id, status: 'PRE_AUTHORIZED' },
-          data: { status: 'FAILED' },
+          where: { id: payment.id, status: PaymentStatus.PRE_AUTHORIZED },
+          data: { status: PaymentStatus.FAILED },
         });
         if (r.count > 0) logger.error({ bookingId: payment.bookingId }, 'webhook: auth expired before capture — funds not collected');
         break;
@@ -80,12 +81,12 @@ export class PaymentWebhookFlow {
           // payment isn't in a normally-disputable state.
           await tx.dispute.create({ data: { paymentId: payment.id, providerRef: event.providerRef, reason: event.reason, amountJod: amount } });
           const r = await tx.payment.updateMany({
-            where: { id: payment.id, status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] } },
-            data: { status: 'DISPUTED', disputedAt: new Date() },
+            where: { id: payment.id, status: { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] } },
+            data: { status: PaymentStatus.DISPUTED, disputedAt: new Date() },
           });
           if (r.count > 0) {
             await postLedgerEntry(tx, payment.id, 'DISPUTE', amount, `Dispute opened: ${event.reason ?? 'unspecified'}`);
-            await tx.booking.update({ where: { id: payment.bookingId }, data: { status: 'DISPUTED' } }).catch(() => undefined);
+            await tx.booking.update({ where: { id: payment.bookingId }, data: { status: BookingStatus.DISPUTED } }).catch(() => undefined);
           } else {
             // Dispute on a refunded/uncaptured payment → possible double-pay; flag.
             logger.error({ bookingId: payment.bookingId, status: payment.status }, 'webhook: dispute on a non-disputable payment — manual review required');
@@ -95,23 +96,23 @@ export class PaymentWebhookFlow {
       }
       case 'payment.dispute.closed': {
         await prisma.$transaction(async (tx) => {
-          const dispute = await tx.dispute.findFirst({ where: { paymentId: payment.id, status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
+          const dispute = await tx.dispute.findFirst({ where: { paymentId: payment.id, status: DisputeStatus.OPEN }, orderBy: { openedAt: 'desc' } });
           if (!dispute) {
             // N-5: out-of-order delivery (closed before opened) or already resolved.
             logger.warn({ bookingId: payment.bookingId }, 'webhook: dispute.closed with no open dispute — ignoring (out-of-order?)');
             return;
           }
-          await tx.dispute.update({ where: { id: dispute.id }, data: { status: event.disputeWon ? 'WON' : 'LOST', resolvedAt: new Date() } });
+          await tx.dispute.update({ where: { id: dispute.id }, data: { status: event.disputeWon ? DisputeStatus.WON : DisputeStatus.LOST, resolvedAt: new Date() } });
           if (event.disputeWon) {
-            await tx.payment.updateMany({ where: { id: payment.id, status: 'DISPUTED' }, data: { status: 'CAPTURED' } });
+            await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.DISPUTED }, data: { status: PaymentStatus.CAPTURED } });
           } else {
-            const r = await tx.payment.updateMany({ where: { id: payment.id, status: 'DISPUTED' }, data: { status: 'CHARGEBACK' } });
+            const r = await tx.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.DISPUTED }, data: { status: PaymentStatus.CHARGEBACK } });
             if (r.count > 0) {
               await postLedgerEntry(tx, payment.id, 'CHARGEBACK', toDecimal(dispute.amountJod), 'Chargeback lost');
-              const clawed = await tx.payout.updateMany({ where: { paymentId: payment.id, status: 'PENDING' }, data: { status: 'FAILED' } });
+              const clawed = await tx.payout.updateMany({ where: { paymentId: payment.id, status: PayoutStatus.PENDING }, data: { status: PayoutStatus.FAILED } });
               if (clawed.count === 0) {
                 // N-2: payout already disbursed → platform absorbed the chargeback; alert for manual recovery.
-                const paid = await tx.payout.findFirst({ where: { paymentId: payment.id, status: { in: ['PROCESSING', 'COMPLETED'] } } });
+                const paid = await tx.payout.findFirst({ where: { paymentId: payment.id, status: { in: [PayoutStatus.PROCESSING, PayoutStatus.COMPLETED] } } });
                 if (paid) logger.error({ bookingId: payment.bookingId, payoutId: paid.id }, 'chargeback: payout already disbursed — manual clawback required');
               }
             }
@@ -136,11 +137,11 @@ export class PaymentWebhookFlow {
             where: {
               id: payment.id,
               refundedAmountJod: priorRefunded,
-              status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] },
+              status: { in: [PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED] },
             },
             data: {
               refundedAmountJod: settled,
-              status: settled.greaterThanOrEqualTo(captured) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+              status: settled.greaterThanOrEqualTo(captured) ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED,
               refundedAt: new Date(),
             },
           });

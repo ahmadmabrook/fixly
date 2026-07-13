@@ -4,6 +4,7 @@ import { authenticate, requireActiveUser } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
 import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 /** Customer video pre-check quotes (§0.3). Ops pricing lives on the admin router. */
 export const quotesRouter: Router = Router();
@@ -20,8 +21,8 @@ quotesRouter.post(
     body('videoUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
     body('description').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
     body('addressLine').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
-    body('addressLat').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).toFloat(),
-    body('addressLng').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).toFloat(),
+    body('addressLat').optional({ nullable: true }).isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }).toFloat(),
+    body('addressLng').optional({ nullable: true }).isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE }).toFloat(),
   ]),
   asyncHandler(async (req, res) => {
     const quote = await quoteService.create(req.user!.userId, {

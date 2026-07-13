@@ -1,6 +1,11 @@
-import { useAuth } from './store';
+import { useAuth, type AdminRole } from './store';
 
 const BASE = '/api/v1/admin';
+
+/** Default page size for admin list/table views (bookings, technicians,
+ *  payouts, withdrawals, etc.) — a single shared default so every page's
+ *  pagination behaves the same unless a page has an explicit reason not to. */
+export const DEFAULT_PAGE_SIZE = 50;
 
 // Public hook so the UI can react to 401s (the standard pattern is to
 // clear the local session and bounce the user back to /login). The store
@@ -42,7 +47,7 @@ async function tryRefresh(): Promise<boolean> {
     try {
       const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
       if (!res.ok) return false;
-      const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string; role?: 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT' } } };
+      const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string; role?: AdminRole } } };
       const access = body.data?.accessToken;
       if (!access) return false;
       const admin = body.data?.admin ?? useAuth.getState().admin ?? { id: '', name: '', email: '' };
@@ -377,7 +382,7 @@ export interface AdminUserItem {
   id: string;
   email: string;
   name: string;
-  role: 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT';
+  role: AdminRole;
   isActive: boolean;
   createdAt: string;
 }

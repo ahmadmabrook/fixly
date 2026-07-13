@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import type { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole, AdminRole } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { hashToken } from '../auth/AuthService';
 import { audit } from './adminAudit';
@@ -99,9 +99,9 @@ export class AdminAuthFlow {
     });
   }
 
-  private async issueAdminTokens(adminId: string, adminRole: string, tx: DbClient = prisma) {
+  private async issueAdminTokens(adminId: string, adminRole: AdminRole, tx: DbClient = prisma) {
     const accessToken = signJwt(
-      { userId: adminId, role: 'ADMIN', adminRole, typ: 'admin' },
+      { userId: adminId, role: UserRole.ADMIN, adminRole, typ: 'admin' },
       {
         expiresIn: env().JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'],
         issuer: 'fixly',

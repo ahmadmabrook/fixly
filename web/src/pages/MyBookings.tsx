@@ -5,6 +5,7 @@ import { useBookings } from '../hooks/useBookings';
 import { useAuth } from '../lib/store';
 import { useBookingSocket } from '../lib/socket';
 import { Card, ServiceIcon, PriceBadge, StatusBadge, SkeletonList } from '../components/shared';
+import { COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'AWAITING_PAYMENT', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']);
 
@@ -22,7 +23,7 @@ export default function MyBookings() {
   if (!accessToken) {
     return (
       <main className="max-w-[1200px] mx-auto px-6 py-16 text-center">
-        <p style={{ color: '#475569', fontSize: 16 }}>سجّل دخولك لعرض طلباتك.</p>
+        <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 16 }}>سجّل دخولك لعرض طلباتك.</p>
       </main>
     );
   }
@@ -39,7 +40,7 @@ export default function MyBookings() {
             aria-selected={tab === k}
             onClick={() => setTab(k)}
             className="px-4 py-2 rounded-full"
-            style={{ background: tab === k ? '#1366D6' : '#F1F5F9', color: tab === k ? '#FFF' : '#475569', fontWeight: 700, fontSize: 13 }}
+            style={{ background: tab === k ? COLOR_BRAND_PRIMARY : COLOR_BG_SUBTLE, color: tab === k ? COLOR_WHITE : COLOR_TEXT_SECONDARY, fontWeight: 700, fontSize: 13 }}
           >
             {k === 'active' ? 'نشطة' : 'سابقة'}
           </button>
@@ -49,14 +50,14 @@ export default function MyBookings() {
       {isLoading && <div className="mt-6"><SkeletonList count={4} rowHeight={72} /></div>}
       {!isLoading && filtered.length === 0 && (
         <Card className="mt-6 p-10 text-center">
-          <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center" style={{ background: '#F1F5F9' }}>
-            <Inbox size={26} color="#94A3B8" aria-hidden="true" />
+          <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center" style={{ background: COLOR_BG_SUBTLE }}>
+            <Inbox size={26} color={COLOR_TEXT_MUTED} aria-hidden="true" />
           </div>
-          <p className="mt-3" style={{ color: '#475569', fontSize: 15 }}>
+          <p className="mt-3" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 15 }}>
             {tab === 'active' ? 'لا توجد طلبات نشطة حالياً' : 'لا توجد طلبات سابقة بعد'}
           </p>
           {tab === 'active' && (
-            <button onClick={() => navigate('/services')} className="mt-4 px-5 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 14 }}>
+            <button onClick={() => navigate('/services')} className="mt-4 px-5 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 14 }}>
               اطلب خدمة الآن
             </button>
           )}
@@ -82,7 +83,7 @@ function BookingRow({ item }: { item: { id: string; status: string; scheduledAt:
         <ServiceIcon nameAr={item.service?.nameAr ?? ''} size={20} />
         <div className="flex-1">
           <div style={{ fontWeight: 700, fontSize: 16 }}>{item.service?.nameAr}</div>
-          <div style={{ color: '#475569', fontSize: 12 }}>
+          <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>
             {item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString('ar-JO') : 'فوراً'}
           </div>
         </div>

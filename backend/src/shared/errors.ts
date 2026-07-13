@@ -3,6 +3,18 @@ export interface FieldError {
   message: string;
 }
 
+/**
+ * Prisma's documented "known request error" codes
+ * (https://www.prisma.io/docs/orm/reference/error-reference#error-codes).
+ * Named here so call sites compare `err.code` against a constant instead of
+ * repeating the raw code string (P2002, P2025, ...) at every catch site.
+ */
+export const PrismaErrorCode = {
+  UNIQUE_CONSTRAINT_VIOLATION: 'P2002',
+  FOREIGN_KEY_CONSTRAINT_VIOLATION: 'P2003',
+  RECORD_NOT_FOUND: 'P2025',
+} as const;
+
 export class AppError extends Error {
   constructor(
     public readonly message: string,

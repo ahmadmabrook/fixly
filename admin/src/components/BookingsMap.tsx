@@ -3,6 +3,16 @@ import type { Map as MbMap, Marker as MbMarker } from 'mapbox-gl';
 import type mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MAPBOX_TOKEN, hasMapbox, AMMAN } from '../lib/mapbox';
+import {
+  COLOR_BRAND_PRIMARY,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_TEAL,
+  COLOR_STATUS_WARNING,
+  COLOR_SURFACE_MUTED,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_SUBTLE,
+} from '../lib/theme';
 
 export interface MapBooking {
   id: string;
@@ -14,8 +24,8 @@ export interface MapBooking {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  CONFIRMED: '#1366D6', EN_ROUTE: '#0F766E', ARRIVED: '#0F766E', IN_PROGRESS: '#B45309',
-  PENDING: '#64748B', COMPLETED: '#15803D', CANCELLED: '#B91C1C', DISPUTED: '#B91C1C',
+  CONFIRMED: COLOR_BRAND_PRIMARY, EN_ROUTE: COLOR_STATUS_TEAL, ARRIVED: COLOR_STATUS_TEAL, IN_PROGRESS: COLOR_STATUS_WARNING,
+  PENDING: COLOR_TEXT_MUTED, COMPLETED: COLOR_STATUS_SUCCESS, CANCELLED: COLOR_STATUS_DANGER, DISPUTED: COLOR_STATUS_DANGER,
 };
 
 /** Escape user-controlled text before it goes into Popup.setHTML (raw HTML sink).
@@ -32,7 +42,7 @@ function esc(s: string): string {
 export default function BookingsMap({ bookings, height = 360 }: { bookings: MapBooking[]; height?: number }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MbMap | null>(null);
-  const gl = useRef<typeof mapboxgl | null>(null);
+  const mapboxglRef = useRef<typeof mapboxgl | null>(null);
   const markers = useRef<MbMarker[]>([]);
   const readyRef = useRef(false);
   const bookingsRef = useRef(bookings);
@@ -40,7 +50,7 @@ export default function BookingsMap({ bookings, height = 360 }: { bookings: MapB
 
   function render() {
     const map = mapRef.current;
-    const mapboxgl = gl.current;
+    const mapboxgl = mapboxglRef.current;
     if (!map || !mapboxgl) return;
     markers.current.forEach((m) => m.remove());
     markers.current = [];
@@ -52,7 +62,7 @@ export default function BookingsMap({ bookings, height = 360 }: { bookings: MapB
       const popup = new mapboxgl.Popup({ offset: 16 }).setHTML(
         `<div style="font-size:12px"><b>${esc(b.service?.nameAr ?? '')}</b><br/>${esc(b.customer?.name ?? '')}<br/>${esc(b.status)}</div>`,
       );
-      const marker = new mapboxgl.Marker({ color: STATUS_COLOR[b.status] ?? '#64748B' })
+      const marker = new mapboxgl.Marker({ color: STATUS_COLOR[b.status] ?? COLOR_TEXT_MUTED })
         .setLngLat([lng, lat]).setPopup(popup).addTo(map);
       markers.current.push(marker);
       bounds.extend([lng, lat]);
@@ -69,7 +79,7 @@ export default function BookingsMap({ bookings, height = 360 }: { bookings: MapB
     (async () => {
       try {
         const mapboxgl = (await import('mapbox-gl')).default;
-        gl.current = mapboxgl;
+        mapboxglRef.current = mapboxgl;
         if (cancelled || !el.current) return;
         mapboxgl.accessToken = MAPBOX_TOKEN;
         map = new mapboxgl.Map({ container: el.current, style: 'mapbox://styles/mapbox/streets-v12', center: [AMMAN.lng, AMMAN.lat], zoom: 11 });
@@ -96,7 +106,7 @@ export default function BookingsMap({ bookings, height = 360 }: { bookings: MapB
 
   if (!hasMapbox) {
     return (
-      <div className="flex items-center justify-center rounded-2xl" style={{ height, background: '#F1F5F9', color: '#94A3B8', fontSize: 13 }}>
+      <div className="flex items-center justify-center rounded-2xl" style={{ height, background: COLOR_SURFACE_MUTED, color: COLOR_TEXT_SUBTLE, fontSize: 13 }}>
         الخريطة غير متاحة — أضف رمز Mapbox.
       </div>
     );

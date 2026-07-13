@@ -1,12 +1,19 @@
 import { ShieldCheck, Star } from 'lucide-react';
+import { BookingStatus } from '../../lib/api';
+import { COLOR_ACCENT_AMBER, COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WARNING_TEXT } from '../../lib/theme';
+
+/** Booking-status badge styling. Deliberately keyed by `Partial<Record<BookingStatus, ...>>`
+ *  via `satisfies` so every key is checked against the real enum, but callers may still pass
+ *  any string (e.g. an unrecognized status) and fall back to the default styling below. */
+type StatusStyle = { ar: string; bg: string; fg: string };
 
 export function PriceBadge({ amount, big = false }: { amount: number; big?: boolean }) {
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-lg"
       style={{
-        background: big ? 'transparent' : '#E8F1FE',
-        color: '#0E4FA8',
+        background: big ? 'transparent' : COLOR_BRAND_PRIMARY_TINT,
+        color: COLOR_BRAND_PRIMARY_DARK,
         padding: big ? 0 : '4px 10px',
         fontWeight: 700,
         fontSize: big ? 28 : 14,
@@ -19,17 +26,17 @@ export function PriceBadge({ amount, big = false }: { amount: number; big?: bool
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { ar: string; bg: string; fg: string }> = {
-    PENDING:            { ar: 'بانتظار الدفع',     bg: '#E2E8F0', fg: '#475569' },
-    CONFIRMED:          { ar: 'تم القبول',         bg: '#DBEAFE', fg: '#1366D6' },
-    EN_ROUTE:           { ar: 'الفني في الطريق',   bg: '#CCFBF1', fg: '#0F766E' },
-    ARRIVED:            { ar: 'الفني وصل',         bg: '#CCFBF1', fg: '#0F766E' },
-    IN_PROGRESS:        { ar: 'الخدمة جارية',      bg: '#FEF3C7', fg: '#B45309' },
-    COMPLETED:          { ar: 'مكتملة',            bg: '#DCFCE7', fg: '#15803D' },
-    CANCELLED:          { ar: 'ملغاة',             bg: '#FEE2E2', fg: '#B91C1C' },
-    DISPUTED:           { ar: 'نزاع',              bg: '#FEE2E2', fg: '#B91C1C' },
-  };
-  const s = map[status] ?? { ar: status, bg: '#E2E8F0', fg: '#475569' };
+  const map = {
+    PENDING:            { ar: 'بانتظار الدفع',     bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY },
+    CONFIRMED:          { ar: 'تم القبول',         bg: COLOR_BADGE_INFO_BG, fg: COLOR_BRAND_PRIMARY },
+    EN_ROUTE:           { ar: 'الفني في الطريق',   bg: COLOR_ENROUTE_BG, fg: COLOR_ENROUTE_TEXT },
+    ARRIVED:            { ar: 'الفني وصل',         bg: COLOR_ENROUTE_BG, fg: COLOR_ENROUTE_TEXT },
+    IN_PROGRESS:        { ar: 'الخدمة جارية',      bg: COLOR_WARNING_BG, fg: COLOR_WARNING_TEXT },
+    COMPLETED:          { ar: 'مكتملة',            bg: COLOR_SUCCESS_BG, fg: COLOR_SUCCESS_TEXT },
+    CANCELLED:          { ar: 'ملغاة',             bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
+    DISPUTED:           { ar: 'نزاع',              bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
+  } satisfies Partial<Record<BookingStatus, StatusStyle>>;
+  const s = (map as Record<string, StatusStyle>)[status] ?? { ar: status, bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY };
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
@@ -43,16 +50,16 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
-    <span className="inline-flex items-center gap-1" style={{ color: '#F5A623', fontWeight: 600, fontSize: size }}>
-      <Star size={size} fill="#F5A623" strokeWidth={0} />
-      <span style={{ fontFamily: 'Inter', color: '#0F172A' }}>{rating.toFixed(1)}</span>
+    <span className="inline-flex items-center gap-1" style={{ color: COLOR_ACCENT_AMBER, fontWeight: 600, fontSize: size }}>
+      <Star size={size} fill={COLOR_ACCENT_AMBER} strokeWidth={0} />
+      <span style={{ fontFamily: 'Inter', color: COLOR_TEXT_PRIMARY }}>{rating.toFixed(1)}</span>
     </span>
   );
 }
 
 export function GuaranteePill() {
   return (
-    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontSize: 11, fontWeight: 600 }}>
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT, fontSize: 11, fontWeight: 600 }}>
       <ShieldCheck size={12} />
       ضمان 30 يوم
     </div>

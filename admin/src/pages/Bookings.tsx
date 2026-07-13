@@ -2,12 +2,28 @@ import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { api, AdminStats, BookingItem, BookingDetail } from '../lib/api';
+import { api, DEFAULT_PAGE_SIZE, AdminStats, BookingItem, BookingDetail } from '../lib/api';
 import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, ActionBtn, notify } from '../components/shared';
-import { fmtJod } from '../lib/format';
+import { fmtJod, shortId } from '../lib/format';
 import BookingsMap from '../components/BookingsMap';
+import {
+  COLOR_ACCENT_TEAL,
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_BRAND_PRIMARY_DARK,
+  COLOR_CHART_GREEN,
+  COLOR_CHART_ORANGE,
+  COLOR_CHART_ROSE,
+  COLOR_SURFACE_MUTED,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
-const STATUS_DIST_COLORS = ['#F5A623', '#0FB5A6', '#1FAA59', '#E5484D'];
+const STATUS_DIST_COLORS = [COLOR_CHART_ORANGE, COLOR_ACCENT_TEAL, COLOR_CHART_GREEN, COLOR_CHART_ROSE];
 
 const STATUSES = ['', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABELS: Record<string, string> = {
@@ -52,7 +68,7 @@ export default function Bookings() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const limit = 50;
+  const limit = DEFAULT_PAGE_SIZE;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-bookings', status, page],
@@ -78,9 +94,9 @@ export default function Bookings() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>الحجوزات</h1>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>
-            إدارة جميع حجوزات المنصة {total > 0 && <>— <span style={{ color: '#1366D6' }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>الحجوزات</h1>
+          <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>
+            إدارة جميع حجوزات المنصة {total > 0 && <>— <span style={{ color: COLOR_BRAND_PRIMARY }}>{total.toLocaleString('ar-JO')}</span> إجمالي</>}
           </p>
         </div>
 
@@ -98,8 +114,8 @@ export default function Bookings() {
                   fontWeight: 600,
                   border: 'none',
                   cursor: 'pointer',
-                  background: status === s ? '#1366D6' : '#E2E8F0',
-                  color: status === s ? '#FFF' : '#475569',
+                  background: status === s ? COLOR_BRAND_PRIMARY : COLOR_BORDER_LIGHT,
+                  color: status === s ? COLOR_WHITE : COLOR_TEXT_SECONDARY,
                   transition: 'all .15s',
                 }}
               >
@@ -152,7 +168,7 @@ export default function Bookings() {
         {!isLoading && !isError && bookings.length > 0 && (
           <TableWrapper>
             <thead>
-              <tr style={{ background: '#F8FAFC' }}>
+              <tr style={{ background: COLOR_SURFACE_SUBTLE }}>
                 <Th>رقم الحجز</Th>
                 <Th>العميل</Th>
                 <Th>الخدمة</Th>
@@ -170,13 +186,13 @@ export default function Bookings() {
                   className="hover:bg-slate-50 transition-colors cursor-pointer"
                   data-testid={`booking-row-${b.id}`}
                 >
-                  <Td><span style={{ fontFamily: 'Inter', fontSize: 12, color: '#94A3B8' }}>{b.id.slice(0, 8)}…</span></Td>
+                  <Td><span style={{ fontFamily: 'Inter', fontSize: 12, color: COLOR_TEXT_SUBTLE }}>{shortId(b.id)}…</span></Td>
                   <Td>{b.customer?.name ?? b.customer?.phone ?? '—'}</Td>
                   <Td>{b.service?.nameAr ?? '—'}</Td>
                   <Td>{b.technician?.user?.name ?? '—'}</Td>
                   <Td><span style={{ fontFamily: 'Inter', fontSize: 13 }}>{fmt(b.scheduledAt)}</span></Td>
                   <Td>
-                    <span style={{ fontFamily: 'Inter', fontWeight: 700, color: '#0E4FA8' }}>
+                    <span style={{ fontFamily: 'Inter', fontWeight: 700, color: COLOR_BRAND_PRIMARY_DARK }}>
                       {fmtJod(b.totalJod)} JD
                     </span>
                   </Td>
@@ -216,33 +232,33 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
         {booking && (
           <div className="p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <span style={{ fontFamily: 'Inter', fontSize: 13, color: '#94A3B8' }}>{booking.id}</span>
+              <span style={{ fontFamily: 'Inter', fontSize: 13, color: COLOR_TEXT_SUBTLE }}>{booking.id}</span>
               <StatusBadge status={booking.status} />
             </div>
             <div style={{ fontSize: 14 }} className="space-y-2">
-              <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                <span style={{ color: '#64748B' }}>العميل</span>
+              <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                <span style={{ color: COLOR_TEXT_MUTED }}>العميل</span>
                 <span style={{ fontWeight: 700 }}>{booking.customer?.name ?? booking.customer?.phone ?? '—'}</span>
               </div>
-              <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                <span style={{ color: '#64748B' }}>الفني</span>
+              <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                <span style={{ color: COLOR_TEXT_MUTED }}>الفني</span>
                 <span style={{ fontWeight: 700 }}>{booking.technician?.user?.name ?? booking.technician?.user?.phone ?? '—'}</span>
               </div>
-              <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                <span style={{ color: '#64748B' }}>الخدمة</span>
+              <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                <span style={{ color: COLOR_TEXT_MUTED }}>الخدمة</span>
                 <span style={{ fontWeight: 700 }}>{booking.service?.nameAr ?? '—'}</span>
               </div>
-              <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                <span style={{ color: '#64748B' }}>العنوان</span>
+              <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                <span style={{ color: COLOR_TEXT_MUTED }}>العنوان</span>
                 <span style={{ fontWeight: 700 }}>{booking.addressLine ?? '—'}</span>
               </div>
-              <div className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                <span style={{ color: '#64748B' }}>موعد الحجز</span>
+              <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                <span style={{ color: COLOR_TEXT_MUTED }}>موعد الحجز</span>
                 <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmt(booking.scheduledAt)}</span>
               </div>
               <div className="flex items-center justify-between py-1">
-                <span style={{ color: '#64748B' }}>المبلغ الإجمالي</span>
-                <span style={{ fontFamily: 'Inter', fontWeight: 800, color: '#0E4FA8' }}>{fmtJod(booking.totalJod)} JD</span>
+                <span style={{ color: COLOR_TEXT_MUTED }}>المبلغ الإجمالي</span>
+                <span style={{ fontFamily: 'Inter', fontWeight: 800, color: COLOR_BRAND_PRIMARY_DARK }}>{fmtJod(booking.totalJod)} JD</span>
               </div>
             </div>
 
@@ -254,10 +270,10 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                   {data!.statusHistory.map((h) => (
                     <div key={h.id} className="flex items-center justify-between" style={{ fontSize: 13 }}>
                       <span className="flex items-center gap-1">
-                        {h.fromStatus && <span style={{ color: '#94A3B8' }}>{STATUS_LABELS[h.fromStatus] ?? h.fromStatus} ←</span>}
+                        {h.fromStatus && <span style={{ color: COLOR_TEXT_SUBTLE }}>{STATUS_LABELS[h.fromStatus] ?? h.fromStatus} ←</span>}
                         <span style={{ fontWeight: 600 }}>{STATUS_LABELS[h.toStatus] ?? h.toStatus}</span>
                       </span>
-                      <span style={{ fontFamily: 'Inter', color: '#94A3B8', fontSize: 12 }}>{fmtDateTime(h.changedAt)}</span>
+                      <span style={{ fontFamily: 'Inter', color: COLOR_TEXT_SUBTLE, fontSize: 12 }}>{fmtDateTime(h.changedAt)}</span>
                     </div>
                   ))}
                 </div>
@@ -270,28 +286,28 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
               {data!.payment ? (
                 <div className="mt-2 space-y-1" style={{ fontSize: 13 }}>
                   <div className="flex items-center justify-between">
-                    <span style={{ color: '#64748B' }}>المبلغ المصرّح</span>
+                    <span style={{ color: COLOR_TEXT_MUTED }}>المبلغ المصرّح</span>
                     <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(data!.payment.amountJod)} JD</span>
                   </div>
                   {booking.discountJod != null && Number(booking.discountJod) > 0 && (
                     <div className="flex items-center justify-between">
-                      <span style={{ color: '#64748B' }}>الخصم</span>
+                      <span style={{ color: COLOR_TEXT_MUTED }}>الخصم</span>
                       <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(booking.discountJod)} JD</span>
                     </div>
                   )}
                   {data!.payment.capturedAmountJod != null && (
                     <div className="flex items-center justify-between">
-                      <span style={{ color: '#64748B' }}>المبلغ المحصّل</span>
+                      <span style={{ color: COLOR_TEXT_MUTED }}>المبلغ المحصّل</span>
                       <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(data!.payment.capturedAmountJod)} JD</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span style={{ color: '#64748B' }}>حالة الدفع</span>
+                    <span style={{ color: COLOR_TEXT_MUTED }}>حالة الدفع</span>
                     <span style={{ fontWeight: 600 }}>{PAYMENT_STATUS_LABELS[data!.payment.status] ?? data!.payment.status}</span>
                   </div>
                 </div>
               ) : (
-                <div className="mt-1" style={{ fontSize: 13, color: '#94A3B8' }}>لا توجد عملية دفع بعد</div>
+                <div className="mt-1" style={{ fontSize: 13, color: COLOR_TEXT_SUBTLE }}>لا توجد عملية دفع بعد</div>
               )}
             </div>
 
@@ -301,20 +317,20 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                 <div style={{ fontWeight: 700, fontSize: 14 }}>أعمال إضافية</div>
                 <div className="mt-2 space-y-2">
                   {data!.additionalWork.map((w) => (
-                    <div key={w.id} className="p-2 rounded-lg" style={{ background: '#F8FAFC', fontSize: 13 }}>
+                    <div key={w.id} className="p-2 rounded-lg" style={{ background: COLOR_SURFACE_SUBTLE, fontSize: 13 }}>
                       <div className="flex items-center justify-between">
                         <span>{w.description}</span>
                         <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(w.amountJod)} JD</span>
                       </div>
-                      <div style={{ color: '#94A3B8', fontSize: 12 }}>{WORK_STATUS_LABELS[w.status] ?? w.status}</div>
+                      <div style={{ color: COLOR_TEXT_SUBTLE, fontSize: 12 }}>{WORK_STATUS_LABELS[w.status] ?? w.status}</div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="pt-2 border-t" style={{ borderColor: '#F1F5F9' }}>
-              <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
+            <div className="pt-2 border-t" style={{ borderColor: COLOR_SURFACE_MUTED }}>
+              <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>إغلاق</button>
             </div>
           </div>
         )}

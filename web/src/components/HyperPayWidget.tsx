@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CheckoutSession } from '../lib/api';
+import { COLOR_HYPERPAY_ERROR } from '../lib/theme';
 
 interface HyperPayWidgetProps {
   session: CheckoutSession;
@@ -25,7 +26,7 @@ export default function HyperPayWidget({ session, returnUrl }: HyperPayWidgetPro
 
   if (loadError) {
     return (
-      <p style={{ color: '#d03b3b', textAlign: 'center', padding: '1rem' }}>
+      <p style={{ color: COLOR_HYPERPAY_ERROR, textAlign: 'center', padding: '1rem' }}>
         فشل تحميل نموذج الدفع. يرجى تحديث الصفحة والمحاولة مرة أخرى.
       </p>
     );

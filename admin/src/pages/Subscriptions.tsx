@@ -1,9 +1,22 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, CheckCircle2, DollarSign } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, DEFAULT_PAGE_SIZE } from '../lib/api';
 import { Card, KpiCard, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, Pill } from '../components/shared';
 import { fmtJod } from '../lib/format';
+import {
+  COLOR_ACCENT_TEAL,
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_STATUS_WARNING,
+  COLOR_STATUS_WARNING_BG,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+} from '../lib/theme';
 
 interface SubscriptionItem {
   id: string;
@@ -16,15 +29,18 @@ interface SubscriptionItem {
 }
 
 const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
-  ACTIVE: { ar: 'فعّال', bg: '#DCFCE7', fg: '#15803D' },
-  PAST_DUE: { ar: 'متأخر', bg: '#FEF3C7', fg: '#B45309' },
-  CANCELLED: { ar: 'ملغى', bg: '#E2E8F0', fg: '#475569' },
-  EXPIRED: { ar: 'منتهٍ', bg: '#E2E8F0', fg: '#475569' },
+  ACTIVE: { ar: 'فعّال', bg: COLOR_STATUS_SUCCESS_BG, fg: COLOR_STATUS_SUCCESS },
+  PAST_DUE: { ar: 'متأخر', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+  CANCELLED: { ar: 'ملغى', bg: COLOR_BORDER_LIGHT, fg: COLOR_TEXT_SECONDARY },
+  EXPIRED: { ar: 'منتهٍ', bg: COLOR_BORDER_LIGHT, fg: COLOR_TEXT_SECONDARY },
 };
+
+/** Monthly price of the protection subscription plan, in JOD. */
+const PROTECTION_PLAN_PRICE_JOD = 5;
 
 export default function Subscriptions() {
   const [page, setPage] = useState(0);
-  const limit = 50;
+  const limit = DEFAULT_PAGE_SIZE;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-subscriptions', page],
@@ -34,21 +50,21 @@ export default function Subscriptions() {
   const items = data?.items ?? [];
   const activeOnPage = items.filter((s) => s.status === 'ACTIVE').length;
   const pastDueOnPage = items.filter((s) => s.status === 'PAST_DUE').length;
-  const mrrOnPage = activeOnPage * 5; // Protection plan = 5 JOD/mo
+  const mrrOnPage = activeOnPage * PROTECTION_PLAN_PRICE_JOD;
 
   const fmt = (iso: string) => new Date(iso).toLocaleDateString('ar-JO', { year: 'numeric', month: 'short', day: 'numeric' });
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>اشتراكات الحماية</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>خطة الحماية الشهرية (5 دنانير) — الإيراد المتكرر والحالة.</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>اشتراكات الحماية</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>خطة الحماية الشهرية ({PROTECTION_PLAN_PRICE_JOD} دنانير) — الإيراد المتكرر والحالة.</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard label="إجمالي المشتركين" value={data?.total ?? 0} icon={<Users size={18} />} color="#1366D6" />
-        <KpiCard label="فعّال (هذه الصفحة)" value={activeOnPage} sub={`${pastDueOnPage} متأخر`} icon={<CheckCircle2 size={18} />} color="#15803D" />
-        <KpiCard label="إيراد شهري (هذه الصفحة)" value={`${fmtJod(mrrOnPage)} JD`} icon={<DollarSign size={18} />} color="#0FB5A6" />
+        <KpiCard label="إجمالي المشتركين" value={data?.total ?? 0} icon={<Users size={18} />} color={COLOR_BRAND_PRIMARY} />
+        <KpiCard label="فعّال (هذه الصفحة)" value={activeOnPage} sub={`${pastDueOnPage} متأخر`} icon={<CheckCircle2 size={18} />} color={COLOR_STATUS_SUCCESS} />
+        <KpiCard label="إيراد شهري (هذه الصفحة)" value={`${fmtJod(mrrOnPage)} JD`} icon={<DollarSign size={18} />} color={COLOR_ACCENT_TEAL} />
       </div>
 
       <Card>
@@ -58,7 +74,7 @@ export default function Subscriptions() {
         {!isLoading && !isError && items.length > 0 && (
           <TableWrapper>
             <thead>
-              <tr style={{ background: '#F8FAFC' }}>
+              <tr style={{ background: COLOR_SURFACE_SUBTLE }}>
                 <Th>العميل</Th><Th>الجوال</Th><Th>الحالة</Th><Th>ينتهي في</Th><Th>مشترك منذ</Th>
               </tr>
             </thead>

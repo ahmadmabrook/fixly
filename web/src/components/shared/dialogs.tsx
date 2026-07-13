@@ -1,5 +1,6 @@
 import { ReactNode, useId } from 'react';
 import { useDialog } from '../../hooks/useDialog';
+import { COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 /**
  * Accessible modal shell: backdrop click + Escape close, focus trap, focus
@@ -74,10 +75,10 @@ export function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id={titleId} style={{ fontWeight: 700, fontSize: 18, textAlign: 'center' }}>{title}</h3>
-        {body && <p id={bodyId} style={{ color: '#475569', fontSize: 14, textAlign: 'center', marginTop: 8 }}>{body}</p>}
+        {body && <p id={bodyId} style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14, textAlign: 'center', marginTop: 8 }}>{body}</p>}
         <div className="mt-5 space-y-2">
-          <button onClick={onConfirm} className="w-full h-[52px] rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>{confirmLabel}</button>
-          <button onClick={onCancel} className="w-full h-[52px] rounded-xl" style={{ color: '#1366D6', fontWeight: 600 }}>{cancelLabel}</button>
+          <button onClick={onConfirm} className="w-full h-[52px] rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>{confirmLabel}</button>
+          <button onClick={onCancel} className="w-full h-[52px] rounded-xl" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600 }}>{cancelLabel}</button>
         </div>
       </div>
     </div>

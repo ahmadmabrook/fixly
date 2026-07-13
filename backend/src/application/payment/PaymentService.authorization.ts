@@ -1,12 +1,13 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, PaymentStatus, BookingStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
 import { toDecimal, isPositive } from '../../shared/money';
-import { NotFoundError, ConflictError, ValidationError } from '../../shared/errors';
+import { NotFoundError, ConflictError, ValidationError, PrismaErrorCode } from '../../shared/errors';
 import { paymentOpsTotal } from '../../shared/metrics';
 import type { IPaymentProvider, PrepareCheckoutResult, CheckoutResult } from '../../domain/providers/IPaymentProvider';
 import { postLedgerEntry } from './PaymentService.ledger';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 /** Internal sentinel: a hosted authorization landed for a booking that is no longer
  *  AWAITING_PAYMENT (cancelled/expired). Used to roll back the promotion tx and void. */
@@ -41,7 +42,7 @@ export class PaymentAuthorizationFlow {
     // Skip only when a hold is already placed or settled. (We never create
     // PENDING/FAILED rows, so today this is equivalent to "any row", but the
     // explicit check is correct if that ever changes.)
-    if (existing && existing.status !== 'PENDING') {
+    if (existing && existing.status !== PaymentStatus.PENDING) {
       logger.debug({ bookingId, status: existing.status }, 'preAuthorize: payment already active, skipping');
       paymentOpsTotal.inc({ op: 'preauth', result: 'skipped' });
       return;
@@ -72,7 +73,7 @@ export class PaymentAuthorizationFlow {
         const payment = await tx.payment.create({
           data: {
             bookingId,
-            status: 'PRE_AUTHORIZED',
+            status: PaymentStatus.PRE_AUTHORIZED,
             provider: this.providerName,
             providerRef: result.providerRef,
             currency: env().CURRENCY,
@@ -83,7 +84,7 @@ export class PaymentAuthorizationFlow {
         await postLedgerEntry(tx, payment.id, 'CHARGE', amount, 'Pre-authorization hold');
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
         logger.debug({ bookingId }, 'preAuthorize: payment created concurrently, skipping');
         paymentOpsTotal.inc({ op: 'preauth', result: 'skipped' });
         return;
@@ -109,7 +110,7 @@ export class PaymentAuthorizationFlow {
       select: { id: true, totalJod: true, status: true },
     });
     if (!booking) throw new NotFoundError('Booking');
-    if (booking.status !== 'AWAITING_PAYMENT') {
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
       throw new ConflictError(`Booking is not awaiting payment (status ${booking.status})`);
     }
     const amount = toDecimal(booking.totalJod);
@@ -127,14 +128,14 @@ export class PaymentAuthorizationFlow {
       where: { bookingId },
       create: {
         bookingId,
-        status: 'PENDING',
+        status: PaymentStatus.PENDING,
         provider: this.providerName,
         currency: env().CURRENCY,
         amountJod: amount,
         method: 'card',
         checkoutId: session.checkoutId,
       },
-      update: { status: 'PENDING', checkoutId: session.checkoutId, amountJod: amount },
+      update: { status: PaymentStatus.PENDING, checkoutId: session.checkoutId, amountJod: amount },
     });
 
     paymentOpsTotal.inc({ op: 'checkout', result: 'ok' });
@@ -154,9 +155,9 @@ export class PaymentAuthorizationFlow {
     const payment = await prisma.payment.findUnique({ where: { bookingId } });
     if (!payment) throw new NotFoundError('Payment');
     // Already resolved → report idempotently without re-querying the PSP.
-    if (payment.status === 'PRE_AUTHORIZED' || payment.status === 'CAPTURED') return 'authorized';
-    if (payment.status === 'FAILED') return 'rejected';
-    if (payment.status !== 'PENDING' || !payment.checkoutId) return 'pending';
+    if (payment.status === PaymentStatus.PRE_AUTHORIZED || payment.status === PaymentStatus.CAPTURED) return 'authorized';
+    if (payment.status === PaymentStatus.FAILED) return 'rejected';
+    if (payment.status !== PaymentStatus.PENDING || !payment.checkoutId) return 'pending';
 
     const result = await this.provider.getCheckoutResult(payment.checkoutId);
     if (result.state === 'authorized') {
@@ -166,7 +167,7 @@ export class PaymentAuthorizationFlow {
       return outcome === 'rejected' ? 'rejected' : 'authorized';
     }
     if (result.state === 'rejected') {
-      await prisma.payment.updateMany({ where: { id: payment.id, status: 'PENDING' }, data: { status: 'FAILED' } });
+      await prisma.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.FAILED } });
       paymentOpsTotal.inc({ op: 'authorize', result: 'failed' });
       logger.warn({ bookingId, code: result.resultCode }, 'Hosted checkout rejected');
       return 'rejected';
@@ -202,7 +203,7 @@ export class PaymentAuthorizationFlow {
       if (result.providerRef) {
         try { await this.provider.void(result.providerRef, `void-mismatch:${bookingId}`); } catch (err) { logger.warn({ bookingId, err }, 'authorize: void of mismatched hold failed'); }
       }
-      await prisma.payment.updateMany({ where: { id: paymentId, status: 'PENDING' }, data: { status: 'FAILED' } });
+      await prisma.payment.updateMany({ where: { id: paymentId, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.FAILED } });
       paymentOpsTotal.inc({ op: 'authorize', result: 'failed' });
       return 'rejected';
     }
@@ -211,9 +212,9 @@ export class PaymentAuthorizationFlow {
     try {
       applied = await prisma.$transaction(async (tx) => {
         const claim = await tx.payment.updateMany({
-          where: { id: paymentId, status: 'PENDING' },
+          where: { id: paymentId, status: PaymentStatus.PENDING },
           data: {
-            status: 'PRE_AUTHORIZED',
+            status: PaymentStatus.PRE_AUTHORIZED,
             providerRef: result.providerRef,
             cardBrand: result.cardBrand,
             cardLast4: result.cardLast4,
@@ -222,7 +223,7 @@ export class PaymentAuthorizationFlow {
         });
         if (claim.count === 0) return false; // already promoted (race / replay)
         // Make the booking live (technicians can now accept) — only from AWAITING_PAYMENT.
-        const promoted = await tx.booking.updateMany({ where: { id: bookingId, status: 'AWAITING_PAYMENT' }, data: { status: 'PENDING' } });
+        const promoted = await tx.booking.updateMany({ where: { id: bookingId, status: BookingStatus.AWAITING_PAYMENT }, data: { status: BookingStatus.PENDING } });
         if (promoted.count === 0) {
           // The booking was cancelled/expired (e.g. the abandonment reconciler won the race)
           // between checkout and authorization. Abort the whole promotion so we never hold
@@ -230,7 +231,7 @@ export class PaymentAuthorizationFlow {
           throw new BookingNoLongerAwaitingError();
         }
         await postLedgerEntry(tx, paymentId, 'CHARGE', expected, 'Pre-authorization hold (hosted checkout)');
-        await tx.outboxEvent.create({ data: { bookingId, eventType: 'booking.created', payload: { bookingId, customerId: booking.customerId } } });
+        await tx.outboxEvent.create({ data: { bookingId, eventType: OutboxEventType.BOOKING_CREATED, payload: { bookingId, customerId: booking.customerId } } });
         return true;
       });
     } catch (err) {
@@ -239,7 +240,7 @@ export class PaymentAuthorizationFlow {
         if (result.providerRef) {
           try { await this.provider.void(result.providerRef, `void-stale-booking:${bookingId}`); } catch (e) { logger.warn({ bookingId, err: e }, 'authorize: void of stale-booking hold failed'); }
         }
-        await prisma.payment.updateMany({ where: { id: paymentId, status: 'PENDING' }, data: { status: 'FAILED' } });
+        await prisma.payment.updateMany({ where: { id: paymentId, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.FAILED } });
         paymentOpsTotal.inc({ op: 'authorize', result: 'failed' });
         return 'rejected';
       }

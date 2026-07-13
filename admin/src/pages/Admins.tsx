@@ -1,16 +1,34 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, AdminUserItem } from '../lib/api';
-import { useAuth } from '../lib/store';
+import { useAuth, type AdminRole } from '../lib/store';
 import { Card, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, ADMIN_ROLES as ROLES, adminRoleLabel as roleLabel } from '../components/shared';
+import {
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SUBTLE,
+} from '../lib/theme';
+
+/** Client-side minimum admin password length — matches the backend's
+ *  validation (server remains the real authority; this only pre-gates
+ *  the submit button so the request isn't sent for an obviously-too-short
+ *  password). */
+const MIN_ADMIN_PASSWORD_LENGTH = 12;
 
 export default function Admins() {
   const qc = useQueryClient();
   const me = useAuth((s) => s.admin);
-  const [form, setForm] = useState({ email: '', password: '', name: '', role: 'OPS' });
+  const [form, setForm] = useState<{ email: string; password: string; name: string; role: AdminRole }>({
+    email: '', password: '', name: '', role: 'OPS',
+  });
   // Pending confirmation for an authorization-changing action.
   const [activeConfirm, setActiveConfirm] = useState<{ admin: AdminUserItem; next: boolean } | null>(null);
-  const [roleConfirm, setRoleConfirm] = useState<{ admin: AdminUserItem; next: string } | null>(null);
+  const [roleConfirm, setRoleConfirm] = useState<{ admin: AdminUserItem; next: AdminRole } | null>(null);
 
   const { data, isLoading, isError } = useQuery({ queryKey: ['admin-admins'], queryFn: () => api.get<AdminUserItem[]>('/admins') });
 
@@ -20,7 +38,7 @@ export default function Admins() {
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   const setRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) => api.post(`/admins/${id}/role`, { role }),
+    mutationFn: ({ id, role }: { id: string; role: AdminRole }) => api.post(`/admins/${id}/role`, { role }),
     onSuccess: () => { notify('تم تحديث الدور', 'success'); void qc.invalidateQueries({ queryKey: ['admin-admins'] }); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
@@ -33,8 +51,8 @@ export default function Admins() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>إدارة المسؤولين</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>إنشاء حسابات المسؤولين وتعيين الأدوار (للمدير العام فقط).</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>إدارة المسؤولين</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>إنشاء حسابات المسؤولين وتعيين الأدوار (للمدير العام فقط).</p>
       </div>
 
       <Card className="p-5 max-w-2xl">
@@ -42,13 +60,13 @@ export default function Admins() {
         <div className="mt-3 grid md:grid-cols-2 gap-2">
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="الاسم" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
           <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="البريد الإلكتروني" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-          <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" placeholder="كلمة المرور (12+ حرفاً)" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }}>
+          <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} type="password" placeholder={`كلمة المرور (${MIN_ADMIN_PASSWORD_LENGTH}+ حرفاً)`} className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
+          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as AdminRole })} className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }}>
             {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
         <div className="mt-3">
-          <ActionBtn onClick={() => create.mutate()} disabled={!form.email.trim() || form.password.length < 12 || !form.name.trim() || create.isPending}>إنشاء</ActionBtn>
+          <ActionBtn onClick={() => create.mutate()} disabled={!form.email.trim() || form.password.length < MIN_ADMIN_PASSWORD_LENGTH || !form.name.trim() || create.isPending}>إنشاء</ActionBtn>
         </div>
       </Card>
 
@@ -58,23 +76,23 @@ export default function Admins() {
         {!isLoading && !isError && (data?.length ?? 0) === 0 && <EmptyState message="لا يوجد مسؤولون" />}
         {!isLoading && !isError && (data?.length ?? 0) > 0 && (
           <TableWrapper>
-            <thead><tr style={{ background: '#F8FAFC' }}><Th>الاسم</Th><Th>البريد</Th><Th>الدور</Th><Th>الحالة</Th><Th>إجراء</Th></tr></thead>
+            <thead><tr style={{ background: COLOR_SURFACE_SUBTLE }}><Th>الاسم</Th><Th>البريد</Th><Th>الدور</Th><Th>الحالة</Th><Th>إجراء</Th></tr></thead>
             <tbody>
               {(data ?? []).map((a) => {
                 const isSelf = a.id === me?.id;
                 return (
                   <tr key={a.id} className="hover:bg-slate-50">
-                    <Td>{a.name}{isSelf && <span style={{ color: '#94A3B8', fontSize: 11 }}> (أنت)</span>}</Td>
+                    <Td>{a.name}{isSelf && <span style={{ color: COLOR_TEXT_SUBTLE, fontSize: 11 }}> (أنت)</span>}</Td>
                     <Td><span style={{ fontFamily: 'Inter', fontSize: 13, direction: 'ltr', display: 'inline-block' }}>{a.email}</span></Td>
                     <Td>
-                      <select value={a.role} onChange={(e) => { if (e.target.value !== a.role) setRoleConfirm({ admin: a, next: e.target.value }); }} disabled={isSelf || setRole.isPending} className="h-8 rounded-lg border border-slate-200 px-2 disabled:opacity-50" style={{ fontSize: 12 }}>
+                      <select value={a.role} onChange={(e) => { if (e.target.value !== a.role) setRoleConfirm({ admin: a, next: e.target.value as AdminRole }); }} disabled={isSelf || setRole.isPending} className="h-8 rounded-lg border border-slate-200 px-2 disabled:opacity-50" style={{ fontSize: 12 }}>
                         {ROLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                       </select>
                     </Td>
-                    <Td>{a.isActive ? <span style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>نشط</span> : <span style={{ color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>معطّل</span>}</Td>
+                    <Td>{a.isActive ? <span style={{ color: COLOR_STATUS_SUCCESS, fontSize: 12, fontWeight: 600 }}>نشط</span> : <span style={{ color: COLOR_STATUS_DANGER, fontSize: 12, fontWeight: 600 }}>معطّل</span>}</Td>
                     <Td>
                       {!isSelf && (
-                        <button onClick={() => setActiveConfirm({ admin: a, next: !a.isActive })} disabled={setActive.isPending} data-testid={`active-btn-${a.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: a.isActive ? '#FEE2E2' : '#DCFCE7', color: a.isActive ? '#B91C1C' : '#15803D', fontSize: 12, fontWeight: 600 }}>
+                        <button onClick={() => setActiveConfirm({ admin: a, next: !a.isActive })} disabled={setActive.isPending} data-testid={`active-btn-${a.id}`} className="px-3 rounded-lg disabled:opacity-50" style={{ background: a.isActive ? COLOR_STATUS_DANGER_BG : COLOR_STATUS_SUCCESS_BG, color: a.isActive ? COLOR_STATUS_DANGER : COLOR_STATUS_SUCCESS, fontSize: 12, fontWeight: 600 }}>
                           {a.isActive ? 'تعطيل' : 'تفعيل'}
                         </button>
                       )}
@@ -86,7 +104,7 @@ export default function Admins() {
           </TableWrapper>
         )}
       </Card>
-      <p style={{ color: '#94A3B8', fontSize: 12 }}>الأدوار: {ROLES.map(([, l]) => l).join(' · ')}</p>
+      <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 12 }}>الأدوار: {ROLES.map(([, l]) => l).join(' · ')}</p>
 
       <ConfirmDialog
         open={activeConfirm !== null}

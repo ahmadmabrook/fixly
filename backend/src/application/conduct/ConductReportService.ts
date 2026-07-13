@@ -28,7 +28,7 @@ export class ConductReportService {
         subjectTechId: input.subjectTechId ?? null,
         bookingId: input.bookingId ?? null,
         details: input.details ?? null,
-        status: 'OPEN',
+        status: ConductStatus.OPEN,
       },
     });
   }
@@ -59,7 +59,7 @@ export class ConductReportService {
   async resolve(id: string, decision: 'UPHELD' | 'DISMISSED', resolvedById: string) {
     const report = await prisma.conductReport.findUnique({ where: { id } });
     if (!report) throw new NotFoundError('ConductReport');
-    if (report.status === 'UPHELD' || report.status === 'DISMISSED') {
+    if (report.status === ConductStatus.UPHELD || report.status === ConductStatus.DISMISSED) {
       throw new ConflictError('Report already resolved');
     }
     return prisma.$transaction(async (tx) => {

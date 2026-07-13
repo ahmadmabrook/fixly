@@ -4,12 +4,14 @@ import { MapPin } from 'lucide-react';
 import { api, NearbyJob } from '../../lib/api';
 import { useCountdown } from '../../hooks/useCountdown';
 import { Card, ServiceIcon, Modal, notify } from '../../components/shared';
+import { REALTIME_POLL_INTERVAL_MS } from '../../lib/constants';
+import { COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WARNING_TEXT, COLOR_WHITE } from '../../lib/theme';
 
 export function NearbyJobs({ onAccepted }: { onAccepted: () => void }) {
   const qc = useQueryClient();
   // Poll at 30s (was 15s) to cut backend load; the address is only revealed
   // after accepting, so list rows show distance + price only.
-  const { data: jobs } = useQuery({ queryKey: ['tech-jobs'], queryFn: () => api.get<NearbyJob[]>('/technician/jobs'), refetchInterval: 30000 });
+  const { data: jobs } = useQuery({ queryKey: ['tech-jobs'], queryFn: () => api.get<NearbyJob[]>('/technician/jobs'), refetchInterval: REALTIME_POLL_INTERVAL_MS });
   const [detailFor, setDetailFor] = useState<NearbyJob | null>(null);
 
   async function accept(id: string) {
@@ -32,7 +34,7 @@ export function NearbyJobs({ onAccepted }: { onAccepted: () => void }) {
   }
   return (
     <div className="space-y-3">
-      {(jobs ?? []).length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد طلبات قريبة حالياً.</p>}
+      {(jobs ?? []).length === 0 && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>لا توجد طلبات قريبة حالياً.</p>}
       {(jobs ?? []).map((j) => (
         <NearbyJobCard key={j.id} job={j} onAccept={() => void accept(j.id)} onDetails={() => setDetailFor(j)} />
       ))}
@@ -60,21 +62,21 @@ function NearbyJobCard({ job: j, onAccept, onDetails }: { job: NearbyJob; onAcce
           <ServiceIcon nameAr={j.service?.nameAr ?? ''} size={20} />
           <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 15 }}>{j.service?.nameAr}</div>
-            <div style={{ color: '#475569', fontSize: 12 }}>{j.distanceKm != null ? <>على بُعد <span style={{ fontFamily: 'Inter' }}>{j.distanceKm}</span> كم</> : 'قريب منك'}</div>
+            <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>{j.distanceKm != null ? <>على بُعد <span style={{ fontFamily: 'Inter' }}>{j.distanceKm}</span> كم</> : 'قريب منك'}</div>
           </div>
-          <span style={{ fontWeight: 700, color: '#0E4FA8' }}><span style={{ fontFamily: 'Inter' }}>{Number(j.totalJod)}</span> دينار</span>
+          <span style={{ fontWeight: 700, color: COLOR_BRAND_PRIMARY_DARK }}><span style={{ fontFamily: 'Inter' }}>{Number(j.totalJod)}</span> دينار</span>
         </div>
       </button>
       {/* Countdown timer */}
       {remaining != null && (
-        <div className="mt-2 flex items-center gap-1" style={{ fontSize: 13, fontWeight: 600, color: expired ? '#B91C1C' : '#B45309', fontFamily: 'Inter' }}>
+        <div className="mt-2 flex items-center gap-1" style={{ fontSize: 13, fontWeight: 600, color: expired ? COLOR_ERROR_TEXT : COLOR_WARNING_TEXT, fontFamily: 'Inter' }}>
           <span aria-hidden="true">&#9201;</span>
           {expired ? <span style={{ fontFamily: 'Tajawal' }}>انتهت المهلة</span> : formatTime(remaining)}
         </div>
       )}
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button onClick={onDetails} className="h-11 rounded-xl" style={{ border: '1px solid #E2E8F0', color: '#475569', fontWeight: 700 }}>تفاصيل</button>
-        <button onClick={onAccept} disabled={expired} className="h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+        <button onClick={onDetails} className="h-11 rounded-xl" style={{ border: `1px solid ${COLOR_BORDER}`, color: COLOR_TEXT_SECONDARY, fontWeight: 700 }}>تفاصيل</button>
+        <button onClick={onAccept} disabled={expired} className="h-11 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
           {expired ? 'انتهت المهلة' : 'قبول'}
         </button>
       </div>
@@ -96,27 +98,27 @@ function JobDetailModal({ job, onAccept, onReject, onClose }: { job: NearbyJob; 
         <ServiceIcon nameAr={job.service?.nameAr ?? ''} size={24} />
         <div className="flex-1">
           <div style={{ fontWeight: 800, fontSize: 18 }}>{job.service?.nameAr}</div>
-          {job.service?.durationMin != null && <div style={{ color: '#475569', fontSize: 13 }}>المدة التقديرية: {job.service.durationMin} دقيقة</div>}
+          {job.service?.durationMin != null && <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>المدة التقديرية: {job.service.durationMin} دقيقة</div>}
         </div>
       </div>
       <Card className="mt-3 p-3 flex items-center gap-2">
-        <MapPin size={16} color="#475569" aria-hidden="true" />
+        <MapPin size={16} color={COLOR_TEXT_SECONDARY} aria-hidden="true" />
         <span style={{ fontSize: 13 }}>
           {job.distanceKm != null ? <>على بُعد <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{job.distanceKm}</span> كم — يظهر العنوان الكامل بعد القبول</> : 'يظهر العنوان الكامل بعد القبول'}
         </span>
       </Card>
       <Card className="mt-3 p-3 flex items-center justify-between">
         <span style={{ fontSize: 14, fontWeight: 700 }}>سعر الخدمة</span>
-        <span style={{ fontFamily: 'Inter', fontWeight: 800, fontSize: 18, color: '#0E4FA8' }}>{Number(job.totalJod)} دينار</span>
+        <span style={{ fontFamily: 'Inter', fontWeight: 800, fontSize: 18, color: COLOR_BRAND_PRIMARY_DARK }}>{Number(job.totalJod)} دينار</span>
       </Card>
       {remaining != null && !expired && (
-        <p className="mt-2 text-center" style={{ color: '#B45309', fontSize: 12, fontWeight: 600 }}>
+        <p className="mt-2 text-center" style={{ color: COLOR_WARNING_TEXT, fontSize: 12, fontWeight: 600 }}>
           اقبل خلال <span style={{ fontFamily: 'Inter' }}>{Math.floor(remaining / 60)}:{(remaining % 60).toString().padStart(2, '0')}</span>
         </p>
       )}
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <button onClick={onReject} className="h-12 rounded-xl" style={{ border: '1px solid #FECACA', color: '#B91C1C', fontWeight: 700 }}>رفض</button>
-        <button onClick={onAccept} disabled={expired} className="h-12 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+        <button onClick={onReject} className="h-12 rounded-xl" style={{ border: `1px solid ${COLOR_ERROR_BORDER}`, color: COLOR_ERROR_TEXT, fontWeight: 700 }}>رفض</button>
+        <button onClick={onAccept} disabled={expired} className="h-12 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
           {expired ? 'انتهت المهلة' : 'قبول'}
         </button>
       </div>

@@ -1,5 +1,6 @@
 import { Prisma, CreditReason } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
+import { PrismaErrorCode } from '../../shared/errors';
 
 /** Automatic late-arrival compensation (§0.3): 20 JOD if the technician arrives
  *  more than this grace past the promised SLA window. */
@@ -9,7 +10,7 @@ export const LATE_GRACE_MINUTES = 30;
 type Tx = Prisma.TransactionClient;
 
 function isUniqueViolation(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION;
 }
 
 /**
@@ -87,7 +88,7 @@ export class ServiceCreditService {
       data: {
         customerId,
         amountJod: redeemed.negated(),
-        reason: 'REDEMPTION',
+        reason: CreditReason.REDEMPTION,
         bookingId: bookingId ?? null,
       },
     });

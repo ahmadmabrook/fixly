@@ -1,6 +1,29 @@
 import { ReactNode, useId, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useDialog } from '../hooks/useDialog';
+import type { AdminRole } from '../lib/store';
+import {
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_NEUTRAL_FAINT,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_INFO_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_STATUS_TEAL,
+  COLOR_STATUS_TEAL_BG,
+  COLOR_STATUS_WARNING,
+  COLOR_STATUS_WARNING_BG,
+  COLOR_SURFACE_MUTED,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_BODY,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info') => {
   if (kind === 'success') toast.success(msg);
@@ -21,19 +44,19 @@ export function Card({ children, className = '', style }: { children: ReactNode;
 
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { ar: string; bg: string; fg: string }> = {
-    PENDING:     { ar: 'قيد الانتظار',   bg: '#E2E8F0', fg: '#475569' },
-    CONFIRMED:   { ar: 'مؤكد',           bg: '#DBEAFE', fg: '#1366D6' },
-    EN_ROUTE:    { ar: 'في الطريق',      bg: '#CCFBF1', fg: '#0F766E' },
-    ARRIVED:     { ar: 'وصل الفني',      bg: '#CCFBF1', fg: '#0F766E' },
-    IN_PROGRESS: { ar: 'جارٍ التنفيذ',  bg: '#FEF3C7', fg: '#B45309' },
-    COMPLETED:   { ar: 'مكتمل',          bg: '#DCFCE7', fg: '#15803D' },
-    CANCELLED:   { ar: 'ملغى',           bg: '#FEE2E2', fg: '#B91C1C' },
-    DISPUTED:    { ar: 'نزاع',           bg: '#FEE2E2', fg: '#B91C1C' },
+    PENDING:     { ar: 'قيد الانتظار',   bg: COLOR_BORDER_LIGHT, fg: COLOR_TEXT_SECONDARY },
+    CONFIRMED:   { ar: 'مؤكد',           bg: COLOR_STATUS_INFO_BG, fg: COLOR_BRAND_PRIMARY },
+    EN_ROUTE:    { ar: 'في الطريق',      bg: COLOR_STATUS_TEAL_BG, fg: COLOR_STATUS_TEAL },
+    ARRIVED:     { ar: 'وصل الفني',      bg: COLOR_STATUS_TEAL_BG, fg: COLOR_STATUS_TEAL },
+    IN_PROGRESS: { ar: 'جارٍ التنفيذ',  bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+    COMPLETED:   { ar: 'مكتمل',          bg: COLOR_STATUS_SUCCESS_BG, fg: COLOR_STATUS_SUCCESS },
+    CANCELLED:   { ar: 'ملغى',           bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
+    DISPUTED:    { ar: 'نزاع',           bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
     // Payout statuses (COMPLETED reuses the green entry above)
-    PROCESSING:  { ar: 'قيد المعالجة',  bg: '#FEF3C7', fg: '#B45309' },
-    FAILED:      { ar: 'فشل',            bg: '#FEE2E2', fg: '#B91C1C' },
+    PROCESSING:  { ar: 'قيد المعالجة',  bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+    FAILED:      { ar: 'فشل',            bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
   };
-  const s = map[status] ?? { ar: status, bg: '#E2E8F0', fg: '#475569' };
+  const s = map[status] ?? { ar: status, bg: COLOR_BORDER_LIGHT, fg: COLOR_TEXT_SECONDARY };
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
@@ -82,12 +105,12 @@ export function KpiCard({
       {icon && color && (
         <div className="flex items-center justify-between">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: color + '20', color }}>{icon}</div>
-          {delta && <span style={{ fontSize: 12, fontWeight: 600, color: '#15803D' }}>{delta}</span>}
+          {delta && <span style={{ fontSize: 12, fontWeight: 600, color: COLOR_STATUS_SUCCESS }}>{delta}</span>}
         </div>
       )}
-      <div className={icon ? 'mt-3' : ''} style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', fontFamily: 'Inter' }}>{value}</div>
-      <div style={{ fontSize: 13, color: '#64748B', marginTop: icon ? 4 : 0 }}>{label}</div>
-      {sub && <span style={{ fontSize: 12, color: '#94A3B8' }}>{sub}</span>}
+      <div className={icon ? 'mt-3' : ''} style={{ fontSize: 28, fontWeight: 800, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{value}</div>
+      <div style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: icon ? 4 : 0 }}>{label}</div>
+      {sub && <span style={{ fontSize: 12, color: COLOR_TEXT_SUBTLE }}>{sub}</span>}
     </Card>
   );
 }
@@ -98,8 +121,8 @@ export function KpiCard({
 export function OpsStatTile({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="bg-white rounded-xl p-3 border border-slate-100">
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', fontFamily: 'Inter' }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: COLOR_TEXT_PRIMARY, fontFamily: 'Inter' }}>{value}</div>
+      <div style={{ fontSize: 12, color: COLOR_TEXT_MUTED, marginTop: 2 }}>{label}</div>
     </div>
   );
 }
@@ -109,7 +132,7 @@ export function Spinner() {
     <div className="flex items-center justify-center p-12">
       <div
         className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
-        style={{ borderColor: '#1366D6', borderTopColor: 'transparent' }}
+        style={{ borderColor: COLOR_BRAND_PRIMARY, borderTopColor: 'transparent' }}
       />
     </div>
   );
@@ -149,7 +172,7 @@ export function Skeleton({
         width,
         height,
         borderRadius,
-        background: 'linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%)',
+        background: `linear-gradient(90deg, ${COLOR_BORDER_LIGHT} 25%, ${COLOR_SURFACE_MUTED} 50%, ${COLOR_BORDER_LIGHT} 75%)`,
         backgroundSize: '200% 100%',
         animation: 'skeleton-shimmer 1.5s ease-in-out infinite',
         ...style,
@@ -204,7 +227,7 @@ export function Th({ children }: { children: ReactNode }) {
   return (
     <th
       className="text-start py-3 px-4"
-      style={{ fontSize: 12, fontWeight: 600, color: '#64748B', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}
+      style={{ fontSize: 12, fontWeight: 600, color: COLOR_TEXT_MUTED, borderBottom: `1px solid ${COLOR_SURFACE_MUTED}`, whiteSpace: 'nowrap' }}
     >
       {children}
     </th>
@@ -215,13 +238,13 @@ export function Pagination({ page, total, limit, onPage }: { page: number; total
   if (total <= limit) return null;
   const onLast = (page + 1) * limit >= total;
   const btn = (disabled: boolean): React.CSSProperties => ({
-    fontSize: 13, color: '#1366D6', fontWeight: 600, background: 'none', border: 'none',
+    fontSize: 13, color: COLOR_BRAND_PRIMARY, fontWeight: 600, background: 'none', border: 'none',
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
   });
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: '#F1F5F9' }}>
+    <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: COLOR_SURFACE_MUTED }}>
       <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} style={btn(page === 0)}>السابق</button>
-      <span style={{ fontSize: 13, color: '#64748B' }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
+      <span style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>صفحة {page + 1} من {Math.max(1, Math.ceil(total / limit))}</span>
       <button onClick={() => onPage(page + 1)} disabled={onLast} style={btn(onLast)}>التالي</button>
     </div>
   );
@@ -231,7 +254,7 @@ export function Td({ children, className }: { children: ReactNode; className?: s
   return (
     <td
       className={`py-3 px-4 ${className ?? ''}`}
-      style={{ borderBottom: '1px solid #F8FAFC', color: '#1E293B' }}
+      style={{ borderBottom: `1px solid ${COLOR_SURFACE_SUBTLE}`, color: COLOR_TEXT_BODY }}
     >
       {children}
     </td>
@@ -252,8 +275,8 @@ export function ActionBtn({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const base: React.CSSProperties =
     variant === 'primary'
-      ? { background: '#1366D6', color: '#FFF', border: 'none' }
-      : { background: 'transparent', color: '#1366D6', border: '1px solid #1366D6' };
+      ? { background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, border: 'none' }
+      : { background: 'transparent', color: COLOR_BRAND_PRIMARY, border: `1px solid ${COLOR_BRAND_PRIMARY}` };
   return (
     <button
       onClick={onClick}
@@ -313,8 +336,8 @@ function ConfirmDialogBody({
   const bodyId = useId();
   const confirmStyle: React.CSSProperties =
     confirmVariant === 'danger'
-      ? { background: '#B91C1C', color: '#FFF', border: 'none' }
-      : { background: '#1366D6', color: '#FFF', border: 'none' };
+      ? { background: COLOR_STATUS_DANGER, color: COLOR_WHITE, border: 'none' }
+      : { background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, border: 'none' };
   return (
     <div
       onClick={onCancel}
@@ -332,14 +355,14 @@ function ConfirmDialogBody({
         aria-describedby={body ? bodyId : undefined}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#FFF', borderRadius: 16, padding: 24, width: '100%',
+          background: COLOR_WHITE, borderRadius: 16, padding: 24, width: '100%',
           maxWidth: 380, margin: '0 16px', boxShadow: '0 24px 48px rgba(15,23,42,0.18)',
         }}
         dir="rtl"
       >
-        <h3 id={titleId} style={{ fontWeight: 700, fontSize: 18, color: '#0F172A' }}>{title}</h3>
+        <h3 id={titleId} style={{ fontWeight: 700, fontSize: 18, color: COLOR_TEXT_PRIMARY }}>{title}</h3>
         {body && (
-          <p id={bodyId} style={{ color: '#475569', fontSize: 14, marginTop: 8, lineHeight: 1.6 }}>{body}</p>
+          <p id={bodyId} style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14, marginTop: 8, lineHeight: 1.6 }}>{body}</p>
         )}
         <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button
@@ -347,7 +370,7 @@ function ConfirmDialogBody({
             onClick={onCancel}
             style={{
               padding: '10px 20px', borderRadius: 8, background: 'transparent',
-              color: '#475569', border: '1px solid #CBD5E1', fontWeight: 600, fontSize: 14,
+              color: COLOR_TEXT_SECONDARY, border: `1px solid ${COLOR_NEUTRAL_FAINT}`, fontWeight: 600, fontSize: 14,
             }}
           >
             {cancelLabel}
@@ -365,7 +388,7 @@ function ConfirmDialogBody({
   );
 }
 
-export const ADMIN_ROLES: ReadonlyArray<readonly [string, string]> = [
+export const ADMIN_ROLES: ReadonlyArray<readonly [AdminRole, string]> = [
   ['SUPER_ADMIN', 'مدير عام'], ['OPS', 'عمليات'], ['FINANCE', 'مالية'], ['SUPPORT', 'دعم'],
 ];
 

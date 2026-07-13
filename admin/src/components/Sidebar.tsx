@@ -3,6 +3,17 @@ import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut, ShieldChe
 import { useAuth } from '../lib/store';
 import { logout as apiLogout } from '../lib/api';
 import { ADMIN_ROUTES, canAccessRoles } from '../lib/permissions';
+import {
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_BRAND_PRIMARY_TINT,
+  COLOR_SURFACE_MUTED,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 // Icons keyed by route path — the roles/labels themselves live in
 // lib/permissions.ts (single source of truth shared with the RequireRole
@@ -43,16 +54,16 @@ export default function Sidebar() {
   return (
     <aside
       className="flex flex-col h-screen sticky top-0 border-slate-200"
-      style={{ width: 240, background: '#FFFFFF', borderInlineStart: '1px solid #E2E8F0', flexShrink: 0 }}
+      style={{ width: 240, background: COLOR_WHITE, borderInlineStart: `1px solid ${COLOR_BORDER_LIGHT}`, flexShrink: 0 }}
     >
       {/* Logo */}
-      <div className="px-5 py-5 flex items-center gap-2 border-b" style={{ borderColor: '#F1F5F9' }}>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1366D6' }}>
-          <Wrench size={16} color="#FFF" />
+      <div className="px-5 py-5 flex items-center gap-2 border-b" style={{ borderColor: COLOR_SURFACE_MUTED }}>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: COLOR_BRAND_PRIMARY }}>
+          <Wrench size={16} color={COLOR_WHITE} />
         </div>
         <div>
-          <div style={{ color: '#1366D6', fontWeight: 800, fontSize: 18 }}>Fixly</div>
-          <div style={{ color: '#94A3B8', fontSize: 11 }}>لوحة العمليات</div>
+          <div style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 800, fontSize: 18 }}>Fixly</div>
+          <div style={{ color: COLOR_TEXT_SUBTLE, fontSize: 11 }}>لوحة العمليات</div>
         </div>
       </div>
 
@@ -68,9 +79,9 @@ export default function Sidebar() {
                 `w-full px-4 py-2.5 flex items-center gap-3 text-sm transition-colors ${isActive ? '' : 'hover:bg-slate-50'}`
               }
               style={({ isActive }) => ({
-                background: isActive ? '#E8F1FE' : 'transparent',
-                color: isActive ? '#1366D6' : '#475569',
-                borderInlineEnd: isActive ? '3px solid #1366D6' : '3px solid transparent',
+                background: isActive ? COLOR_BRAND_PRIMARY_TINT : 'transparent',
+                color: isActive ? COLOR_BRAND_PRIMARY : COLOR_TEXT_SECONDARY,
+                borderInlineEnd: isActive ? `3px solid ${COLOR_BRAND_PRIMARY}` : '3px solid transparent',
                 fontWeight: isActive ? 700 : 500,
               })}
             >
@@ -82,18 +93,18 @@ export default function Sidebar() {
       </nav>
 
       {/* Admin info + logout */}
-      <div className="p-4 border-t flex items-center gap-2" style={{ borderColor: '#F1F5F9' }}>
+      <div className="p-4 border-t flex items-center gap-2" style={{ borderColor: COLOR_SURFACE_MUTED }}>
         {admin && (
           <div className="flex-1 min-w-0">
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }} className="truncate">{admin.name}</p>
-            <p style={{ fontSize: 11, color: '#94A3B8' }} className="truncate">{admin.email}</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: COLOR_TEXT_PRIMARY }} className="truncate">{admin.name}</p>
+            <p style={{ fontSize: 11, color: COLOR_TEXT_SUBTLE }} className="truncate">{admin.email}</p>
           </div>
         )}
         <button
           onClick={handleLogout}
           aria-label="تسجيل الخروج"
           className="p-1.5 rounded-lg hover:bg-slate-100 shrink-0"
-          style={{ color: '#64748B' }}
+          style={{ color: COLOR_TEXT_MUTED }}
         >
           <LogOut size={16} />
         </button>

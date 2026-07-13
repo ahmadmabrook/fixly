@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, PromoType } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { AppError, ValidationError, NotFoundError } from '../../shared/errors';
 
@@ -89,9 +89,9 @@ export class PromoService {
 
   /** PERCENT → order × value%, FIXED → value JOD off. Discount is fils-exact,
    *  rounds DOWN, and never exceeds the order total. */
-  private computeDiscount(type: 'PERCENT' | 'FIXED', value: Prisma.Decimal, order: Prisma.Decimal): Prisma.Decimal {
+  private computeDiscount(type: PromoType, value: Prisma.Decimal, order: Prisma.Decimal): Prisma.Decimal {
     let raw: Prisma.Decimal;
-    if (type === 'PERCENT') {
+    if (type === PromoType.PERCENT) {
       const fils = order.times(FILS_PER_JOD).times(value).dividedBy(100).floor();
       raw = fils.dividedBy(FILS_PER_JOD);
     } else {

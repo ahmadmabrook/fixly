@@ -1,3 +1,4 @@
+import { UserRole } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { audit } from './adminAudit';
 import { NotFoundError } from '../../shared/errors';
@@ -10,7 +11,7 @@ import { NotFoundError } from '../../shared/errors';
 /** Block or unblock a customer account (isActive toggle). */
 export async function setCustomerBlocked(id: string, blocked: boolean, actorId: string, ip?: string) {
   return prisma.$transaction(async (tx) => {
-    const user = await tx.user.findFirst({ where: { id, role: 'CUSTOMER' } });
+    const user = await tx.user.findFirst({ where: { id, role: UserRole.CUSTOMER } });
     if (!user) throw new NotFoundError('Customer');
     const updated = await tx.user.update({
       where: { id },

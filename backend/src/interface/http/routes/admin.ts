@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body, query, param } from 'express-validator';
 import { Prisma, BookingStatus, PayoutStatus, TechnicianStatus } from '@prisma/client';
 import { asyncHandler } from '../asyncHandler';
-import { validate } from '../validate';
+import { validate, paginationQuery } from '../validate';
 import { authenticate, requireRole, requireAdminRole } from '../middleware/auth';
 import { authLimiter, rateLimitEnabled } from '../middleware/rateLimit';
 import { AdminService } from '../../../application/admin/AdminService';
@@ -106,8 +106,7 @@ adminRouter.get(
 adminRouter.get(
   '/bookings',
   validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
     query('status').optional().isIn(BOOKING_STATUSES),
   ]),
   asyncHandler(async (req, res) => {
@@ -167,8 +166,7 @@ adminRouter.get(
 adminRouter.get(
   '/technicians',
   validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
     query('status').optional().isIn(TECHNICIAN_STATUSES),
     query('search').optional().isString().trim().isLength({ min: 1, max: 100 }),
   ]),
@@ -198,8 +196,7 @@ adminRouter.post(
 adminRouter.get(
   '/customers',
   validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
     query('search').optional().isString().trim().isLength({ min: 1, max: 100 }),
   ]),
   asyncHandler(async (req, res) => {
@@ -215,8 +212,7 @@ adminRouter.get(
 adminRouter.get(
   '/payouts',
   validate([
-    query('limit').optional().isInt({ min: 1, max: 200 }).toInt(),
-    query('offset').optional().isInt({ min: 0 }).toInt(),
+    ...paginationQuery(),
     query('status').optional().isIn(PAYOUT_STATUSES),
   ]),
   asyncHandler(async (req, res) => {

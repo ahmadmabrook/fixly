@@ -12,6 +12,7 @@ import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import OnboardingSplash from './components/OnboardingSplash';
 import { OfflineBanner } from './components/shared';
+import { COLOR_BG_APP, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY } from './lib/theme';
 
 /* ── Route-level code splitting ─────────────────────────────────────────────── */
 const Landing = lazy(() => import('./pages/Landing'));
@@ -42,7 +43,7 @@ function RouteSpinner() {
     <div className="flex items-center justify-center" style={{ minHeight: 240 }}>
       <div
         className="animate-spin rounded-full"
-        style={{ width: 32, height: 32, border: '3px solid #E2E8F0', borderTopColor: '#1366D6' }}
+        style={{ width: 32, height: 32, border: `3px solid ${COLOR_BORDER}`, borderTopColor: COLOR_BRAND_PRIMARY }}
         role="status"
         aria-label="جارٍ التحميل"
       />
@@ -107,7 +108,7 @@ function AppShell() {
 
   return (
     <BookingSocketProvider>
-      <div dir={dir} className="min-h-screen" style={{ background: '#F6F8FB' }}>
+      <div dir={dir} className="min-h-screen" style={{ background: COLOR_BG_APP }}>
         <OfflineBanner />
         <OnboardingSplash />
         <TopNav authed={authed} onLogin={() => requireLogin('/services')} onLogout={() => void apiLogout()} />
@@ -218,7 +219,7 @@ function BookingRoute({ onRequireLogin }: { onRequireLogin: (returnTo: string) =
   if (!accessToken) {
     return (
       <main className="max-w-[1200px] mx-auto px-6 py-16 text-center">
-        <p style={{ color: '#475569', fontSize: 16 }}>سجّل دخولك لإكمال الحجز.</p>
+        <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 16 }}>سجّل دخولك لإكمال الحجز.</p>
       </main>
     );
   }

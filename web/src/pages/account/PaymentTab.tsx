@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, Trash2, Plus } from 'lucide-react';
 import { api, PaymentMethod } from '../../lib/api';
 import { Card, notify } from '../../components/shared';
+import { COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 export function PaymentTab() {
   const qc = useQueryClient();
@@ -24,15 +25,15 @@ export function PaymentTab() {
   }
   return (
     <div className="space-y-3">
-      <p style={{ color: '#475569', fontSize: 12 }}>دفع آمن 100% — لا يتم تخزين رقم البطاقة كاملاً. لا دفع نقدي.</p>
+      <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>دفع آمن 100% — لا يتم تخزين رقم البطاقة كاملاً. لا دفع نقدي.</p>
       {(items ?? []).map((c) => (
         <Card key={c.id} className="p-4 flex items-center gap-3">
-          <CreditCard size={18} color="#1366D6" />
+          <CreditCard size={18} color={COLOR_BRAND_PRIMARY} />
           <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'uppercase' }}>{c.brand} •••• {c.last4}</div>
-            <div style={{ color: '#475569', fontSize: 12, fontFamily: 'Inter' }}>{c.expMonth}/{c.expYear} {c.isDefault && <span style={{ color: '#15803D' }}>• افتراضية</span>}</div>
+            <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, fontFamily: 'Inter' }}>{c.expMonth}/{c.expYear} {c.isDefault && <span style={{ color: COLOR_SUCCESS_TEXT }}>• افتراضية</span>}</div>
           </div>
-          <button onClick={() => void del(c.id)} aria-label="حذف"><Trash2 size={16} color="#B91C1C" /></button>
+          <button onClick={() => void del(c.id)} aria-label="حذف"><Trash2 size={16} color={COLOR_ERROR_TEXT} /></button>
         </Card>
       ))}
       {adding ? (
@@ -46,12 +47,12 @@ export function PaymentTab() {
             <input value={form.expYear} onChange={(e) => setForm({ ...form, expYear: e.target.value })} placeholder="YYYY" aria-label="سنة الانتهاء" className="h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
           </div>
           <div className="flex gap-2">
-            <button onClick={() => void add()} disabled={form.last4.length !== 4} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>حفظ</button>
-            <button onClick={() => setAdding(false)} className="px-4 h-11 rounded-xl" style={{ color: '#475569' }}>إلغاء</button>
+            <button onClick={() => void add()} disabled={form.last4.length !== 4} className="flex-1 h-11 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>حفظ</button>
+            <button onClick={() => setAdding(false)} className="px-4 h-11 rounded-xl" style={{ color: COLOR_TEXT_SECONDARY }}>إلغاء</button>
           </div>
         </Card>
       ) : (
-        <button onClick={() => setAdding(true)} className="flex items-center gap-1 px-4 h-11 rounded-xl" style={{ background: '#E8F1FE', color: '#0E4FA8', fontWeight: 600, fontSize: 14 }}>
+        <button onClick={() => setAdding(true)} className="flex items-center gap-1 px-4 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 600, fontSize: 14 }}>
           <Plus size={16} /> إضافة بطاقة
         </button>
       )}

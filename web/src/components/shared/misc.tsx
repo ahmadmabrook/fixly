@@ -3,6 +3,7 @@ import {
   Zap, Droplets, Snowflake, PaintRoller, Sofa, BadgeCheck, Wrench, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_CATEGORY_CYAN_BG, COLOR_CATEGORY_CYAN_FG, COLOR_CATEGORY_ORANGE_FG, COLOR_CATEGORY_PINK_BG, COLOR_CATEGORY_PINK_FG, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WHITE } from '../../lib/theme';
 
 export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info') => {
   if (kind === 'success') toast.success(msg);
@@ -11,11 +12,11 @@ export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info')
 };
 
 export const SERVICES_STATIC = [
-  { id: 'elec',  ar: 'كهرباء',      en: 'Electricity', price: 50, dur: 45,  Icon: Zap,         tint: '#FEF3C7', color: '#D97706' },
-  { id: 'plumb', ar: 'سباكة',       en: 'Plumbing',    price: 40, dur: 60,  Icon: Droplets,    tint: '#DBEAFE', color: '#1366D6' },
-  { id: 'ac',    ar: 'تنظيف تكييف', en: 'AC Cleaning', price: 30, dur: 45,  Icon: Snowflake,   tint: '#CFFAFE', color: '#0E7490' },
-  { id: 'paint', ar: 'دهان',        en: 'Painting',    price: 70, dur: 180, Icon: PaintRoller, tint: '#FCE7F3', color: '#BE185D' },
-  { id: 'furn',  ar: 'تركيب أثاث',  en: 'Furniture',   price: 35, dur: 60,  Icon: Sofa,        tint: '#DCFCE7', color: '#15803D' },
+  { id: 'elec',  ar: 'كهرباء',      en: 'Electricity', price: 50, dur: 45,  Icon: Zap,         tint: COLOR_WARNING_BG, color: COLOR_CATEGORY_ORANGE_FG },
+  { id: 'plumb', ar: 'سباكة',       en: 'Plumbing',    price: 40, dur: 60,  Icon: Droplets,    tint: COLOR_BADGE_INFO_BG, color: COLOR_BRAND_PRIMARY },
+  { id: 'ac',    ar: 'تنظيف تكييف', en: 'AC Cleaning', price: 30, dur: 45,  Icon: Snowflake,   tint: COLOR_CATEGORY_CYAN_BG, color: COLOR_CATEGORY_CYAN_FG },
+  { id: 'paint', ar: 'دهان',        en: 'Painting',    price: 70, dur: 180, Icon: PaintRoller, tint: COLOR_CATEGORY_PINK_BG, color: COLOR_CATEGORY_PINK_FG },
+  { id: 'furn',  ar: 'تركيب أثاث',  en: 'Furniture',   price: 35, dur: 60,  Icon: Sofa,        tint: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT },
 ] as const;
 
 export type ServiceId = typeof SERVICES_STATIC[number]['id'];
@@ -25,11 +26,11 @@ const ICON_MAP: Record<string, typeof Zap> = {
 };
 
 const COLOR_MAP: Record<string, { tint: string; color: string }> = {
-  elec:  { tint: '#FEF3C7', color: '#D97706' },
-  plumb: { tint: '#DBEAFE', color: '#1366D6' },
-  ac:    { tint: '#CFFAFE', color: '#0E7490' },
-  paint: { tint: '#FCE7F3', color: '#BE185D' },
-  furn:  { tint: '#DCFCE7', color: '#15803D' },
+  elec:  { tint: COLOR_WARNING_BG, color: COLOR_CATEGORY_ORANGE_FG },
+  plumb: { tint: COLOR_BADGE_INFO_BG, color: COLOR_BRAND_PRIMARY },
+  ac:    { tint: COLOR_CATEGORY_CYAN_BG, color: COLOR_CATEGORY_CYAN_FG },
+  paint: { tint: COLOR_CATEGORY_PINK_BG, color: COLOR_CATEGORY_PINK_FG },
+  furn:  { tint: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT },
 };
 
 function guessServiceId(nameAr: string): string {
@@ -44,7 +45,7 @@ function guessServiceId(nameAr: string): string {
 export function ServiceIcon({ id, nameAr, size = 28 }: { id?: string; nameAr?: string; size?: number }) {
   const key = id ?? (nameAr ? guessServiceId(nameAr) : 'elec');
   const Icon = ICON_MAP[key] ?? Wrench;
-  const { tint, color } = COLOR_MAP[key] ?? { tint: '#F1F5F9', color: '#475569' };
+  const { tint, color } = COLOR_MAP[key] ?? { tint: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY };
   return (
     <div
       className="flex items-center justify-center rounded-xl shrink-0"
@@ -68,7 +69,7 @@ export function Avatar({ name, size = 40, verified = false }: { name: string; si
       </div>
       {verified && (
         <div className="absolute -bottom-0.5 -end-0.5 bg-white rounded-full">
-          <BadgeCheck size={size * 0.4} color="#1366D6" fill="#fff" />
+          <BadgeCheck size={size * 0.4} color={COLOR_BRAND_PRIMARY} fill={COLOR_WHITE} />
         </div>
       )}
     </div>
@@ -95,8 +96,8 @@ export function Card({
 export function InlineRow({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between py-2">
-      <span style={{ color: '#475569', fontSize: 14 }}>{label}</span>
-      <span style={{ color: '#0F172A', fontWeight: strong ? 700 : 500, fontSize: strong ? 16 : 14 }}>{value}</span>
+      <span style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14 }}>{label}</span>
+      <span style={{ color: COLOR_TEXT_PRIMARY, fontWeight: strong ? 700 : 500, fontSize: strong ? 16 : 14 }}>{value}</span>
     </div>
   );
 }
@@ -126,7 +127,7 @@ export function OfflineBanner() {
     <div
       role="status"
       className="w-full text-center py-2 px-4"
-      style={{ background: '#FEE2E2', color: '#B91C1C', fontWeight: 600, fontSize: 13 }}
+      style={{ background: COLOR_ERROR_BG, color: COLOR_ERROR_TEXT, fontWeight: 600, fontSize: 13 }}
     >
       لا يوجد اتصال بالإنترنت
     </div>
@@ -151,10 +152,10 @@ export function FaqAccordion({ items }: { items: ReadonlyArray<readonly [string,
               className="w-full flex items-center justify-between px-4 py-3 text-start"
             >
               <span style={{ fontWeight: 600, fontSize: 14 }}>{q}</span>
-              <ChevronDown size={18} color="#475569" style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
+              <ChevronDown size={18} color={COLOR_TEXT_SECONDARY} style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
             </button>
             {open && (
-              <div id={panelId} className="px-4 pb-4" style={{ color: '#475569', fontSize: 13, lineHeight: 1.7 }}>
+              <div id={panelId} className="px-4 pb-4" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13, lineHeight: 1.7 }}>
                 {a}
               </div>
             )}

@@ -1,31 +1,49 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, GuaranteeAdminItem } from '../lib/api';
+import { api, DEFAULT_PAGE_SIZE, GuaranteeAdminItem } from '../lib/api';
+import { shortId } from '../lib/format';
 import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
+import {
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_STATUS_WARNING,
+  COLOR_STATUS_WARNING_BG,
+  COLOR_SURFACE_MUTED,
+  COLOR_SURFACE_SUBTLE,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 const STATUS_TABS: ReadonlyArray<readonly [string, string]> = [
   ['', 'الكل'], ['OPEN', 'مفتوح'], ['IN_REVIEW', 'قيد المراجعة'], ['RESOLVED', 'موافق'], ['REJECTED', 'مرفوض'],
 ];
 const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
-  OPEN: { ar: 'مفتوح', bg: '#FEF3C7', fg: '#B45309' },
-  IN_REVIEW: { ar: 'قيد المراجعة', bg: '#FEF3C7', fg: '#B45309' },
-  RESOLVED: { ar: 'موافق', bg: '#DCFCE7', fg: '#15803D' },
-  REJECTED: { ar: 'مرفوض', bg: '#FEE2E2', fg: '#B91C1C' },
+  OPEN: { ar: 'مفتوح', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+  IN_REVIEW: { ar: 'قيد المراجعة', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+  RESOLVED: { ar: 'موافق', bg: COLOR_STATUS_SUCCESS_BG, fg: COLOR_STATUS_SUCCESS },
+  REJECTED: { ar: 'مرفوض', bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
 };
 
 function slaLabel(expiresAt: string): { text: string; color: string; pct: number } {
   const ms = new Date(expiresAt).getTime() - Date.now();
-  if (ms <= 0) return { text: 'تجاوز SLA', color: '#B91C1C', pct: 0 };
+  if (ms <= 0) return { text: 'تجاوز SLA', color: COLOR_STATUS_DANGER, pct: 0 };
   const mins = Math.round(ms / 60000);
   // SLA window is 2h (120min); pct is remaining time as a fraction of that.
-  return { text: `${mins} دقيقة متبقية`, color: mins < 30 ? '#B45309' : '#1366D6', pct: Math.min(100, (mins / 120) * 100) };
+  return { text: `${mins} دقيقة متبقية`, color: mins < 30 ? COLOR_STATUS_WARNING : COLOR_BRAND_PRIMARY, pct: Math.min(100, (mins / 120) * 100) };
 }
 
 export default function Guarantee() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
   const [active, setActive] = useState<GuaranteeAdminItem | null>(null);
-  const limit = 50;
+  const limit = DEFAULT_PAGE_SIZE;
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
@@ -38,13 +56,13 @@ export default function Guarantee() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>تذاكر الضمان</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>مراجعة طلبات الضمان خلال مهلة الساعتين.</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>تذاكر الضمان</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>مراجعة طلبات الضمان خلال مهلة الساعتين.</p>
       </div>
 
       <div className="flex gap-2">
         {STATUS_TABS.map(([k, label]) => (
-          <button key={k} onClick={() => { setStatus(k); setPage(0); }} className="px-3 h-9 rounded-full" style={{ background: status === k ? '#1366D6' : '#FFF', color: status === k ? '#FFF' : '#475569', fontSize: 13, fontWeight: 600, border: '1px solid #E2E8F0' }}>{label}</button>
+          <button key={k} onClick={() => { setStatus(k); setPage(0); }} className="px-3 h-9 rounded-full" style={{ background: status === k ? COLOR_BRAND_PRIMARY : COLOR_WHITE, color: status === k ? COLOR_WHITE : COLOR_TEXT_SECONDARY, fontSize: 13, fontWeight: 600, border: `1px solid ${COLOR_BORDER_LIGHT}` }}>{label}</button>
         ))}
       </div>
 
@@ -61,18 +79,18 @@ export default function Guarantee() {
               <Card key={t.id} className="p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div style={{ fontFamily: 'Inter', fontWeight: 700 }}>{t.id.slice(0, 8)}</div>
-                    <div style={{ color: '#64748B', fontSize: 12 }}><span>{t.booking?.customer?.name ?? '—'}</span> · {new Date(t.createdAt).toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' })}</div>
+                    <div style={{ fontFamily: 'Inter', fontWeight: 700 }}>{shortId(t.id)}</div>
+                    <div style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}><span>{t.booking?.customer?.name ?? '—'}</span> · {new Date(t.createdAt).toLocaleDateString('ar-JO', { day: 'numeric', month: 'short' })}</div>
                   </div>
-                  <Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? '#E2E8F0'} fg={STATUS_PILL[t.status]?.fg ?? '#475569'} />
+                  <Pill label={STATUS_PILL[t.status]?.ar ?? t.status} bg={STATUS_PILL[t.status]?.bg ?? COLOR_BORDER_LIGHT} fg={STATUS_PILL[t.status]?.fg ?? COLOR_TEXT_SECONDARY} />
                 </div>
                 <div className="mt-3" style={{ fontSize: 14, fontWeight: 600 }}>{t.booking?.service?.nameAr ?? '—'}</div>
-                {t.description && <p style={{ color: '#64748B', fontSize: 13, marginTop: 4 }}>{t.description.slice(0, 80)}</p>}
+                {t.description && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 13, marginTop: 4 }}>{t.description.slice(0, 80)}</p>}
                 {media.length > 0 && (
                   <div className="mt-3 flex gap-1.5">
                     {media.slice(0, 3).map((u, i) => (
                       <a key={i} href={u} target="_blank" rel="noreferrer" className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center hover:bg-slate-200 shrink-0">
-                        <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>مرفق {i + 1}</span>
+                        <span style={{ fontSize: 12, color: COLOR_TEXT_MUTED, fontWeight: 600 }}>مرفق {i + 1}</span>
                       </a>
                     ))}
                   </div>
@@ -80,10 +98,10 @@ export default function Guarantee() {
                 {inReview && (
                   <>
                     <div className="mt-3 flex items-center justify-between" style={{ fontSize: 12 }}>
-                      <span style={{ color: '#94A3B8' }}>SLA (ساعتان)</span>
+                      <span style={{ color: COLOR_TEXT_SUBTLE }}>SLA (ساعتان)</span>
                       <span style={{ color: sla.color, fontWeight: 700 }}>{sla.text}</span>
                     </div>
-                    <div className="mt-1 h-1.5 rounded-full" style={{ background: '#F1F5F9' }}>
+                    <div className="mt-1 h-1.5 rounded-full" style={{ background: COLOR_SURFACE_MUTED }}>
                       <div className="h-full rounded-full" style={{ width: `${sla.pct}%`, background: sla.color }} />
                     </div>
                   </>
@@ -118,23 +136,23 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
         <div className="p-6">
           <h2 style={{ fontWeight: 800, fontSize: 18 }}>مراجعة تذكرة الضمان</h2>
           <div className="mt-4 space-y-1" style={{ fontSize: 14 }}>
-            <div><span style={{ color: '#64748B' }}>العميل:</span> {ticket.booking?.customer?.name}</div>
-            <div><span style={{ color: '#64748B' }}>الخدمة:</span> {ticket.booking?.service?.nameAr}</div>
+            <div><span style={{ color: COLOR_TEXT_MUTED }}>العميل:</span> {ticket.booking?.customer?.name}</div>
+            <div><span style={{ color: COLOR_TEXT_MUTED }}>الخدمة:</span> {ticket.booking?.service?.nameAr}</div>
           </div>
-          <p className="mt-4 p-3 rounded-lg" style={{ background: '#F8FAFC', fontSize: 14 }}>{ticket.description}</p>
+          <p className="mt-4 p-3 rounded-lg" style={{ background: COLOR_SURFACE_SUBTLE, fontSize: 14 }}>{ticket.description}</p>
           {ticket.mediaUrls.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {ticket.mediaUrls.filter((u) => u.startsWith('https://')).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: '#1366D6', fontSize: 13 }}>مرفق {i + 1}</a>)}
+              {ticket.mediaUrls.filter((u) => u.startsWith('https://')).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 13 }}>مرفق {i + 1}</a>)}
             </div>
           )}
-          <label className="block mt-5" style={{ fontSize: 13, color: '#64748B' }}>ملاحظة للعميل</label>
+          <label className="block mt-5" style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>ملاحظة للعميل</label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
-          <label className="block mt-4" style={{ fontSize: 13, color: '#64748B' }}>موعد زيارة مجانية (عند الموافقة)</label>
+          <label className="block mt-4" style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>موعد زيارة مجانية (عند الموافقة)</label>
           <input type="datetime-local" value={visit} onChange={(e) => setVisit(e.target.value)} className="mt-1 w-full h-11 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
           <div className="mt-6 flex gap-2">
             <ActionBtn onClick={() => setConfirmDecision('APPROVED')} disabled={review.isPending} data-testid="approve-guarantee-btn">موافقة + زيارة</ActionBtn>
-            <button onClick={() => setConfirmDecision('REJECTED')} disabled={review.isPending} data-testid="reject-guarantee-btn" className="px-4 rounded-lg disabled:opacity-50" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>رفض</button>
-            <button onClick={onClose} className="px-4 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
+            <button onClick={() => setConfirmDecision('REJECTED')} disabled={review.isPending} data-testid="reject-guarantee-btn" className="px-4 rounded-lg disabled:opacity-50" style={{ background: COLOR_STATUS_DANGER_BG, color: COLOR_STATUS_DANGER, fontSize: 12, fontWeight: 600 }}>رفض</button>
+            <button onClick={onClose} className="px-4 rounded-lg" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>إغلاق</button>
           </div>
         </div>
       </div>

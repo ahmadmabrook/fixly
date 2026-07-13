@@ -9,6 +9,7 @@ import { ServiceCreditService } from '../credit/ServiceCreditService';
 import { withDeadlockRetry } from '../../shared/dbRetry';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 export interface CreateBookingInput {
   customerId: string;
@@ -122,7 +123,7 @@ export class BookingCreateFlow {
           await tx.outboxEvent.create({
             data: {
               bookingId: booking.id,
-              eventType: 'booking.created',
+              eventType: OutboxEventType.BOOKING_CREATED,
               payload: { bookingId: booking.id, customerId: input.customerId },
             },
           });

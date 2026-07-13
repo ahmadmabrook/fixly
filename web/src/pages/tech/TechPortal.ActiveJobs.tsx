@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star } from 'lucide-react';
-import { api, BookingListItem } from '../../lib/api';
+import { api, BookingListItem, BookingStatus } from '../../lib/api';
 import { Card, ServiceIcon, StatusBadge, Modal, ConfirmDialog, notify } from '../../components/shared';
+import { REALTIME_POLL_INTERVAL_MS } from '../../lib/constants';
+import { COLOR_ACCENT_AMBER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../../lib/theme';
 
-const NEXT_STATUS: Record<string, { to: string; label: string }> = {
+const NEXT_STATUS: Partial<Record<BookingStatus, { to: BookingStatus; label: string }>> = {
   CONFIRMED: { to: 'EN_ROUTE', label: 'بدء التوجه' },
   EN_ROUTE: { to: 'ARRIVED', label: 'وصلت' },
   ARRIVED: { to: 'IN_PROGRESS', label: 'بدء الخدمة' },
@@ -12,7 +14,7 @@ const NEXT_STATUS: Record<string, { to: string; label: string }> = {
 
 export function ActiveJobs() {
   const qc = useQueryClient();
-  const { data: jobs } = useQuery({ queryKey: ['tech-active'], queryFn: () => api.get<BookingListItem[]>('/bookings'), refetchInterval: 30000 });
+  const { data: jobs } = useQuery({ queryKey: ['tech-active'], queryFn: () => api.get<BookingListItem[]>('/bookings'), refetchInterval: REALTIME_POLL_INTERVAL_MS });
   const [extraFor, setExtraFor] = useState<string | null>(null);
   const [extraDesc, setExtraDesc] = useState('');
   const [extraAmount, setExtraAmount] = useState('');
@@ -54,7 +56,7 @@ export function ActiveJobs() {
 
   return (
     <div className="space-y-3">
-      {active.length === 0 && <p style={{ color: '#94A3B8', fontSize: 14 }}>لا توجد مهام نشطة.</p>}
+      {active.length === 0 && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>لا توجد مهام نشطة.</p>}
       {active.map((b) => {
         const next = NEXT_STATUS[b.status];
         // Both forward-progress transitions are gated behind an SOP photo checklist
@@ -72,17 +74,17 @@ export function ActiveJobs() {
               {next && (
                 <button
                   onClick={() => (isArrivedToInProgress ? setChecklistFor({ id: b.id, stage: 'pre-start' }) : void advance(b.id, next.to))}
-                  className="flex-1 h-11 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
+                  className="flex-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
                 >
                   {next.label}
                 </button>
               )}
               {b.status === 'IN_PROGRESS' && (
-                <button onClick={() => setChecklistFor({ id: b.id, stage: 'pre-close' })} className="flex-1 h-11 rounded-xl" style={{ background: '#15803D', color: '#FFF', fontWeight: 700 }}>إنهاء الخدمة</button>
+                <button onClick={() => setChecklistFor({ id: b.id, stage: 'pre-close' })} className="flex-1 h-11 rounded-xl" style={{ background: COLOR_SUCCESS_TEXT, color: COLOR_WHITE, fontWeight: 700 }}>إنهاء الخدمة</button>
               )}
             </div>
             {b.status === 'ARRIVED' && (
-              <button onClick={() => setNoShowFor(b.id)} className="mt-2 w-full h-10 rounded-xl" style={{ background: '#FEE2E2', color: '#B91C1C', fontWeight: 700, fontSize: 13 }}>
+              <button onClick={() => setNoShowFor(b.id)} className="mt-2 w-full h-10 rounded-xl" style={{ background: COLOR_ERROR_BG, color: COLOR_ERROR_TEXT, fontWeight: 700, fontSize: 13 }}>
                 العميل لم يحضر
               </button>
             )}
@@ -92,12 +94,12 @@ export function ActiveJobs() {
                   <input value={extraDesc} onChange={(e) => setExtraDesc(e.target.value)} placeholder="وصف العمل الإضافي" className="w-full h-10 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14 }} />
                   <div className="flex gap-2">
                     <input value={extraAmount} onChange={(e) => setExtraAmount(e.target.value.replace(/[^\d.]/g, ''))} placeholder="المبلغ" className="flex-1 h-10 rounded-xl border border-slate-200 px-3" style={{ fontSize: 14, direction: 'ltr' }} />
-                    <button onClick={() => void addExtra(b.id)} disabled={!extraDesc.trim() || !extraAmount} className="px-4 h-10 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 13 }}>إرسال</button>
-                    <button onClick={() => setExtraFor(null)} className="px-3 h-10 rounded-xl" style={{ color: '#64748B', fontSize: 13 }}>إلغاء</button>
+                    <button onClick={() => void addExtra(b.id)} disabled={!extraDesc.trim() || !extraAmount} className="px-4 h-10 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}>إرسال</button>
+                    <button onClick={() => setExtraFor(null)} className="px-3 h-10 rounded-xl" style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13 }}>إلغاء</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setExtraFor(b.id)} className="mt-2 text-start" style={{ color: '#1366D6', fontSize: 13, fontWeight: 600 }}>+ إضافة عمل إضافي</button>
+                <button onClick={() => setExtraFor(b.id)} className="mt-2 text-start" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 13, fontWeight: 600 }}>+ إضافة عمل إضافي</button>
               )
             )}
           </Card>
@@ -134,7 +136,7 @@ function ChecklistModal({ stage, onCancel, onSubmit }: { stage: 'pre-start' | 'p
   const isPreStart = stage === 'pre-start';
   return (
     <Modal title={isPreStart ? 'قائمة تحقق ما قبل الخدمة' : 'قائمة تحقق ما بعد الخدمة'} onClose={onCancel} variant="sheet" maxWidth="sm">
-      <p className="mt-2" style={{ color: '#475569', fontSize: 13 }}>
+      <p className="mt-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>
         {isPreStart ? 'أضف رابط صورة واحدة على الأقل قبل بدء الخدمة.' : 'أضف رابط صورة واحدة على الأقل بعد انتهاء الخدمة.'}
       </p>
       <input
@@ -149,7 +151,7 @@ function ChecklistModal({ stage, onCancel, onSubmit }: { stage: 'pre-start' | 'p
         onClick={() => onSubmit([photoUrl.trim()])}
         disabled={!photoUrl.trim()}
         className="mt-4 w-full h-11 rounded-xl disabled:opacity-50"
-        style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}
+        style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
       >
         متابعة
       </button>
@@ -169,12 +171,12 @@ function RateCustomerModal({ bookingId, onClose }: { bookingId: string; onClose:
       <div className="mt-4 flex justify-center gap-2">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} onClick={() => setRating(n)} aria-label={`${n} نجوم`} aria-pressed={n <= rating}>
-            <Star size={32} fill={n <= rating ? '#F5A623' : 'none'} color="#F5A623" strokeWidth={n <= rating ? 0 : 2} />
+            <Star size={32} fill={n <= rating ? COLOR_ACCENT_AMBER : 'none'} color={COLOR_ACCENT_AMBER} strokeWidth={n <= rating ? 0 : 2} />
           </button>
         ))}
       </div>
       <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="تعليق (اختياري)" aria-label="تعليق التقييم" rows={2} className="mt-3 w-full rounded-xl border border-slate-200 p-3" style={{ fontSize: 14 }} />
-      <button onClick={() => void submit()} disabled={rating === 0} className="mt-3 w-full h-11 rounded-xl disabled:opacity-50" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>إرسال</button>
+      <button onClick={() => void submit()} disabled={rating === 0} className="mt-3 w-full h-11 rounded-xl disabled:opacity-50" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>إرسال</button>
     </Modal>
   );
 }

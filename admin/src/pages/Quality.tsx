@@ -2,6 +2,27 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, TechnicianScorecard } from '../lib/api';
 import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile, Pill } from '../components/shared';
+import {
+  COLOR_BORDER_LIGHT,
+  COLOR_BRAND_PRIMARY,
+  COLOR_BRAND_PRIMARY_DARK,
+  COLOR_BRAND_PRIMARY_TINT,
+  COLOR_NEUTRAL_FAINT,
+  COLOR_STATUS_DANGER,
+  COLOR_STATUS_DANGER_BG,
+  COLOR_STATUS_INFO_BG,
+  COLOR_STATUS_SUCCESS,
+  COLOR_STATUS_SUCCESS_BG,
+  COLOR_STATUS_WARNING,
+  COLOR_STATUS_WARNING_BG,
+  COLOR_SURFACE_MUTED,
+  COLOR_TEXT_MUTED,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SUBTLE,
+  COLOR_TIER_PRO,
+  COLOR_TIER_PRO_BG,
+  COLOR_WHITE,
+} from '../lib/theme';
 
 interface QualityTech {
   id: string;
@@ -19,8 +40,8 @@ interface QualityTech {
 
 const TIERS = ['PROBATION', 'VERIFIED', 'PRO', 'ELITE'] as const;
 const TIER_LABEL: Record<string, string> = { PROBATION: 'تحت التجربة', VERIFIED: 'موثّق', PRO: 'محترف', ELITE: 'نخبة' };
-const TIER_COLOR: Record<string, string> = { PROBATION: '#B45309', VERIFIED: '#1366D6', PRO: '#7C3AED', ELITE: '#15803D' };
-const TIER_BG: Record<string, string> = { PROBATION: '#FEF3C7', VERIFIED: '#DBEAFE', PRO: '#EDE9FE', ELITE: '#DCFCE7' };
+const TIER_COLOR: Record<string, string> = { PROBATION: COLOR_STATUS_WARNING, VERIFIED: COLOR_BRAND_PRIMARY, PRO: COLOR_TIER_PRO, ELITE: COLOR_STATUS_SUCCESS };
+const TIER_BG: Record<string, string> = { PROBATION: COLOR_STATUS_WARNING_BG, VERIFIED: COLOR_STATUS_INFO_BG, PRO: COLOR_TIER_PRO_BG, ELITE: COLOR_STATUS_SUCCESS_BG };
 const BG_LABEL: Record<string, string> = { PENDING: 'معلّق', PASSED: 'اجتاز', FAILED: 'فشل' };
 
 export default function Quality() {
@@ -58,8 +79,8 @@ export default function Quality() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>الجودة والثقة</h1>
-        <p style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>فئات الثقة، فحص الخلفية، اختبار المهارات، وبلاغات السلوك.</p>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>الجودة والثقة</h1>
+        <p style={{ fontSize: 13, color: COLOR_TEXT_MUTED, marginTop: 2 }}>فئات الثقة، فحص الخلفية، اختبار المهارات، وبلاغات السلوك.</p>
       </div>
 
       {isLoading && <Card><Spinner /></Card>}
@@ -74,7 +95,7 @@ export default function Quality() {
               <Card key={tier} className="p-3">
                 <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
                   <Pill label={TIER_LABEL[tier]} bg={TIER_BG[tier]} fg={TIER_COLOR[tier]} />
-                  <span style={{ marginInlineStart: 'auto', fontSize: 12, color: '#94A3B8' }}>{col.length}</span>
+                  <span style={{ marginInlineStart: 'auto', fontSize: 12, color: COLOR_TEXT_SUBTLE }}>{col.length}</span>
                 </div>
                 <div className="space-y-2">
                   {col.map((t) => (
@@ -83,24 +104,24 @@ export default function Quality() {
                       onClick={() => setDetailId(t.id)}
                       data-testid={`quality-card-${t.id}`}
                       className="w-full text-start p-2 rounded-lg hover:bg-slate-50 transition-colors"
-                      style={{ border: '1px solid #F1F5F9' }}
+                      style={{ border: `1px solid ${COLOR_SURFACE_MUTED}` }}
                     >
                       <div className="flex items-center gap-2">
                         <Avatar name={t.user?.name ?? '—'} size={28} />
-                        <span className="truncate" style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{t.user?.name ?? '—'}</span>
+                        <span className="truncate" style={{ fontSize: 13, fontWeight: 600, color: COLOR_TEXT_PRIMARY }}>{t.user?.name ?? '—'}</span>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                      <div className="flex items-center gap-2 flex-wrap" style={{ marginTop: 6, fontSize: 11, color: COLOR_TEXT_MUTED }}>
                         <span style={{ fontFamily: 'Inter' }}>{Number(t.rating).toFixed(1)}★</span>
                         <span>·</span>
                         <span>{t.jobsCompleted} مهمة</span>
                         {t.offPlatformFlags > 0 && (
-                          <span style={{ color: '#B91C1C', fontWeight: 700 }}>بلاغات: {t.offPlatformFlags}</span>
+                          <span style={{ color: COLOR_STATUS_DANGER, fontWeight: 700 }}>بلاغات: {t.offPlatformFlags}</span>
                         )}
                       </div>
                     </button>
                   ))}
                   {col.length === 0 && (
-                    <div className="text-center" style={{ padding: '16px 0', fontSize: 12, color: '#CBD5E1' }}>فارغ</div>
+                    <div className="text-center" style={{ padding: '16px 0', fontSize: 12, color: COLOR_NEUTRAL_FAINT }}>فارغ</div>
                   )}
                 </div>
               </Card>
@@ -158,7 +179,7 @@ function QualityDrawer({
             <Avatar name={tech.user?.name ?? '—'} size={48} />
             <div>
               <div style={{ fontWeight: 800, fontSize: 18 }}>{tech.user?.name ?? '—'}</div>
-              <div style={{ color: '#64748B', fontSize: 13, fontFamily: 'Inter' }}>{tech.user?.phone ?? '—'}</div>
+              <div style={{ color: COLOR_TEXT_MUTED, fontSize: 13, fontFamily: 'Inter' }}>{tech.user?.phone ?? '—'}</div>
               <div className="mt-1"><Pill label={TIER_LABEL[tech.trustTier]} bg={TIER_BG[tech.trustTier]} fg={TIER_COLOR[tech.trustTier]} /></div>
             </div>
           </div>
@@ -170,7 +191,7 @@ function QualityDrawer({
               onChange={(e) => setPendingTier(e.target.value)}
               disabled={setTierPending}
               className="mt-1"
-              style={{ color: TIER_COLOR[tech.trustTier], fontWeight: 700, fontSize: 13, border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 8px', background: '#FFF' }}
+              style={{ color: TIER_COLOR[tech.trustTier], fontWeight: 700, fontSize: 13, border: `1px solid ${COLOR_BORDER_LIGHT}`, borderRadius: 8, padding: '6px 8px', background: COLOR_WHITE }}
             >
               {TIERS.map((tier) => <option key={tier} value={tier}>{TIER_LABEL[tier]}</option>)}
             </select>
@@ -178,30 +199,30 @@ function QualityDrawer({
 
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>فحص الخلفية</div>
-            <span style={{ fontSize: 12, fontWeight: 600, color: tech.bgCheckStatus === 'PASSED' ? '#15803D' : tech.bgCheckStatus === 'FAILED' ? '#B91C1C' : '#B45309' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: tech.bgCheckStatus === 'PASSED' ? COLOR_STATUS_SUCCESS : tech.bgCheckStatus === 'FAILED' ? COLOR_STATUS_DANGER : COLOR_STATUS_WARNING }}>
               {BG_LABEL[tech.bgCheckStatus]}
             </span>
             <div className="flex gap-1 mt-1">
-              <button onClick={() => onBgCheck('PASSED')} disabled={bgCheckPending} className="px-2 rounded" style={{ background: '#DCFCE7', color: '#15803D', fontSize: 11, fontWeight: 600 }}>اجتاز</button>
-              <button onClick={() => onBgCheck('FAILED')} disabled={bgCheckPending} className="px-2 rounded" style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 11, fontWeight: 600 }}>فشل</button>
+              <button onClick={() => onBgCheck('PASSED')} disabled={bgCheckPending} className="px-2 rounded" style={{ background: COLOR_STATUS_SUCCESS_BG, color: COLOR_STATUS_SUCCESS, fontSize: 11, fontWeight: 600 }}>اجتاز</button>
+              <button onClick={() => onBgCheck('FAILED')} disabled={bgCheckPending} className="px-2 rounded" style={{ background: COLOR_STATUS_DANGER_BG, color: COLOR_STATUS_DANGER, fontSize: 11, fontWeight: 600 }}>فشل</button>
             </div>
           </div>
 
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>اختبار المهارات</div>
             {tech.skillsTestPassedAt
-              ? <span style={{ color: '#15803D', fontSize: 12, fontWeight: 600 }}>مُعتمد</span>
-              : <button onClick={onSkills} disabled={skillsPending} className="px-2 rounded" style={{ background: '#E8F1FE', color: '#0E4FA8', fontSize: 11, fontWeight: 600 }}>اعتماد</button>}
+              ? <span style={{ color: COLOR_STATUS_SUCCESS, fontSize: 12, fontWeight: 600 }}>مُعتمد</span>
+              : <button onClick={onSkills} disabled={skillsPending} className="px-2 rounded" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontSize: 11, fontWeight: 600 }}>اعتماد</button>}
           </div>
 
           {scorecard && (
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>بطاقة الأداء</div>
               <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1" style={{ fontSize: 13 }}>
-                <div><span style={{ color: '#64748B' }}>الالتزام بالوقت:</span> {Math.round(scorecard.onTimeRate)}%</div>
-                <div><span style={{ color: '#64748B' }}>إعادة/ضمان:</span> {Math.round(scorecard.redoRate)}%</div>
-                <div><span style={{ color: '#64748B' }}>الشكاوى:</span> {Math.round(scorecard.complaintRate)}%</div>
-                <div><span style={{ color: '#64748B' }}>معدل القبول:</span> {Math.round(scorecard.acceptanceRate)}%</div>
+                <div><span style={{ color: COLOR_TEXT_MUTED }}>الالتزام بالوقت:</span> {Math.round(scorecard.onTimeRate)}%</div>
+                <div><span style={{ color: COLOR_TEXT_MUTED }}>إعادة/ضمان:</span> {Math.round(scorecard.redoRate)}%</div>
+                <div><span style={{ color: COLOR_TEXT_MUTED }}>الشكاوى:</span> {Math.round(scorecard.complaintRate)}%</div>
+                <div><span style={{ color: COLOR_TEXT_MUTED }}>معدل القبول:</span> {Math.round(scorecard.acceptanceRate)}%</div>
               </div>
             </div>
           )}
@@ -212,12 +233,12 @@ function QualityDrawer({
             <OpsStatTile label="البلاغات" value={tech.offPlatformFlags} />
           </div>
           <div style={{ fontSize: 14 }}>
-            <div><span style={{ color: '#64748B' }}>عدد التقييمات:</span> {tech.totalReviews}</div>
-            <div><span style={{ color: '#64748B' }}>الحالة:</span> {tech.status === 'SUSPENDED' ? 'موقوف' : tech.isInsured ? 'مؤمَّن' : '—'}</div>
+            <div><span style={{ color: COLOR_TEXT_MUTED }}>عدد التقييمات:</span> {tech.totalReviews}</div>
+            <div><span style={{ color: COLOR_TEXT_MUTED }}>الحالة:</span> {tech.status === 'SUSPENDED' ? 'موقوف' : tech.isInsured ? 'مؤمَّن' : '—'}</div>
           </div>
 
-          <div className="pt-2 border-t" style={{ borderColor: '#F1F5F9' }}>
-            <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: '#64748B', fontSize: 12 }}>إغلاق</button>
+          <div className="pt-2 border-t" style={{ borderColor: COLOR_SURFACE_MUTED }}>
+            <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>إغلاق</button>
           </div>
         </div>
       </div>

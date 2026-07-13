@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
-import { AppError } from '../../../shared/errors';
+import { AppError, PrismaErrorCode } from '../../../shared/errors';
 import { logger } from '../../../shared/logger';
 
 export function errorHandler(
@@ -49,11 +49,11 @@ function mapPrismaError(err: Prisma.PrismaClientKnownRequestError): {
   message: string;
 } {
   switch (err.code) {
-    case 'P2002':
+    case PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION:
       return { status: 409, code: 'CONFLICT', message: 'Resource already exists' };
-    case 'P2003':
+    case PrismaErrorCode.FOREIGN_KEY_CONSTRAINT_VIOLATION:
       return { status: 422, code: 'FK_VIOLATION', message: 'Referenced resource does not exist' };
-    case 'P2025':
+    case PrismaErrorCode.RECORD_NOT_FOUND:
       return { status: 404, code: 'NOT_FOUND', message: 'Resource not found' };
     default:
       return { status: 500, code: 'DB_ERROR', message: 'Database error' };

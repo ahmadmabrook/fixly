@@ -4,6 +4,7 @@ import { Phone, Gift } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { Card, notify } from '../components/shared';
+import { COLOR_BG_PAGE_ALT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 /**
  * Read the `role` claim from a JWT without verifying it (the server is the
@@ -79,15 +80,15 @@ export default function LoginPage() {
   return (
     <main className="max-w-[420px] mx-auto px-6 py-16">
       <Card className="p-8">
-        <h1 style={{ fontWeight: 700, fontSize: 22, color: '#0F172A', textAlign: 'center' }}>تسجيل الدخول</h1>
-        <p style={{ color: '#475569', fontSize: 14, marginTop: 4, textAlign: 'center' }}>
+        <h1 style={{ fontWeight: 700, fontSize: 22, color: COLOR_TEXT_PRIMARY, textAlign: 'center' }}>تسجيل الدخول</h1>
+        <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14, marginTop: 4, textAlign: 'center' }}>
           {step === 'phone' ? 'أدخل رقم هاتفك للمتابعة' : `أدخل الرمز المرسل إلى ${phone}`}
         </p>
 
         {step === 'phone' ? (
           <div className="mt-6 space-y-4">
             <div className="flex items-center gap-2 h-12 px-4 rounded-xl border border-slate-200 bg-slate-50">
-              <Phone size={18} color="#94A3B8" />
+              <Phone size={18} color={COLOR_TEXT_MUTED} />
               <input
                 type="tel"
                 value={phone}
@@ -101,7 +102,7 @@ export default function LoginPage() {
               />
             </div>
             <div className="flex items-center gap-2 h-12 px-4 rounded-xl border border-slate-200 bg-slate-50">
-              <Gift size={18} color="#94A3B8" />
+              <Gift size={18} color={COLOR_TEXT_MUTED} />
               <input
                 type="text"
                 value={referralCode}
@@ -117,15 +118,15 @@ export default function LoginPage() {
               onClick={() => void requestOtp()}
               disabled={loading || phone.length < 10}
               className="w-full h-12 rounded-xl disabled:opacity-50"
-              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 15 }}
+              style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 15 }}
             >
               {loading ? '...' : 'إرسال الرمز'}
             </button>
-            <p style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
+            <p style={{ color: COLOR_TEXT_MUTED, fontSize: 12, textAlign: 'center' }}>
               بالمتابعة، أنت توافق على{' '}
-              <Link to="/terms" style={{ color: '#1366D6', fontWeight: 600 }}>الشروط والأحكام</Link>
+              <Link to="/terms" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600 }}>الشروط والأحكام</Link>
               {' '}و{' '}
-              <Link to="/privacy" style={{ color: '#1366D6', fontWeight: 600 }}>سياسة الخصوصية</Link>.
+              <Link to="/privacy" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600 }}>سياسة الخصوصية</Link>.
             </p>
           </div>
         ) : (
@@ -152,24 +153,24 @@ export default function LoginPage() {
                   className="flex items-center justify-center rounded-xl border"
                   style={{
                     width: 48, height: 56, fontSize: 22, fontFamily: 'Inter', fontWeight: 700,
-                    borderColor: i === otp.length ? '#1366D6' : '#E2E8F0',
-                    background: '#F8FAFC', color: '#0F172A',
+                    borderColor: i === otp.length ? COLOR_BRAND_PRIMARY : COLOR_BORDER,
+                    background: COLOR_BG_PAGE_ALT, color: COLOR_TEXT_PRIMARY,
                   }}
                 >
                   {otp[i] ?? ''}
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
+            <p style={{ fontSize: 12, color: COLOR_TEXT_MUTED, textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
             <button
               onClick={() => void verifyOtp()}
               disabled={loading || otp.length !== 6}
               className="w-full h-12 rounded-xl disabled:opacity-50"
-              style={{ background: '#1366D6', color: '#FFF', fontWeight: 700, fontSize: 15 }}
+              style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 15 }}
             >
               {loading ? '...' : 'تحقق والدخول'}
             </button>
-            <button onClick={() => setStep('phone')} style={{ color: '#1366D6', fontWeight: 600, fontSize: 13, width: '100%', textAlign: 'center' }}>
+            <button onClick={() => setStep('phone')} style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600, fontSize: 13, width: '100%', textAlign: 'center' }}>
               تغيير الرقم
             </button>
           </div>

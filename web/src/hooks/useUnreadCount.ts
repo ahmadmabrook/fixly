@@ -9,6 +9,11 @@ interface NotificationsEnvelope {
   meta: { total: number; unread: number };
 }
 
+/** Safety-net refresh in case the `notification:new` socket event is missed
+ *  (e.g. a brief disconnect) — the socket subscription below is the primary
+ *  update path, so this can be slow. */
+const UNREAD_COUNT_FALLBACK_POLL_MS = 60_000;
+
 /**
  * Encapsulates the unread-notification count: fetches on mount via
  * GET /notifications and subscribes to the `notification:new` socket event
@@ -27,7 +32,7 @@ export function useUnreadCount(): number {
       return res?.meta?.unread ?? 0;
     },
     enabled: !!accessToken,
-    refetchInterval: 60_000,
+    refetchInterval: UNREAD_COUNT_FALLBACK_POLL_MS,
   });
 
   // Subscribe to real-time notification events. Uses the module-level

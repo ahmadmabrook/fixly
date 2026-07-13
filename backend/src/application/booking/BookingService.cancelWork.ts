@@ -1,9 +1,16 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, BookingStatus, AdditionalWorkStatus, PaymentStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
 import { paymentRequiresHostedCheckout } from '../../shared/env';
 import { getBookingById } from './BookingService.reads';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
+import { OutboxEventType } from '../../shared/outboxEvents';
+
+// `Array.prototype.includes` narrows its element type from the literal array,
+// so these are typed explicitly as BookingStatus[] (rather than inferred as a
+// narrower tuple) to stay assignable against the full BookingStatus union.
+const NOT_CANCELLABLE_STATUSES: BookingStatus[] = [BookingStatus.COMPLETED, BookingStatus.CANCELLED];
+const RESCHEDULABLE_STATUSES: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
 
 /**
  * Cancellation, reschedule, and additional-work flow, extracted from
@@ -17,20 +24,20 @@ export class BookingCancelFlow {
     return prisma.$transaction(async (tx) => {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
       if (!fresh) throw new NotFoundError('Booking');
-      if (['COMPLETED', 'CANCELLED'].includes(fresh.status)) {
+      if (NOT_CANCELLABLE_STATUSES.includes(fresh.status)) {
         throw new ConflictError('Cannot cancel a completed or already cancelled booking');
       }
 
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
-        data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason, version: { increment: 1 } },
+        data: { status: BookingStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason, version: { increment: 1 } },
       });
-      await recordBookingStatusHistory(tx, bookingId, fresh.status, 'CANCELLED', userId);
+      await recordBookingStatusHistory(tx, bookingId, fresh.status, BookingStatus.CANCELLED, userId);
 
       await tx.outboxEvent.create({
         data: {
           bookingId,
-          eventType: 'booking.cancelled',
+          eventType: OutboxEventType.BOOKING_CANCELLED,
           payload: { bookingId, reason },
         },
       });
@@ -55,7 +62,7 @@ export class BookingCancelFlow {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
       if (!fresh) throw new NotFoundError('Booking');
       if (fresh.customerId !== userId) throw new ForbiddenError();
-      if (!['PENDING', 'CONFIRMED'].includes(fresh.status)) {
+      if (!RESCHEDULABLE_STATUSES.includes(fresh.status)) {
         throw new ConflictError('Only a not-yet-started booking can be rescheduled');
       }
       return tx.booking.update({
@@ -71,11 +78,11 @@ export class BookingCancelFlow {
     const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true, technician: { select: { userId: true } } } });
     if (!booking) throw new NotFoundError('Booking');
     if (!booking.technician || booking.technician.userId !== technicianUserId) throw new ForbiddenError();
-    if (booking.status !== 'IN_PROGRESS') throw new ConflictError('Additional work can only be added while the job is in progress');
+    if (booking.status !== BookingStatus.IN_PROGRESS) throw new ConflictError('Additional work can only be added while the job is in progress');
     const amount = new Prisma.Decimal(amountJod);
     if (amount.lessThanOrEqualTo(0) || amount.decimalPlaces() > 3) throw new ValidationError('Invalid amount');
     return prisma.additionalWorkItem.create({
-      data: { bookingId, description: description.trim(), amountJod: amount, status: 'PROPOSED' },
+      data: { bookingId, description: description.trim(), amountJod: amount, status: AdditionalWorkStatus.PROPOSED },
     });
   }
 
@@ -88,7 +95,7 @@ export class BookingCancelFlow {
       if (booking.customerId !== customerId) throw new ForbiddenError();
       const item = await tx.additionalWorkItem.findUnique({ where: { id: itemId } });
       if (!item || item.bookingId !== bookingId) throw new NotFoundError('AdditionalWorkItem');
-      if (item.status !== 'PROPOSED') throw new ConflictError('Item already responded to');
+      if (item.status !== AdditionalWorkStatus.PROPOSED) throw new ConflictError('Item already responded to');
 
       // Hosted checkout (real PSP) holds no reusable card token, so we cannot widen
       // the authorization server-side. Approving extra work would inflate the DB hold
@@ -103,7 +110,7 @@ export class BookingCancelFlow {
 
       const updated = await tx.additionalWorkItem.update({
         where: { id: itemId },
-        data: { status: approve ? 'APPROVED' : 'DECLINED' },
+        data: { status: approve ? AdditionalWorkStatus.APPROVED : AdditionalWorkStatus.DECLINED },
       });
       if (approve) {
         await tx.booking.update({
@@ -115,7 +122,7 @@ export class BookingCancelFlow {
         // is never charged / never paid out). Instant/mock providers widen the hold
         // directly; hosted mode is rejected above until incremental-auth exists.
         const payment = await tx.payment.findUnique({ where: { bookingId } });
-        if (payment && payment.status === 'PRE_AUTHORIZED') {
+        if (payment && payment.status === PaymentStatus.PRE_AUTHORIZED) {
           await tx.payment.update({ where: { id: payment.id }, data: { amountJod: { increment: item.amountJod } } });
         }
       }

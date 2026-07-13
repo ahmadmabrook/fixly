@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { logger } from '../../shared/logger';
+import { PrismaErrorCode } from '../../shared/errors';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -29,7 +30,7 @@ export async function createUserNotification(
       },
     });
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
       logger.debug({ dedupeKey: input.dedupeKey }, 'Notification already sent — skipping duplicate');
       return;
     }

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
+import { COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY } from '../lib/theme';
 
 interface FooterLink { label: string; to?: string; href?: string }
 interface FooterColumn { title: string; items: FooterLink[] }
@@ -66,10 +67,10 @@ export default function Footer({ authed, onRequireLogin }: FooterProps) {
       <div className="max-w-[1200px] mx-auto px-6 py-10 grid md:grid-cols-4 gap-6">
         <div>
           <button onClick={() => navigate('/')} className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#1366D6' }} aria-hidden="true">🔧</div>
-            <span style={{ color: '#1366D6', fontWeight: 800, fontSize: 22 }}>Fixly</span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: COLOR_BRAND_PRIMARY }} aria-hidden="true">🔧</div>
+            <span style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 800, fontSize: 22 }}>Fixly</span>
           </button>
-          <p className="mt-3" style={{ color: '#475569', fontSize: 13 }}>{t('footer.tagline')}</p>
+          <p className="mt-3" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>{t('footer.tagline')}</p>
         </div>
         {columns.map((c) => (
           <div key={c.title}>
@@ -78,9 +79,9 @@ export default function Footer({ authed, onRequireLogin }: FooterProps) {
               {c.items.map((item) => (
                 <li key={item.label}>
                   {item.href ? (
-                    <a href={item.href} style={{ color: '#475569', fontSize: 13 }} dir="ltr">{item.label}</a>
+                    <a href={item.href} style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }} dir="ltr">{item.label}</a>
                   ) : (
-                    <button onClick={() => go(item)} style={{ color: '#475569', fontSize: 13 }}>{item.label}</button>
+                    <button onClick={() => go(item)} style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>{item.label}</button>
                   )}
                 </li>
               ))}
@@ -88,7 +89,7 @@ export default function Footer({ authed, onRequireLogin }: FooterProps) {
           </div>
         ))}
       </div>
-      <div className="border-t border-slate-200 py-4 text-center" style={{ color: '#94A3B8', fontSize: 12 }}>
+      <div className="border-t border-slate-200 py-4 text-center" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>
         {t('footer.rights')}
       </div>
     </footer>

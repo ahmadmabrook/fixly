@@ -7,6 +7,7 @@ import { ReviewService } from '../../../application/review/ReviewService';
 import { TechnicianService } from '../../../application/technician/TechnicianService';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { NotFoundError } from '../../../shared/errors';
+import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 /** Public (authenticated) technician info + verified reviews — used by the
  *  customer's "assigned technician" card and the reviews screen. */
@@ -23,8 +24,8 @@ techniciansRouter.use(authenticate);
 techniciansRouter.get(
   '/nearby',
   validate([
-    query('lat').isFloat({ min: -90, max: 90 }).toFloat(),
-    query('lng').isFloat({ min: -180, max: 180 }).toFloat(),
+    query('lat').isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }).toFloat(),
+    query('lng').isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE }).toFloat(),
     query('radiusKm').optional().isFloat({ min: 1, max: 50 }).toFloat(),
   ]),
   asyncHandler(async (req, res) => {

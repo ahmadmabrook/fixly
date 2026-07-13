@@ -1,6 +1,6 @@
-import { Prisma, Subscription, SubscriptionStatus } from '@prisma/client';
+import { Prisma, Subscription, SubscriptionStatus, PaymentStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
-import { ConflictError, NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError, PrismaErrorCode } from '../../shared/errors';
 
 /** Protection plan defaults (§0.3). Price/benefits live on the row so a future
  *  multi-plan catalogue is a data change, not a code change. */
@@ -31,7 +31,7 @@ function addDays(base: Date, days: number): Date {
 export class SubscriptionService {
   /** The customer's current ACTIVE subscription, or null. */
   async activeFor(customerId: string): Promise<Subscription | null> {
-    return prisma.subscription.findFirst({ where: { customerId, status: 'ACTIVE' } });
+    return prisma.subscription.findFirst({ where: { customerId, status: SubscriptionStatus.ACTIVE } });
   }
 
   /** Active subscription + latest state for the "my plan" screen. */
@@ -55,7 +55,7 @@ export class SubscriptionService {
           data: {
             customerId,
             planSlug: PROTECTION_PLAN.slug,
-            status: 'ACTIVE',
+            status: SubscriptionStatus.ACTIVE,
             priceJod: new Prisma.Decimal(PROTECTION_PLAN.priceJod),
             discountPercent: PROTECTION_PLAN.discountPercent,
             guaranteeDays: PROTECTION_PLAN.guaranteeDays,
@@ -71,7 +71,7 @@ export class SubscriptionService {
           data: {
             subscriptionId: sub.id,
             amountJod: sub.priceJod,
-            status: paymentToken ? 'CAPTURED' : 'PENDING',
+            status: paymentToken ? PaymentStatus.CAPTURED : PaymentStatus.PENDING,
             periodStart: now,
             periodEnd,
             chargedAt: paymentToken ? now : null,
@@ -80,7 +80,7 @@ export class SubscriptionService {
         return sub;
       });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
         throw new ConflictError('لديك اشتراك فعّال بالفعل');
       }
       throw e;
@@ -90,7 +90,7 @@ export class SubscriptionService {
   /** Cancel at period end: keep benefits until `currentPeriodEnd`, then the biller
    *  expires it (no renewal). */
   async cancel(customerId: string): Promise<Subscription> {
-    const sub = await prisma.subscription.findFirst({ where: { customerId, status: 'ACTIVE' } });
+    const sub = await prisma.subscription.findFirst({ where: { customerId, status: SubscriptionStatus.ACTIVE } });
     if (!sub) throw new NotFoundError('Subscription');
     return prisma.subscription.update({ where: { id: sub.id }, data: { cancelledAt: new Date() } });
   }
@@ -104,7 +104,7 @@ export class SubscriptionService {
    */
   async billDueSubscriptions(now = new Date()): Promise<{ renewed: number; expired: number; pastDue: number }> {
     const due = await prisma.subscription.findMany({
-      where: { status: { in: ['ACTIVE', 'PAST_DUE'] }, currentPeriodEnd: { lte: now } },
+      where: { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] }, currentPeriodEnd: { lte: now } },
       take: 500,
     });
     let renewed = 0;
@@ -112,18 +112,18 @@ export class SubscriptionService {
     let pastDue = 0;
     for (const sub of due) {
       if (sub.cancelledAt) {
-        await prisma.subscription.update({ where: { id: sub.id }, data: { status: 'EXPIRED' } });
+        await prisma.subscription.update({ where: { id: sub.id }, data: { status: SubscriptionStatus.EXPIRED } });
         expired++;
         continue;
       }
-      if (sub.status === 'PAST_DUE' && now > addDays(sub.currentPeriodEnd, PROTECTION_PLAN.pastDueGraceDays)) {
-        await prisma.subscription.update({ where: { id: sub.id }, data: { status: 'EXPIRED' } });
+      if (sub.status === SubscriptionStatus.PAST_DUE && now > addDays(sub.currentPeriodEnd, PROTECTION_PLAN.pastDueGraceDays)) {
+        await prisma.subscription.update({ where: { id: sub.id }, data: { status: SubscriptionStatus.EXPIRED } });
         expired++;
         continue;
       }
       if (!sub.paymentToken) {
-        if (sub.status !== 'PAST_DUE') {
-          await prisma.subscription.update({ where: { id: sub.id }, data: { status: 'PAST_DUE' } });
+        if (sub.status !== SubscriptionStatus.PAST_DUE) {
+          await prisma.subscription.update({ where: { id: sub.id }, data: { status: SubscriptionStatus.PAST_DUE } });
         }
         pastDue++;
         continue;
@@ -135,7 +135,7 @@ export class SubscriptionService {
           data: {
             subscriptionId: sub.id,
             amountJod: sub.priceJod,
-            status: 'CAPTURED',
+            status: PaymentStatus.CAPTURED,
             periodStart,
             periodEnd,
             chargedAt: now,
@@ -144,7 +144,7 @@ export class SubscriptionService {
         await tx.subscription.update({
           where: { id: sub.id },
           data: {
-            status: 'ACTIVE',
+            status: SubscriptionStatus.ACTIVE,
             currentPeriodEnd: periodEnd,
             nextInspectionAt:
               sub.nextInspectionAt && sub.nextInspectionAt <= now
@@ -161,8 +161,8 @@ export class SubscriptionService {
   /** Admin growth dashboard: active count + monthly recurring revenue. */
   async adminSummary(limit = 50, offset = 0) {
     const [active, pastDue, items, total] = await prisma.$transaction([
-      prisma.subscription.count({ where: { status: 'ACTIVE' } }),
-      prisma.subscription.count({ where: { status: 'PAST_DUE' } }),
+      prisma.subscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
+      prisma.subscription.count({ where: { status: SubscriptionStatus.PAST_DUE } }),
       prisma.subscription.findMany({
         include: { customer: { select: { name: true, phone: true } } },
         orderBy: { createdAt: 'desc' },
@@ -177,5 +177,5 @@ export class SubscriptionService {
 }
 
 export function isActiveSubscription(sub: { status: SubscriptionStatus } | null | undefined): boolean {
-  return sub?.status === 'ACTIVE';
+  return sub?.status === SubscriptionStatus.ACTIVE;
 }

@@ -1,4 +1,4 @@
-import { BookingStatus, PayoutStatus, TechnicianStatus } from '@prisma/client';
+import { BookingStatus, PayoutStatus, TechnicianStatus, UserRole, GuaranteeStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { audit } from './adminAudit';
 import { NotFoundError } from '../../shared/errors';
@@ -31,19 +31,19 @@ export async function getAdminStats() {
     pendingPayouts,
   ] = await Promise.all([
     prisma.booking.count(),
-    prisma.booking.count({ where: { status: 'PENDING' } }),
-    prisma.booking.count({ where: { status: 'COMPLETED' } }),
+    prisma.booking.count({ where: { status: BookingStatus.PENDING } }),
+    prisma.booking.count({ where: { status: BookingStatus.COMPLETED } }),
     prisma.technicianProfile.count(),
     prisma.technicianProfile.count({ where: { isVerified: true } }),
-    prisma.technicianProfile.count({ where: { isAvailable: true, status: 'APPROVED' } }),
-    prisma.booking.aggregate({ _sum: { totalJod: true }, where: { status: 'COMPLETED' } }),
+    prisma.technicianProfile.count({ where: { isAvailable: true, status: TechnicianStatus.APPROVED } }),
+    prisma.booking.aggregate({ _sum: { totalJod: true }, where: { status: BookingStatus.COMPLETED } }),
     prisma.booking.aggregate({
       _sum: { totalJod: true },
-      where: { status: 'COMPLETED', completedAt: { gte: startOfToday } },
+      where: { status: BookingStatus.COMPLETED, completedAt: { gte: startOfToday } },
     }),
     prisma.technicianProfile.aggregate({ _avg: { rating: true }, where: { totalReviews: { gt: 0 } } }),
-    prisma.guaranteeTicket.count({ where: { status: { in: ['OPEN', 'IN_REVIEW'] } } }),
-    prisma.payout.count({ where: { status: 'PENDING' } }),
+    prisma.guaranteeTicket.count({ where: { status: { in: [GuaranteeStatus.OPEN, GuaranteeStatus.IN_REVIEW] } } }),
+    prisma.payout.count({ where: { status: PayoutStatus.PENDING } }),
   ]);
 
   const bookingsByService = await prisma.booking.groupBy({
@@ -86,10 +86,10 @@ export async function getAdminStats() {
     // progress / arriving / completed / cancelled) rather than exposing
     // every fine-grained BookingStatus value.
     bookingsByStatus: {
-      inProgress: statusCountMap.get('IN_PROGRESS') ?? 0,
-      arriving: (statusCountMap.get('EN_ROUTE') ?? 0) + (statusCountMap.get('ARRIVED') ?? 0),
-      completed: statusCountMap.get('COMPLETED') ?? 0,
-      cancelled: statusCountMap.get('CANCELLED') ?? 0,
+      inProgress: statusCountMap.get(BookingStatus.IN_PROGRESS) ?? 0,
+      arriving: (statusCountMap.get(BookingStatus.EN_ROUTE) ?? 0) + (statusCountMap.get(BookingStatus.ARRIVED) ?? 0),
+      completed: statusCountMap.get(BookingStatus.COMPLETED) ?? 0,
+      cancelled: statusCountMap.get(BookingStatus.CANCELLED) ?? 0,
     },
   };
 }
@@ -238,7 +238,7 @@ export async function listCustomerBookings(customerId: string, limit = 50, offse
 
 export async function listCustomers(limit = 50, offset = 0, search?: string) {
   const where = {
-    role: 'CUSTOMER' as const,
+    role: UserRole.CUSTOMER,
     ...(search ? { OR: [{ phone: { contains: search } }, { name: { contains: search, mode: 'insensitive' as const } }] } : {}),
   };
   const [items, total] = await prisma.$transaction([

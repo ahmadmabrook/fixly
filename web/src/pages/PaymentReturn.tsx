@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, ApiError, CheckoutState, CheckoutSession } from '../lib/api';
 import { Card, notify } from '../components/shared';
 import HyperPayWidget from '../components/HyperPayWidget';
+import { COLOR_BRAND_PRIMARY, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 type Phase = 'loading' | CheckoutState | 'error';
 
@@ -61,7 +62,7 @@ export default function PaymentReturn() {
     const returnUrl = `${window.location.origin}/payment/return?bookingId=${bookingId}`;
     return (
       <main className="max-w-[640px] mx-auto px-6 py-10">
-        <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A' }}>إعادة المحاولة</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: COLOR_TEXT_PRIMARY }}>إعادة المحاولة</h1>
         <Card className="p-6 mt-4"><HyperPayWidget session={retrySession} returnUrl={returnUrl} /></Card>
       </main>
     );
@@ -70,7 +71,7 @@ export default function PaymentReturn() {
   return (
     <main className="max-w-[640px] mx-auto px-6 py-16 text-center">
       <Card className="p-8">
-        {resolvedPhase === 'loading' && <p style={{ color: '#475569', fontSize: 16 }}>جارٍ التحقق من حالة الدفع…</p>}
+        {resolvedPhase === 'loading' && <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 16 }}>جارٍ التحقق من حالة الدفع…</p>}
 
         {resolvedPhase === 'authorized' && (
           <Result tone="success" title="تم تأكيد الدفع" body="تم حجز المبلغ وسيُخصم بعد إتمام الخدمة.">
@@ -101,11 +102,11 @@ export default function PaymentReturn() {
 }
 
 function Result({ tone, title, body, children }: { tone: 'success' | 'error' | 'muted'; title: string; body: string; children: React.ReactNode }) {
-  const color = tone === 'success' ? '#15803D' : tone === 'error' ? '#B91C1C' : '#0F172A';
+  const color = tone === 'success' ? COLOR_SUCCESS_TEXT : tone === 'error' ? COLOR_ERROR_TEXT : COLOR_TEXT_PRIMARY;
   return (
     <div>
       <h1 style={{ fontSize: 22, fontWeight: 800, color }}>{title}</h1>
-      <p style={{ color: '#475569', fontSize: 14, margin: '8px 0 20px' }}>{body}</p>
+      <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14, margin: '8px 0 20px' }}>{body}</p>
       {children}
     </div>
   );
@@ -113,7 +114,7 @@ function Result({ tone, title, body, children }: { tone: 'success' | 'error' | '
 
 function PrimaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="h-12 px-6 rounded-xl" style={{ background: '#1366D6', color: '#FFF', fontWeight: 700 }}>
+    <button onClick={onClick} className="h-12 px-6 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
       {children}
     </button>
   );

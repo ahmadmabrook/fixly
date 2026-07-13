@@ -355,13 +355,13 @@ describe('TechnicianService scorecard', () => {
   });
 });
 
-describe('TechnicianService.getNotificationPrefs / updateNotificationPrefs', () => {
+describe('TechnicianService.getOrCreateNotificationPrefs / updateNotificationPrefs', () => {
   let service: TechnicianService;
   beforeEach(() => { jest.clearAllMocks(); service = new TechnicianService(); });
 
   it('throws NotFoundError when the technician has no profile', async () => {
     mockedPrisma.technicianProfile.findUnique.mockResolvedValue(null);
-    await expect(service.getNotificationPrefs('u1')).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.getOrCreateNotificationPrefs('u1')).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it('upserts a default (all-true) row on first read', async () => {
@@ -369,7 +369,7 @@ describe('TechnicianService.getNotificationPrefs / updateNotificationPrefs', () 
     mockedPrisma.technicianNotificationPrefs.upsert.mockResolvedValue({
       newJobRequests: true, reminders: true, earningsUpdates: true, promotions: true,
     });
-    const prefs = await service.getNotificationPrefs('u1');
+    const prefs = await service.getOrCreateNotificationPrefs('u1');
     expect(prefs).toEqual({ newJobRequests: true, reminders: true, earningsUpdates: true, promotions: true });
     expect(mockedPrisma.technicianNotificationPrefs.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { technicianId: 'tp1' }, create: { technicianId: 'tp1' } }),

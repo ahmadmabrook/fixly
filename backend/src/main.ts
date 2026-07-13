@@ -6,6 +6,7 @@ if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging')
   try { require('dotenv/config'); } catch { /* optional */ }
 }
 import type { Server } from 'http';
+import { OutboxStatus, PaymentStatus, BookingStatus } from '@prisma/client';
 import { loadEnv, env } from './shared/env';
 import { createApp } from './interface/http/app';
 import { createSocketServer } from './interface/socket/server';
@@ -13,6 +14,7 @@ import { logger } from './shared/logger';
 import { prisma } from './infrastructure/database/prisma';
 import { redis } from './infrastructure/cache/redis';
 import { OutboxWorker } from './application/outbox/OutboxWorker';
+import { OutboxEventType } from './shared/outboxEvents';
 import { PaymentService } from './application/payment/PaymentService';
 import { NotificationService } from './application/notification/NotificationService';
 import { AdminService } from './application/admin/AdminService';
@@ -128,13 +130,13 @@ async function refreshPendingGauge(): Promise<void> {
   try {
     const expiryCutoff = new Date(Date.now() - loadEnv().AUTH_HOLD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     const [pending, failed, stuckPreauth, awaitingPayment] = await Promise.all([
-      prisma.outboxEvent.count({ where: { status: 'PENDING' } }),
+      prisma.outboxEvent.count({ where: { status: OutboxStatus.PENDING } }),
       // Terminal-FAILED money events = uncollected revenue / held customer funds.
-      prisma.outboxEvent.count({ where: { status: 'FAILED' } }),
+      prisma.outboxEvent.count({ where: { status: OutboxStatus.FAILED } }),
       // Holds past expiry that were never captured → capture at risk.
-      prisma.payment.count({ where: { status: 'PRE_AUTHORIZED', preAuthorizedAt: { lt: expiryCutoff } } }),
+      prisma.payment.count({ where: { status: PaymentStatus.PRE_AUTHORIZED, preAuthorizedAt: { lt: expiryCutoff } } }),
       // Bookings awaiting hosted-checkout authorization (visibility into the funnel).
-      prisma.booking.count({ where: { status: 'AWAITING_PAYMENT' } }),
+      prisma.booking.count({ where: { status: BookingStatus.AWAITING_PAYMENT } }),
     ]);
     outboxPendingGauge.set(pending);
     outboxFailedGauge.set(failed);
@@ -158,19 +160,19 @@ function buildOutboxWorker(
   const bookingId = (p: unknown) => (p as { bookingId: string }).bookingId;
 
   const worker = new OutboxWorker({ batchSize, maxBatchesPerTick })
-    .register('booking.created', (p) => payment.preAuthorizeForBooking(bookingId(p)))
-    .register('booking.completed', (p) => payment.captureForBooking(bookingId(p)))
+    .register(OutboxEventType.BOOKING_CREATED, (p) => payment.preAuthorizeForBooking(bookingId(p)))
+    .register(OutboxEventType.BOOKING_COMPLETED, (p) => payment.captureForBooking(bookingId(p)))
     // Cancellation releases money: void an uncaptured hold, or refund a capture.
-    .register('booking.cancelled', (p) => payment.handleCancellation(bookingId(p)))
+    .register(OutboxEventType.BOOKING_CANCELLED, (p) => payment.handleCancellation(bookingId(p)))
     // No-show charges the flat callout fee by capturing it out of the existing
     // pre-authorized hold (same retry-safe capture path as booking.completed).
-    .register('booking.no_show', (p) => payment.captureForBooking(bookingId(p), (p as { calloutFeeJod: string }).calloutFeeJod));
+    .register(OutboxEventType.BOOKING_NO_SHOW, (p) => payment.captureForBooking(bookingId(p), (p as { calloutFeeJod: string }).calloutFeeJod));
 
   // Every lifecycle event notifies the customer (idempotent handler).
   for (const eventType of [
-    'booking.created', 'booking.confirmed', 'booking.en_route',
-    'booking.arrived', 'booking.in_progress', 'booking.completed', 'booking.cancelled',
-    'booking.no_show',
+    OutboxEventType.BOOKING_CREATED, OutboxEventType.BOOKING_CONFIRMED, OutboxEventType.BOOKING_EN_ROUTE,
+    OutboxEventType.BOOKING_ARRIVED, OutboxEventType.BOOKING_IN_PROGRESS, OutboxEventType.BOOKING_COMPLETED, OutboxEventType.BOOKING_CANCELLED,
+    OutboxEventType.BOOKING_NO_SHOW,
   ]) {
     worker.register(eventType, (p) => notification.handleBookingEvent(eventType, p as { bookingId: string }));
   }

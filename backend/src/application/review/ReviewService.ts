@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, BookingStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { reviewsSubmittedTotal } from '../../shared/metrics';
@@ -25,7 +25,7 @@ export class ReviewService {
       include: { technician: { select: { id: true, userId: true } } },
     });
     if (!booking) throw new NotFoundError('Booking');
-    if (booking.status !== 'COMPLETED') throw new ValidationError('Only completed bookings can be reviewed');
+    if (booking.status !== BookingStatus.COMPLETED) throw new ValidationError('Only completed bookings can be reviewed');
 
     // Resolve the reviewee as the OTHER party to the booking.
     const isCustomer = booking.customerId === input.reviewerId;

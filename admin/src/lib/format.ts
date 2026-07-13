@@ -24,3 +24,21 @@ export function maskIban(iban: string | null | undefined): string {
 export function fmtJod(amount: string | number): string {
   return Number(amount).toFixed(2);
 }
+
+const MS_PER_DAY = 86_400_000;
+
+/** ISO date (YYYY-MM-DD) for "N days ago", e.g. isoDaysAgo(30) → 30 days
+ *  before today. Used to build default from/to ranges for report queries. */
+export function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * MS_PER_DAY).toISOString().slice(0, 10);
+}
+
+/** Length of the truncated id shown as a short human-readable reference
+ *  (e.g. booking/payout/guarantee ids in tables) — full ids are too long
+ *  to scan in a table row. */
+const SHORT_ID_LENGTH = 8;
+
+/** Truncate an id to its short display form, e.g. "abcd1234-...-..." → "abcd1234". */
+export function shortId(id: string): string {
+  return id.slice(0, SHORT_ID_LENGTH);
+}

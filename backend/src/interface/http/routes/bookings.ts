@@ -14,6 +14,7 @@ import { getDispatchService } from '../../../application/dispatch/DispatchServic
 import { ForbiddenError } from '../../../shared/errors';
 import { env } from '../../../shared/env';
 import { logger } from '../../../shared/logger';
+import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 export const bookingsRouter: Router = Router();
 
@@ -37,8 +38,8 @@ bookingsRouter.post(
     // (or trigger a slow sort in the future). 500 is more than enough for a
     // house/building/landmark description.
     body('addressLine').isString().trim().isLength({ min: 1, max: 500 }),
-    body('addressLat').isFloat({ min: -90, max: 90 }),
-    body('addressLng').isFloat({ min: -180, max: 180 }),
+    body('addressLat').isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }),
+    body('addressLng').isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE }),
     body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 300 }),
     // A scheduled booking must be in the future — mirrors reschedule()'s guard so
     // a client can't create a booking dated in the past (data anomaly / abuse).

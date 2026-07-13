@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError } from '../../shared/errors';
 
@@ -37,7 +37,7 @@ export async function listBookingsForUser(userId: string, role: string, limit = 
   // can't use @@index([technicianId, status]) and forces a join subquery —
   // costly on the 15s tech-dashboard poll).
   let where: Prisma.BookingWhereInput;
-  if (role === 'CUSTOMER') {
+  if (role === UserRole.CUSTOMER) {
     where = { customerId: userId };
   } else {
     const profile = await prisma.technicianProfile.findUnique({ where: { userId }, select: { id: true } });

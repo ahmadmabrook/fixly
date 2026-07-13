@@ -4,6 +4,7 @@ import { asyncHandler } from '../asyncHandler';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { logger } from '../../../shared/logger';
 import { pspWebhookTotal } from '../../../shared/metrics';
+import { PrismaErrorCode } from '../../../shared/errors';
 import type { PaymentService } from '../../../application/payment/PaymentService';
 import type { IPaymentProvider } from '../../../domain/providers/IPaymentProvider';
 
@@ -56,7 +57,7 @@ export function createWebhookRouter(payment: PaymentService, provider: IPaymentP
         });
       } catch (err) {
         // A concurrent delivery recorded it first — fine, handler was idempotent.
-        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')) throw err;
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION)) throw err;
       }
 
       res.status(200).json({ data: { ok: true } });

@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../lib/i18n';
 import { useTheme } from '../lib/store';
 import { useUnreadCount } from '../hooks/useUnreadCount';
+import { COLOR_BADGE_DOT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 interface TopNavProps {
   authed: boolean;
@@ -53,7 +54,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
   return (
     <header
       className="sticky top-0 z-20"
-      style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #E2E8F0' }}
+      style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${COLOR_BORDER}` }}
     >
       <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center gap-6">
         <button
@@ -61,8 +62,8 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
           className="flex items-center gap-2"
           aria-label="Fixly — الصفحة الرئيسية"
         >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#1366D6' }} aria-hidden="true">🔧</div>
-          <span style={{ color: '#1366D6', fontWeight: 800, fontSize: 22 }}>Fixly</span>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: COLOR_BRAND_PRIMARY }} aria-hidden="true">🔧</div>
+          <span style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 800, fontSize: 22 }}>Fixly</span>
         </button>
         <nav className="hidden md:flex items-center gap-6" aria-label="التنقل الرئيسي">
           {items.map(([k, label, path]) => (
@@ -70,7 +71,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
               key={k}
               onClick={() => navigate(path)}
               aria-current={active === k ? 'page' : undefined}
-              style={{ fontSize: 14, fontWeight: 600, color: active === k ? '#1366D6' : '#475569' }}
+              style={{ fontSize: 14, fontWeight: 600, color: active === k ? COLOR_BRAND_PRIMARY : COLOR_TEXT_SECONDARY }}
             >
               {t(label)}
             </button>
@@ -81,7 +82,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
         <button
           onClick={toggleDark}
           className="flex items-center justify-center w-9 h-9 rounded-lg"
-          style={{ color: '#475569' }}
+          style={{ color: COLOR_TEXT_SECONDARY }}
           aria-label={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}
         >
           {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
@@ -91,7 +92,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
           <button
             onClick={() => navigate('/account')}
             className="relative flex items-center justify-center w-9 h-9 rounded-lg"
-            style={{ color: '#475569' }}
+            style={{ color: COLOR_TEXT_SECONDARY }}
             aria-label="الإشعارات"
           >
             <Bell size={18} aria-hidden="true" />
@@ -100,7 +101,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
                 className="absolute flex items-center justify-center rounded-full"
                 style={{
                   top: 2, insetInlineEnd: 2, minWidth: 16, height: 16, padding: '0 4px',
-                  background: '#EF4444', color: '#FFF', fontSize: 10, fontWeight: 700, fontFamily: 'Inter',
+                  background: COLOR_BADGE_DOT, color: COLOR_WHITE, fontSize: 10, fontWeight: 700, fontFamily: 'Inter',
                   lineHeight: 1,
                 }}
               >
@@ -113,7 +114,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
           <button
             onClick={onLogout}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{ color: '#475569', fontSize: 14 }}
+            style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14 }}
           >
             <LogOut size={16} aria-hidden="true" /> {t('nav.logout')}
           </button>
@@ -121,7 +122,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
           <button
             onClick={onLogin}
             className="hidden md:block px-4 py-2 rounded-lg"
-            style={{ background: '#1366D6', color: '#FFF', fontSize: 14, fontWeight: 600 }}
+            style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontSize: 14, fontWeight: 600 }}
           >
             {t('nav.login')}
           </button>
@@ -142,7 +143,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
         <nav
           id="mobile-nav"
           className="md:hidden border-t"
-          style={{ borderColor: '#E2E8F0', background: '#FFF' }}
+          style={{ borderColor: COLOR_BORDER, background: COLOR_WHITE }}
           aria-label="التنقل الرئيسي"
         >
           <div className="max-w-[1200px] mx-auto px-6 py-2 flex flex-col">
@@ -152,7 +153,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
                 onClick={() => go(path)}
                 aria-current={active === k ? 'page' : undefined}
                 className="text-start py-3"
-                style={{ fontSize: 15, fontWeight: 600, color: active === k ? '#1366D6' : '#475569' }}
+                style={{ fontSize: 15, fontWeight: 600, color: active === k ? COLOR_BRAND_PRIMARY : COLOR_TEXT_SECONDARY }}
               >
                 {t(label)}
               </button>
@@ -161,7 +162,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
               <button
                 onClick={() => { setMenuOpen(false); onLogin(); }}
                 className="text-start py-3"
-                style={{ fontSize: 15, fontWeight: 700, color: '#1366D6' }}
+                style={{ fontSize: 15, fontWeight: 700, color: COLOR_BRAND_PRIMARY }}
               >
                 {t('nav.login')}
               </button>

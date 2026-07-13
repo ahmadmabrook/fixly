@@ -1,7 +1,7 @@
 import { randomInt } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, CreditReason, BookingStatus } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
-import { NotFoundError } from '../../shared/errors';
+import { NotFoundError, PrismaErrorCode } from '../../shared/errors';
 import type { ServiceCreditService } from '../credit/ServiceCreditService';
 
 /** Credit granted to the referrer on the referred user's first COMPLETED booking. */
@@ -12,7 +12,7 @@ const CODE_LENGTH = 6;
 const MAX_GENERATION_ATTEMPTS = 5;
 
 function isUniqueViolation(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION;
 }
 
 function randomCode(): string {
@@ -57,7 +57,7 @@ export class ReferralService {
       this.getOrCreateCode(userId),
       prisma.referralRedemption.count({ where: { referrerId: userId } }),
       prisma.serviceCredit.aggregate({
-        where: { customerId: userId, reason: 'REFERRAL' },
+        where: { customerId: userId, reason: CreditReason.REFERRAL },
         _sum: { amountJod: true },
       }),
     ]);
@@ -108,7 +108,7 @@ export class ReferralService {
 
     // "First completed booking" — this booking just became COMPLETED by the
     // caller, so a count of exactly 1 means it's the customer's first.
-    const completedCount = await tx.booking.count({ where: { customerId, status: 'COMPLETED' } });
+    const completedCount = await tx.booking.count({ where: { customerId, status: BookingStatus.COMPLETED } });
     if (completedCount !== 1) return;
 
     const { count } = await tx.referralRedemption.updateMany({
@@ -120,7 +120,7 @@ export class ReferralService {
     await creditService.grant(tx, {
       customerId: redemption.referrerId,
       amountJod: REFERRAL_CREDIT_JOD,
-      reason: 'REFERRAL',
+      reason: CreditReason.REFERRAL,
       bookingId,
       refKey: `referral:${redemption.id}`,
     });

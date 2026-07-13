@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 import { Card } from '../components/shared';
+import { COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY } from '../lib/theme';
 
 const SECTIONS: ReadonlyArray<{ title: string; body: string }> = [
   { title: '1. الخدمة', body: 'تتيح Fixly حجز فنيي صيانة منزلية معتمدين (كهرباء، سباكة، تكييف، دهان، تركيب أثاث) عبر التطبيق والموقع، مع سعر ثابت يُعرض قبل تأكيد الحجز.' },
@@ -14,16 +15,16 @@ export default function TermsPage() {
   return (
     <main className="max-w-[800px] mx-auto px-6 py-10">
       <div className="flex items-center gap-2">
-        <FileText size={26} color="#1366D6" aria-hidden="true" />
+        <FileText size={26} color={COLOR_BRAND_PRIMARY} aria-hidden="true" />
         <h1 style={{ fontWeight: 800, fontSize: 28 }}>الشروط والأحكام</h1>
       </div>
-      <p className="mt-2" style={{ color: '#475569', fontSize: 13 }}>آخر تحديث: يناير 2026</p>
+      <p className="mt-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>آخر تحديث: يناير 2026</p>
 
       <div className="mt-6 space-y-3">
         {SECTIONS.map((s) => (
           <Card key={s.title} className="p-5">
             <div style={{ fontWeight: 700, fontSize: 15 }}>{s.title}</div>
-            <p className="mt-1.5" style={{ color: '#475569', fontSize: 14, lineHeight: 1.7 }}>{s.body}</p>
+            <p className="mt-1.5" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14, lineHeight: 1.7 }}>{s.body}</p>
           </Card>
         ))}
       </div>

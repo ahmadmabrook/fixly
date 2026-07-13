@@ -1,4 +1,4 @@
-import { BookingStatus, Prisma } from '@prisma/client';
+import { BookingStatus, DispatchOfferStatus, PaymentStatus, CreditReason, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
@@ -7,6 +7,7 @@ import { ReferralService } from '../referral/ReferralService';
 import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/metrics';
 import { getBookingById } from './BookingService.reads';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 /** Immediate-booking arrival promise (§0.3): technician within 30 minutes. */
 const SLA_ARRIVE_MINUTES = 30;
@@ -49,7 +50,7 @@ export class BookingLifecycleFlow {
 
       return await prisma.$transaction(async (tx) => {
         const booking = await tx.booking.findUnique({ where: { id: bookingId } });
-        if (!booking || booking.status !== 'PENDING') {
+        if (!booking || booking.status !== BookingStatus.PENDING) {
           throw new ConflictError('Booking no longer available');
         }
 
@@ -57,7 +58,7 @@ export class BookingLifecycleFlow {
         const offer = await tx.dispatchOffer.findUnique({
           where: { bookingId_technicianId: { bookingId, technicianId: profile.id } },
         });
-        if (!offer || offer.status !== 'OFFERED') {
+        if (!offer || offer.status !== DispatchOfferStatus.OFFERED) {
           throw new ConflictError('Booking no longer offered to you');
         }
 
@@ -65,11 +66,11 @@ export class BookingLifecycleFlow {
         const now = new Date();
         await tx.dispatchOffer.update({
           where: { id: offer.id },
-          data: { status: 'ACCEPTED', respondedAt: now },
+          data: { status: DispatchOfferStatus.ACCEPTED, respondedAt: now },
         });
         const superseded = await tx.dispatchOffer.updateMany({
-          where: { bookingId, status: 'OFFERED', id: { not: offer.id } },
-          data: { status: 'SUPERSEDED' },
+          where: { bookingId, status: DispatchOfferStatus.OFFERED, id: { not: offer.id } },
+          data: { status: DispatchOfferStatus.SUPERSEDED },
         });
         if (superseded.count > 0) dispatchOffersTotal.inc({ result: 'superseded' }, superseded.count);
         dispatchOffersTotal.inc({ result: 'accepted' });
@@ -88,7 +89,7 @@ export class BookingLifecycleFlow {
           where: { id: bookingId, version: booking.version },
           data: {
             technicianId: profile.id,
-            status: 'CONFIRMED',
+            status: BookingStatus.CONFIRMED,
             dispatchExpiresAt: null,
             // Arrival SLA promise (§0.3): immediate bookings commit to a 30-min
             // arrival window from acceptance. Scheduled bookings have no live SLA.
@@ -96,12 +97,12 @@ export class BookingLifecycleFlow {
             version: { increment: 1 },
           },
         });
-        await recordBookingStatusHistory(tx, bookingId, booking.status, 'CONFIRMED', technicianUserId);
+        await recordBookingStatusHistory(tx, bookingId, booking.status, BookingStatus.CONFIRMED, technicianUserId);
 
         await tx.outboxEvent.create({
           data: {
             bookingId,
-            eventType: 'booking.confirmed',
+            eventType: OutboxEventType.BOOKING_CONFIRMED,
             payload: { bookingId, customerId: booking.customerId, technicianId: profile.id },
           },
         });
@@ -139,7 +140,7 @@ export class BookingLifecycleFlow {
       // Server-enforced pre-start SOP checklist (technician portal): the
       // technician must submit the pre-start checklist (POST .../checklist/pre-start)
       // before the job can move from ARRIVED to IN_PROGRESS.
-      if (to === 'IN_PROGRESS' && !fresh.preStartChecklistAt) {
+      if (to === BookingStatus.IN_PROGRESS && !fresh.preStartChecklistAt) {
         throw new ValidationError('Pre-start checklist must be submitted before starting the job');
       }
 
@@ -148,22 +149,22 @@ export class BookingLifecycleFlow {
         data: {
           status: to,
           version: { increment: 1 },
-          ...(to === 'ARRIVED' ? { arrivedAt: new Date() } : {}),
-          ...(to === 'IN_PROGRESS' ? { startedAt: new Date() } : {}),
+          ...(to === BookingStatus.ARRIVED ? { arrivedAt: new Date() } : {}),
+          ...(to === BookingStatus.IN_PROGRESS ? { startedAt: new Date() } : {}),
         },
       });
       await recordBookingStatusHistory(tx, bookingId, fresh.status, to, technicianUserId);
 
       // Late-arrival compensation (§0.3): if the technician arrives more than the
       // grace past the promised SLA window, grant the customer a one-time credit.
-      if (to === 'ARRIVED' && fresh.slaArriveBy) {
+      if (to === BookingStatus.ARRIVED && fresh.slaArriveBy) {
         const arrivedAt = updated.arrivedAt ?? new Date();
         const deadline = new Date(fresh.slaArriveBy.getTime() + LATE_GRACE_MINUTES * 60 * 1000);
         if (arrivedAt.getTime() > deadline.getTime()) {
           const granted = await this.creditService.grant(tx, {
             customerId: fresh.customerId,
             amountJod: LATE_COMPENSATION_JOD,
-            reason: 'LATE_COMPENSATION',
+            reason: CreditReason.LATE_COMPENSATION,
             bookingId,
             refKey: `latecomp:${bookingId}`,
           });
@@ -211,15 +212,15 @@ export class BookingLifecycleFlow {
       // were actually authorized — otherwise a pre-auth failure means delivering
       // the service for free.
       const payment = await tx.payment.findUnique({ where: { bookingId }, select: { status: true } });
-      if (!payment || (payment.status !== 'PRE_AUTHORIZED' && payment.status !== 'CAPTURED')) {
+      if (!payment || (payment.status !== PaymentStatus.PRE_AUTHORIZED && payment.status !== PaymentStatus.CAPTURED)) {
         throw new ConflictError('Payment is not authorized for this booking');
       }
 
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
-        data: { status: 'COMPLETED', completedAt: new Date(), version: { increment: 1 } },
+        data: { status: BookingStatus.COMPLETED, completedAt: new Date(), version: { increment: 1 } },
       });
-      await recordBookingStatusHistory(tx, bookingId, fresh.status, 'COMPLETED', userId);
+      await recordBookingStatusHistory(tx, bookingId, fresh.status, BookingStatus.COMPLETED, userId);
 
       // Lifetime completed-job counter feeds the nightly trust-tier recompute (§0.2 #1).
       if (fresh.technicianId) {
@@ -236,7 +237,7 @@ export class BookingLifecycleFlow {
       await tx.outboxEvent.create({
         data: {
           bookingId,
-          eventType: 'booking.completed',
+          eventType: OutboxEventType.BOOKING_COMPLETED,
           payload: { bookingId, customerId: booking.customerId },
         },
       });
@@ -258,7 +259,7 @@ export class BookingLifecycleFlow {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
       if (!fresh) throw new NotFoundError('Booking');
       if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
-      if (fresh.status !== 'ARRIVED') {
+      if (fresh.status !== BookingStatus.ARRIVED) {
         throw new ConflictError('Pre-start checklist can only be submitted while ARRIVED');
       }
       return tx.booking.update({
@@ -281,7 +282,7 @@ export class BookingLifecycleFlow {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
       if (!fresh) throw new NotFoundError('Booking');
       if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
-      if (fresh.status !== 'IN_PROGRESS') {
+      if (fresh.status !== BookingStatus.IN_PROGRESS) {
         throw new ConflictError('Pre-close checklist can only be submitted while IN_PROGRESS');
       }
       return tx.booking.update({
@@ -309,24 +310,24 @@ export class BookingLifecycleFlow {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId }, include: { service: { select: { calloutFeeJod: true } } } });
       if (!fresh) throw new NotFoundError('Booking');
       if (fresh.technicianId !== profile.id) throw new ForbiddenError('Not the assigned technician');
-      if (fresh.status !== 'ARRIVED') {
+      if (fresh.status !== BookingStatus.ARRIVED) {
         throw new ConflictError('No-show can only be reported while ARRIVED');
       }
 
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
-        data: { status: 'NO_SHOW', cancelledAt: new Date(), cancelReason: 'Customer no-show', version: { increment: 1 } },
+        data: { status: BookingStatus.NO_SHOW, cancelledAt: new Date(), cancelReason: 'Customer no-show', version: { increment: 1 } },
       });
-      await recordBookingStatusHistory(tx, bookingId, fresh.status, 'NO_SHOW', technicianUserId);
+      await recordBookingStatusHistory(tx, bookingId, fresh.status, BookingStatus.NO_SHOW, technicianUserId);
 
       await tx.outboxEvent.create({
         data: {
           bookingId,
-          eventType: 'booking.no_show',
+          eventType: OutboxEventType.BOOKING_NO_SHOW,
           payload: {
             bookingId,
             customerId: fresh.customerId,
-            status: 'NO_SHOW',
+            status: BookingStatus.NO_SHOW,
             calloutFeeJod: fresh.service.calloutFeeJod.toString(),
           },
         },

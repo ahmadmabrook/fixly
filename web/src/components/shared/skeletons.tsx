@@ -1,3 +1,5 @@
+import { COLOR_BG_SUBTLE, COLOR_BORDER } from '../../lib/theme';
+
 /* ── Skeleton shimmer placeholder ──────────────────────────────────────────── */
 
 const shimmerKeyframes = `
@@ -40,7 +42,7 @@ export function Skeleton({
         width,
         height,
         borderRadius,
-        background: 'linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%)',
+        background: `linear-gradient(90deg, ${COLOR_BORDER} 25%, ${COLOR_BG_SUBTLE} 50%, ${COLOR_BORDER} 75%)`,
         backgroundSize: '800px 100%',
         animation: 'fixly-shimmer 1.5s ease-in-out infinite',
         ...style,
