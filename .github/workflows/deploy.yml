@@ -39,6 +39,9 @@ jobs:
       - run: pnpm --filter web build
         env:
           VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN }}
+          # Public Fly.io hostname (not a secret) — Cloudflare Pages has no proxy
+          # route for /socket.io/*, so the socket must connect here directly.
+          VITE_SOCKET_URL: https://fixly.fly.dev
       - name: Deploy to Cloudflare Pages
         working-directory: web
         run: npx wrangler pages deploy dist --project-name fixly-web --branch main --commit-dirty

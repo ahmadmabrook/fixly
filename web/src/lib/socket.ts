@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
+// Cloudflare Pages proxies /api/* to the Fly backend (see web/functions/api/[[path]].ts)
+// but has no equivalent route for /socket.io/* — an unmatched path there just falls
+// through to the SPA's own index.html (Pages' client-side-routing fallback), so a
+// same-origin socket connection silently "succeeds" against a 200 HTML response and
+// never actually reaches the backend. Connect directly to the Fly origin instead.
+// Unset in local dev, where vite.config.ts's dev-server proxy already forwards
+// /socket.io to the backend same-origin.
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL as string | undefined) || undefined;
+
 interface BookingStatusEvent {
   bookingId: string;
   status: string;
@@ -27,7 +36,7 @@ export function getOrCreateSocket(token: string): Socket {
     sharedSocket.connect();
     return sharedSocket;
   }
-  sharedSocket = io({
+  sharedSocket = io(SOCKET_URL, {
     path: '/socket.io',
     auth: { token },
     transports: ['websocket', 'polling'],

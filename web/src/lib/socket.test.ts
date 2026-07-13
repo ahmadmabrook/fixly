@@ -114,6 +114,35 @@ describe('subscribeToNotifications', () => {
   });
 });
 
+describe('socket connection URL', () => {
+  // Cloudflare Pages has no proxy route for /socket.io/* (unlike /api/*), so a
+  // same-origin connection silently hits the SPA's own index.html instead of the
+  // backend. VITE_SOCKET_URL must be passed as the explicit connection target
+  // when set; regression test for that wiring, not just relying on manual review.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('connects directly to VITE_SOCKET_URL when set, instead of same-origin', async () => {
+    vi.stubEnv('VITE_SOCKET_URL', 'https://fixly.fly.dev');
+    vi.resetModules();
+    const { io: ioMock } = await import('socket.io-client');
+    const fresh = await import('./socket');
+    fresh.getOrCreateSocket('tok');
+    expect(ioMock).toHaveBeenCalledWith('https://fixly.fly.dev', expect.objectContaining({ path: '/socket.io' }));
+  });
+
+  it('falls back to same-origin (no explicit URL) when VITE_SOCKET_URL is unset', async () => {
+    vi.stubEnv('VITE_SOCKET_URL', '');
+    vi.resetModules();
+    const { io: ioMock } = await import('socket.io-client');
+    const fresh = await import('./socket');
+    fresh.getOrCreateSocket('tok');
+    expect(ioMock).toHaveBeenCalledWith(undefined, expect.objectContaining({ path: '/socket.io' }));
+  });
+});
+
 describe('getOrCreateSocket / disconnectSocket', () => {
   it('returns the same shared instance across calls while connected', () => {
     const a = getOrCreateSocket('tok-a');
