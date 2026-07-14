@@ -2,18 +2,23 @@ import { useEffect, useRef } from 'react';
 import type { Map as MbMap, Marker as MbMarker, GeoJSONSource } from 'mapbox-gl';
 import type mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MAPBOX_TOKEN, hasMapbox } from '../lib/mapbox';
+import { MAPBOX_TOKEN, hasMapbox, fetchDrivingRoute, haversineMeters } from '../lib/mapbox';
 import { COLOR_BG_MAP_PLACEHOLDER, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_WHITE } from '../lib/theme';
 
 interface Point { lat: number; lng: number }
 
-const TECH_TRAIL_SOURCE_ID = 'tech-trail';
-const TECH_TRAIL_LAYER_ID = 'tech-trail-line';
-// Cap the trail so a long-running job doesn't grow the GeoJSON source forever.
-const MAX_TRAIL_POINTS = 200;
+const TECH_ROUTE_SOURCE_ID = 'tech-route';
+const TECH_ROUTE_CASING_LAYER_ID = 'tech-route-casing';
+const TECH_ROUTE_LAYER_ID = 'tech-route-line';
 // Matches the fitBounds camera duration so the pin arrives as the viewport
 // finishes re-centering, instead of visibly lagging or leading it.
 const MARKER_ANIMATION_MS = 800;
+// Re-fetch the driving route once the technician has moved far enough that
+// the previously-drawn road path would visibly disagree with reality, but
+// no more often than the min interval below — the Directions API is a paid,
+// rate-limited call, and a route barely changes between two 2-second pings.
+const ROUTE_REFETCH_MIN_DISTANCE_M = 80;
+const ROUTE_REFETCH_MIN_INTERVAL_MS = 10_000;
 
 // Same path data as the app's lucide-react "car-front" icon (see lucide-react/icons/car-front),
 // reproduced as a static SVG string because mapbox-gl markers take a raw DOM element, not a
@@ -55,13 +60,16 @@ function bearingDeg(a: Point, b: Point): number {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+const emptyRoute = { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [] as [number, number][] } };
+
 /**
  * Read-only tracking map: a fixed customer pin + a live technician car marker
  * that glides (not jumps) toward each new `tech` update, rotated to face the
- * direction of travel, trailing a polyline of everywhere it's been this
- * session. Recenters to keep both in view. mapbox-gl is dynamically imported
- * (own chunk) and the whole thing degrades to a notice when the token/WebGL
- * is unavailable.
+ * direction of travel, following an actual road-snapped driving route to the
+ * customer's address (Mapbox Directions API) — not a straight line between
+ * raw GPS pings. Recenters to keep both in view. mapbox-gl is dynamically
+ * imported (own chunk) and the whole thing degrades to a notice when the
+ * token/WebGL is unavailable.
  */
 export default function TrackingMap({ customer, tech, height = 300 }: { customer: Point; tech: Point | null; height?: number }) {
   const el = useRef<HTMLDivElement>(null);
@@ -69,8 +77,8 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
   const gl = useRef<typeof mapboxgl | null>(null);
   const techMarker = useRef<MbMarker | null>(null);
   const techRotor = useRef<HTMLDivElement | null>(null);
-  const styleLoaded = useRef(false);
-  const trail = useRef<[number, number][]>([]);
+  const routeOrigin = useRef<Point | null>(null);
+  const lastRouteAttemptAt = useRef(0);
   const lastTechPoint = useRef<Point | null>(null);
   const animationFrame = useRef<number | null>(null);
   const customerRef = useRef(customer);
@@ -93,18 +101,24 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
         new mapboxgl.Marker({ color: COLOR_BRAND_PRIMARY }).setLngLat([c.lng, c.lat]).addTo(map);
         map.on('load', () => {
           if (cancelled || !map) return;
-          map.addSource(TECH_TRAIL_SOURCE_ID, {
-            type: 'geojson',
-            data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: trail.current } },
+          map.addSource(TECH_ROUTE_SOURCE_ID, { type: 'geojson', data: emptyRoute });
+          // White casing underneath + solid brand-colored line on top — same
+          // layering technique turn-by-turn map UIs use for a route that
+          // reads clearly against streets of any color.
+          map.addLayer({
+            id: TECH_ROUTE_CASING_LAYER_ID,
+            type: 'line',
+            source: TECH_ROUTE_SOURCE_ID,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': COLOR_WHITE, 'line-width': 7, 'line-opacity': 0.9 },
           });
           map.addLayer({
-            id: TECH_TRAIL_LAYER_ID,
+            id: TECH_ROUTE_LAYER_ID,
             type: 'line',
-            source: TECH_TRAIL_SOURCE_ID,
+            source: TECH_ROUTE_SOURCE_ID,
             layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': COLOR_BRAND_ACCENT_TEAL, 'line-width': 3, 'line-opacity': 0.55, 'line-dasharray': [0.2, 1.5] },
+            paint: { 'line-color': COLOR_BRAND_ACCENT_TEAL, 'line-width': 4.5 },
           });
-          styleLoaded.current = true;
         });
       } catch {
         // WebGL/jsdom/load failure → notice stays.
@@ -117,14 +131,13 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
       mapRef.current = null;
       techMarker.current = null;
       techRotor.current = null;
-      styleLoaded.current = false;
-      trail.current = [];
+      routeOrigin.current = null;
       lastTechPoint.current = null;
     };
   }, []);
 
-  // Glide the technician car toward each new location as it arrives, extend the
-  // trail polyline, and keep both pins in view.
+  // Glide the technician car toward each new location as it arrives, keep the
+  // road-snapped route to the customer up to date, and keep both pins in view.
   useEffect(() => {
     const map = mapRef.current;
     const mapboxgl = gl.current;
@@ -134,8 +147,6 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
       const { root, rotor } = createCarMarkerElement();
       techMarker.current = new mapboxgl.Marker({ element: root }).setLngLat([tech.lng, tech.lat]).addTo(map);
       techRotor.current = rotor;
-      lastTechPoint.current = tech;
-      trail.current = [[tech.lng, tech.lat]];
     } else {
       const from = lastTechPoint.current ?? tech;
       const marker = techMarker.current;
@@ -157,13 +168,21 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
         }
       };
       animationFrame.current = requestAnimationFrame(animate);
-
-      lastTechPoint.current = tech;
-      trail.current = [...trail.current, [tech.lng, tech.lat] as [number, number]].slice(-MAX_TRAIL_POINTS);
     }
+    lastTechPoint.current = tech;
 
-    const trailSource = map.getSource(TECH_TRAIL_SOURCE_ID) as GeoJSONSource | undefined;
-    trailSource?.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: trail.current } });
+    const movedFarEnough = !routeOrigin.current || haversineMeters(routeOrigin.current, tech) > ROUTE_REFETCH_MIN_DISTANCE_M;
+    const cooledDown = Date.now() - lastRouteAttemptAt.current > ROUTE_REFETCH_MIN_INTERVAL_MS;
+    if (movedFarEnough && cooledDown) {
+      lastRouteAttemptAt.current = Date.now();
+      const requestedFor = tech;
+      void fetchDrivingRoute(tech, customerRef.current).then((route) => {
+        if (!route || mapRef.current !== map) return;
+        const source = map.getSource(TECH_ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
+        source?.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } });
+        routeOrigin.current = requestedFor;
+      });
+    }
 
     const bounds = new mapboxgl.LngLatBounds();
     bounds.extend([customerRef.current.lng, customerRef.current.lat]);

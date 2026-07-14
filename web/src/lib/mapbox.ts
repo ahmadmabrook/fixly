@@ -54,3 +54,53 @@ export async function reverseGeocode(lng: number, lat: number): Promise<string |
     return null;
   }
 }
+
+export interface DrivingRoute {
+  /** Road-snapped path, [lng, lat] pairs — draw directly as a GeoJSON LineString. */
+  coordinates: [number, number][];
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+const DIRECTIONS_BASE = 'https://api.mapbox.com/directions/v5/mapbox/driving';
+
+/** Road-following driving route between two points (Directions API), for
+ *  drawing an actual "how the technician will get there" line on the
+ *  tracking map instead of a straight cross-country line between GPS pings.
+ *  Returns null on failure/no-route so callers can fall back gracefully. */
+export async function fetchDrivingRoute(
+  from: { lng: number; lat: number },
+  to: { lng: number; lat: number },
+): Promise<DrivingRoute | null> {
+  if (!hasMapbox) return null;
+  const url = `${DIRECTIONS_BASE}/${from.lng},${from.lat};${to.lng},${to.lat}` +
+    `?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      routes?: Array<{ geometry?: { coordinates?: [number, number][] }; distance?: number; duration?: number }>;
+    };
+    const route = body.routes?.[0];
+    if (!route?.geometry?.coordinates?.length) return null;
+    return {
+      coordinates: route.geometry.coordinates,
+      distanceMeters: route.distance ?? 0,
+      durationSeconds: route.duration ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Great-circle distance in meters — used to decide whether the technician
+ *  has moved far enough to justify re-fetching the driving route. */
+export function haversineMeters(a: { lng: number; lat: number }, b: { lng: number; lat: number }): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}

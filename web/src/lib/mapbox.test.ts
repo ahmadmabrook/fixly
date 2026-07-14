@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { forwardGeocode, reverseGeocode, hasMapbox } from './mapbox';
+import { forwardGeocode, reverseGeocode, hasMapbox, fetchDrivingRoute, haversineMeters } from './mapbox';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -63,5 +63,60 @@ describe('reverseGeocode', () => {
   it('returns null on fetch failure', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network'); }) as unknown as typeof fetch);
     expect(await reverseGeocode(35.9, 31.95)).toBeNull();
+  });
+});
+
+describe('fetchDrivingRoute', () => {
+  const from = { lng: 35.93, lat: 31.95 };
+  const to = { lng: 35.9106, lat: 31.9539 };
+
+  it('returns the road-snapped coordinates, distance, and duration of the first route', async () => {
+    let calledUrl = '';
+    stubFetch((url) => {
+      calledUrl = url;
+      return {
+        json: () => ({
+          routes: [{ geometry: { coordinates: [[35.93, 31.95], [35.92, 31.952], [35.9106, 31.9539]] }, distance: 2400, duration: 310 }],
+        }),
+      };
+    });
+    const route = await fetchDrivingRoute(from, to);
+    expect(route).toEqual({
+      coordinates: [[35.93, 31.95], [35.92, 31.952], [35.9106, 31.9539]],
+      distanceMeters: 2400,
+      durationSeconds: 310,
+    });
+    expect(calledUrl).toContain('/directions/v5/mapbox/driving/35.93,31.95;35.9106,31.9539');
+    expect(calledUrl).toContain('geometries=geojson');
+  });
+
+  it('returns null when the API reports no route', async () => {
+    stubFetch(() => ({ json: () => ({ routes: [] }) }));
+    expect(await fetchDrivingRoute(from, to)).toBeNull();
+  });
+
+  it('returns null on a non-ok response', async () => {
+    stubFetch(() => ({ ok: false, json: () => ({}) }));
+    expect(await fetchDrivingRoute(from, to)).toBeNull();
+  });
+
+  it('returns null on fetch failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network'); }) as unknown as typeof fetch);
+    expect(await fetchDrivingRoute(from, to)).toBeNull();
+  });
+});
+
+describe('haversineMeters', () => {
+  it('returns 0 for the same point', () => {
+    expect(haversineMeters({ lng: 35.93, lat: 31.95 }, { lng: 35.93, lat: 31.95 })).toBe(0);
+  });
+
+  it('matches a known real-world distance within a small tolerance', () => {
+    // Amman city center to Queen Alia International Airport is ~30km.
+    const amman = { lng: 35.9106, lat: 31.9539 };
+    const qaia = { lng: 35.9931, lat: 31.7226 };
+    const meters = haversineMeters(amman, qaia);
+    expect(meters).toBeGreaterThan(25_000);
+    expect(meters).toBeLessThan(35_000);
   });
 });

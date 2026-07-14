@@ -52,14 +52,15 @@ describe('useTechnicianLocationPush', () => {
 
     // No new watchPosition callback fires, but the heartbeat interval should
     // still re-send the last known coordinates so the backend's 30s Redis
-    // staleness window (HEARTBEAT_STALE_MS) never lapses.
-    await vi.advanceTimersByTimeAsync(15_000);
+    // staleness window (HEARTBEAT_STALE_MS) never lapses, and the customer's
+    // live tracking map keeps updating every ~2s while EN_ROUTE.
+    await vi.advanceTimersByTimeAsync(2_000);
     const postCallsAfterHeartbeat = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
       (call: unknown[]) => call[0] === '/api/v1/technician/location',
     ).length;
     expect(postCallsAfterHeartbeat).toBe(2);
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     const postCallsAfterSecondHeartbeat = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
       (call: unknown[]) => call[0] === '/api/v1/technician/location',
     ).length;

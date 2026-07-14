@@ -4,10 +4,13 @@ import { api, BookingListItem, BookingStatus } from '../lib/api';
 import { getSharedSocket } from '../lib/socket';
 import { REALTIME_POLL_INTERVAL_MS } from '../lib/constants';
 
-// Same order-of-magnitude as the backend's write-through cooldown
-// (LOCATION_WRITETHROUGH_COOLDOWN_SECONDS) — no point pinging more often
-// than the server would persist it.
-const PUSH_THROTTLE_MS = 10_000;
+// The customer-facing live tracking map (TrackingMap) needs the technician's
+// pin to visibly move roughly every 2s while EN_ROUTE, not just whenever a
+// fresh GPS fix happens to arrive. The backend's write-through cooldown
+// (LOCATION_WRITETHROUGH_COOLDOWN_SECONDS, 10s) only throttles the Postgres
+// snapshot write — the Redis GEO write and the socket emit happen on every
+// call regardless, so pushing this often is cheap server-side.
+const PUSH_THROTTLE_MS = 2_000;
 const TRACKABLE_STATUSES: BookingStatus[] = ['EN_ROUTE', 'ARRIVED'];
 
 // Must stay comfortably under the backend's HEARTBEAT_STALE_MS (30s —
@@ -19,8 +22,9 @@ const TRACKABLE_STATUSES: BookingStatus[] = ['EN_ROUTE', 'ARRIVED'];
 // silently stale seconds after they toggled "available", with no error or
 // warning shown anywhere. This independent timer re-sends the last known
 // fix on a fixed cadence regardless of whether the device reported a new
-// one, so staying "available" always keeps the heartbeat alive.
-const HEARTBEAT_PUSH_INTERVAL_MS = 15_000;
+// one, so staying "available" always keeps the heartbeat alive — and, while
+// EN_ROUTE, keeps the customer's live tracking map updating smoothly.
+const HEARTBEAT_PUSH_INTERVAL_MS = 2_000;
 
 /**
  * While a technician is marked available, periodically push their real
