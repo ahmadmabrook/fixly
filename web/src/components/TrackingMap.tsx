@@ -163,6 +163,14 @@ export default function TrackingMap({
       for (const c of coords) b.extend(c);
       map.fitBounds(b, { padding: 70, maxZoom: 16, duration: GLIDE_MS });
     };
+    // Keep a STEADY view (like Uber) — only recenter if the car is about to leave
+    // the viewport, rather than re-animating the camera on every 2s ping (which
+    // both looks jittery and never lets the map settle).
+    const keepInView = (car: LngLat, remaining: LngLat[]) => {
+      const bounds = map.getBounds();
+      if (bounds && bounds.contains(car)) return;
+      fitTo(remaining.length >= 2 ? remaining : [car, [customerRef.current.lng, customerRef.current.lat]]);
+    };
     const stopAnim = () => { if (raf.current !== null) { cancelAnimationFrame(raf.current); raf.current = null; } };
 
     // Glide the car straight between raw pings — only used when there is no road
@@ -245,7 +253,7 @@ export default function TrackingMap({
       raf.current = t < 1 ? requestAnimationFrame(frame) : null;
     };
     raf.current = requestAnimationFrame(frame);
-    fitTo(path.slice(target, path.length));
+    keepInView(path.pointAt(target), path.slice(target, path.length));
   }, [tech?.lat, tech?.lng, status]);
 
   if (!hasMapbox) {
