@@ -67,8 +67,8 @@ function createCarMarkerElement(): { root: HTMLDivElement; rotor: HTMLDivElement
  * thing degrades to a notice when the token/WebGL is unavailable.
  */
 export default function TrackingMap({
-  customer, tech, status, height = 300,
-}: { customer: Point; tech: Point | null; status?: string; height?: number }) {
+  customer, tech, status, onEtaSeconds, height = 300,
+}: { customer: Point; tech: Point | null; status?: string; onEtaSeconds?: (seconds: number | null) => void; height?: number }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MbMap | null>(null);
   const gl = useRef<typeof mapboxgl | null>(null);
@@ -76,11 +76,14 @@ export default function TrackingMap({
   const carRotor = useRef<HTMLDivElement | null>(null);
   const raf = useRef<number | null>(null);
 
-  // Journey state: the drawn route, how far along it the car currently sits, and
-  // the last time we asked the Directions API (rate-limit guard).
+  // Journey state: the drawn route, how far along it the car currently sits, its
+  // full driving duration (for a live ETA), and the last Directions fetch time.
   const routePath = useRef<RoutePath | null>(null);
+  const routeDurationSec = useRef(0);
   const progress = useRef(0);
   const lastFetchAt = useRef(0);
+  const onEtaRef = useRef(onEtaSeconds);
+  onEtaRef.current = onEtaSeconds;
   // Fallback path when there is no route (Directions failed): remember the raw
   // point so we can still glide the pin straight between pings.
   const lastRawTech = useRef<LngLat | null>(null);
@@ -198,6 +201,7 @@ export default function TrackingMap({
       stopAnim();
       setRouteData([]);
       routePath.current = null;
+      onEtaRef.current?.(null);
       return;
     }
 
@@ -218,20 +222,22 @@ export default function TrackingMap({
         if (mapRef.current !== map || !route || route.coordinates.length < 2) return;
         const path = new RoutePath(route.coordinates);
         routePath.current = path;
+        routeDurationSec.current = route.durationSeconds;
         progress.current = 0;
         lastRawTech.current = techLngLat;
         stopAnim();
         setRouteData(path.slice(0, path.length));
         placeCar(path.pointAt(0), path.bearingAt(0));
         fitTo(path.coords);
+        onEtaRef.current?.(route.durationSeconds);
       });
     }
 
     // No usable route yet (first fetch still in flight, or it failed) → straight
     // fallback for this ping.
     const path = routePath.current;
-    if (!path) { glideStraight(techLngLat); return; }
-    if (path.length < 1) { setRouteData([]); placeCar([customerRef.current.lng, customerRef.current.lat]); return; }
+    if (!path) { glideStraight(techLngLat); onEtaRef.current?.(null); return; }
+    if (path.length < 1) { setRouteData([]); placeCar([customerRef.current.lng, customerRef.current.lat]); onEtaRef.current?.(null); return; }
 
     // ── ride the route ────────────────────────────────────────────────────────
     // Project the ping onto the route; never let the car slide backward on a
@@ -239,6 +245,9 @@ export default function TrackingMap({
     const along = Math.min(path.project(techLngLat).along, path.length);
     const target = Math.max(progress.current, along);
     const from = progress.current;
+
+    // Live ETA: remaining fraction of the route's real driving duration.
+    onEtaRef.current?.(path.length > 0 ? routeDurationSec.current * (1 - target / path.length) : 0);
 
     stopAnim();
     const start = performance.now();

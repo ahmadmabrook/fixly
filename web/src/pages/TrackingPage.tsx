@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, Check, Phone, MessageCircle, Star, Search } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -25,6 +25,15 @@ export default function TrackingPage() {
   const [cancelling, setCancelling] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  // Live arrival ETA (minutes), driven by the tracking map's road route. Ticks
+  // down every second between the ~2s location pings so it reads like Uber
+  // instead of jumping.
+  const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
+  useEffect(() => {
+    if (etaSeconds === null || etaSeconds <= 0) return;
+    const t = setInterval(() => setEtaSeconds((s) => (s === null ? null : Math.max(0, s - 1))), 1000);
+    return () => clearInterval(t);
+  }, [etaSeconds === null]);
 
   const { data: booking, isLoading, refetch } = useQuery({
     queryKey: ['booking', id],
@@ -86,6 +95,7 @@ export default function TrackingPage() {
               customer={{ lat: booking.addressLat, lng: booking.addressLng }}
               tech={location ? { lat: location.lat, lng: location.lng } : null}
               status={status}
+              onEtaSeconds={setEtaSeconds}
               height={420}
             />
           </Card>
@@ -112,7 +122,11 @@ export default function TrackingPage() {
             </div>
             {status === 'EN_ROUTE' && (
               <span className="mt-2 inline-block px-3 py-1 rounded-full" style={{ background: COLOR_ENROUTE_BG, color: COLOR_ENROUTE_TEXT, fontWeight: 700, fontSize: 13 }}>
-                الوصول خلال <span style={{ fontFamily: 'Inter' }}>5</span> دقائق
+                {etaSeconds === null
+                  ? 'الفني في الطريق إليك'
+                  : etaSeconds <= 45
+                    ? 'الفني على وشك الوصول'
+                    : <>الوصول خلال <span style={{ fontFamily: 'Inter' }}>{Math.round(etaSeconds / 60)}</span> دقائق</>}
               </span>
             )}
             <div className="mt-5 space-y-0" role="list" aria-label="مراحل الطلب">
