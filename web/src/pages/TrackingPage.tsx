@@ -85,6 +85,7 @@ export default function TrackingPage() {
             <TrackingMap
               customer={{ lat: booking.addressLat, lng: booking.addressLng }}
               tech={location ? { lat: location.lat, lng: location.lng } : null}
+              status={status}
               height={420}
             />
           </Card>

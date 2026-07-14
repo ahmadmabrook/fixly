@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { Map as MbMap, Marker as MbMarker, GeoJSONSource } from 'mapbox-gl';
 import type mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MAPBOX_TOKEN, hasMapbox, fetchDrivingRoute, haversineMeters } from '../lib/mapbox';
+import { MAPBOX_TOKEN, hasMapbox, fetchDrivingRoute } from '../lib/mapbox';
+import { RoutePath, bearing, type LngLat } from '../lib/routeGeometry';
 import { COLOR_BG_MAP_PLACEHOLDER, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_WHITE } from '../lib/theme';
 
 interface Point { lat: number; lng: number }
@@ -10,15 +11,23 @@ interface Point { lat: number; lng: number }
 const TECH_ROUTE_SOURCE_ID = 'tech-route';
 const TECH_ROUTE_CASING_LAYER_ID = 'tech-route-casing';
 const TECH_ROUTE_LAYER_ID = 'tech-route-line';
-// Matches the fitBounds camera duration so the pin arrives as the viewport
-// finishes re-centering, instead of visibly lagging or leading it.
-const MARKER_ANIMATION_MS = 800;
-// Re-fetch the driving route once the technician has moved far enough that
-// the previously-drawn road path would visibly disagree with reality, but
-// no more often than the min interval below — the Directions API is a paid,
-// rate-limited call, and a route barely changes between two 2-second pings.
-const ROUTE_REFETCH_MIN_DISTANCE_M = 80;
-const ROUTE_REFETCH_MIN_INTERVAL_MS = 10_000;
+
+// Slightly under the 2s technician ping cadence (see useTechnicianLocationPush)
+// so the car finishes gliding to one ping just as the next arrives — continuous
+// motion instead of move-then-pause.
+const GLIDE_MS = 1_900;
+// A ping this far off the drawn route means the technician took a different road
+// (wrong turn / reroute) — fetch a fresh route rather than snapping them onto a
+// road they aren't on.
+const OFFROUTE_THRESHOLD_M = 55;
+// Don't re-hit the paid Directions API more than this often even while off-route.
+const ROUTE_REFETCH_COOLDOWN_MS = 8_000;
+// Within this of the route end, treat the technician as arrived: drop the line.
+const ARRIVE_EPS_M = 18;
+
+// Booking states where there is no live journey to draw: the route line is
+// cleared (technician has arrived / the job is over / it was cancelled).
+const TERMINAL_STATUSES = new Set(['ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
 
 // Same path data as the app's lucide-react "car-front" icon (see lucide-react/icons/car-front),
 // reproduced as a static SVG string because mapbox-gl markers take a raw DOM element, not a
@@ -41,50 +50,45 @@ function createCarMarkerElement(): { root: HTMLDivElement; rotor: HTMLDivElement
   const rotor = document.createElement('div');
   rotor.style.width = '16px';
   rotor.style.height = '16px';
-  rotor.style.transition = 'transform 0.3s ease';
+  rotor.style.transition = 'transform 0.4s ease';
   rotor.innerHTML = CAR_ICON_SVG;
   root.appendChild(rotor);
 
   return { root, rotor };
 }
 
-/** Initial bearing (degrees, 0 = north) from point `a` to point `b`. */
-function bearingDeg(a: Point, b: Point): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const toDeg = (r: number) => (r * 180) / Math.PI;
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-const emptyRoute = { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [] as [number, number][] } };
-
 /**
- * Read-only tracking map: a fixed customer pin + a live technician car marker
- * that glides (not jumps) toward each new `tech` update, rotated to face the
- * direction of travel, following an actual road-snapped driving route to the
- * customer's address (Mapbox Directions API) — not a straight line between
- * raw GPS pings. Recenters to keep both in view. mapbox-gl is dynamically
- * imported (own chunk) and the whole thing degrades to a notice when the
- * token/WebGL is unavailable.
+ * Uber-style live tracking map: a fixed customer pin + a technician car marker
+ * that rides an actual road-snapped driving route (Mapbox Directions API) to
+ * the customer's door. On each location ping the car glides *along the route*
+ * (through its road vertices, facing the direction of travel), the stretch of
+ * road it has already covered is dropped behind it, and when it arrives the
+ * whole line clears. mapbox-gl is dynamically imported (own chunk) and the whole
+ * thing degrades to a notice when the token/WebGL is unavailable.
  */
-export default function TrackingMap({ customer, tech, height = 300 }: { customer: Point; tech: Point | null; height?: number }) {
+export default function TrackingMap({
+  customer, tech, status, height = 300,
+}: { customer: Point; tech: Point | null; status?: string; height?: number }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MbMap | null>(null);
   const gl = useRef<typeof mapboxgl | null>(null);
-  const techMarker = useRef<MbMarker | null>(null);
-  const techRotor = useRef<HTMLDivElement | null>(null);
-  const routeOrigin = useRef<Point | null>(null);
-  const lastRouteAttemptAt = useRef(0);
-  const lastTechPoint = useRef<Point | null>(null);
-  const animationFrame = useRef<number | null>(null);
+  const carMarker = useRef<MbMarker | null>(null);
+  const carRotor = useRef<HTMLDivElement | null>(null);
+  const raf = useRef<number | null>(null);
+
+  // Journey state: the drawn route, how far along it the car currently sits, and
+  // the last time we asked the Directions API (rate-limit guard).
+  const routePath = useRef<RoutePath | null>(null);
+  const progress = useRef(0);
+  const lastFetchAt = useRef(0);
+  // Fallback path when there is no route (Directions failed): remember the raw
+  // point so we can still glide the pin straight between pings.
+  const lastRawTech = useRef<LngLat | null>(null);
+
   const customerRef = useRef(customer);
   customerRef.current = customer;
 
-  // Init once.
+  // ── init once ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!hasMapbox || !el.current) return;
     let cancelled = false;
@@ -101,23 +105,18 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
         new mapboxgl.Marker({ color: COLOR_BRAND_PRIMARY }).setLngLat([c.lng, c.lat]).addTo(map);
         map.on('load', () => {
           if (cancelled || !map) return;
-          map.addSource(TECH_ROUTE_SOURCE_ID, { type: 'geojson', data: emptyRoute });
-          // White casing underneath + solid brand-colored line on top — same
-          // layering technique turn-by-turn map UIs use for a route that
-          // reads clearly against streets of any color.
+          map.addSource(TECH_ROUTE_SOURCE_ID, { type: 'geojson', data: emptyLine() });
+          // White casing under a solid brand-colored line — the layering
+          // turn-by-turn UIs use so the route reads clearly over any street.
           map.addLayer({
-            id: TECH_ROUTE_CASING_LAYER_ID,
-            type: 'line',
-            source: TECH_ROUTE_SOURCE_ID,
+            id: TECH_ROUTE_CASING_LAYER_ID, type: 'line', source: TECH_ROUTE_SOURCE_ID,
             layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': COLOR_WHITE, 'line-width': 7, 'line-opacity': 0.9 },
+            paint: { 'line-color': COLOR_WHITE, 'line-width': 8, 'line-opacity': 0.95 },
           });
           map.addLayer({
-            id: TECH_ROUTE_LAYER_ID,
-            type: 'line',
-            source: TECH_ROUTE_SOURCE_ID,
+            id: TECH_ROUTE_LAYER_ID, type: 'line', source: TECH_ROUTE_SOURCE_ID,
             layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': COLOR_BRAND_ACCENT_TEAL, 'line-width': 4.5 },
+            paint: { 'line-color': COLOR_BRAND_ACCENT_TEAL, 'line-width': 5 },
           });
         });
       } catch {
@@ -126,77 +125,128 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
     })();
     return () => {
       cancelled = true;
-      if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
       map?.remove();
       mapRef.current = null;
-      techMarker.current = null;
-      techRotor.current = null;
-      routeOrigin.current = null;
-      lastTechPoint.current = null;
+      carMarker.current = null;
+      carRotor.current = null;
+      routePath.current = null;
+      lastRawTech.current = null;
     };
   }, []);
 
-  // Glide the technician car toward each new location as it arrives, keep the
-  // road-snapped route to the customer up to date, and keep both pins in view.
+  // ── react to each technician location / status change ───────────────────────
   useEffect(() => {
     const map = mapRef.current;
     const mapboxgl = gl.current;
-    if (!map || !mapboxgl || !tech) return;
+    if (!map || !mapboxgl) return;
 
-    if (!techMarker.current) {
-      const { root, rotor } = createCarMarkerElement();
-      techMarker.current = new mapboxgl.Marker({ element: root }).setLngLat([tech.lng, tech.lat]).addTo(map);
-      techRotor.current = rotor;
-    } else {
-      const from = lastTechPoint.current ?? tech;
-      const marker = techMarker.current;
-      const rotor = techRotor.current;
-
-      if (rotor && (from.lat !== tech.lat || from.lng !== tech.lng)) {
-        rotor.style.transform = `rotate(${bearingDeg(from, tech)}deg)`;
+    const setRouteData = (coords: LngLat[]) => {
+      const source = map.getSource(TECH_ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
+      source?.setData(coords.length >= 2
+        ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
+        : emptyLine());
+    };
+    const placeCar = (at: LngLat, heading?: number) => {
+      if (!carMarker.current) {
+        const { root, rotor } = createCarMarkerElement();
+        carMarker.current = new mapboxgl.Marker({ element: root }).setLngLat(at).addTo(map);
+        carRotor.current = rotor;
+      } else {
+        carMarker.current.setLngLat(at);
       }
+      if (heading !== undefined && carRotor.current) carRotor.current.style.transform = `rotate(${heading}deg)`;
+    };
+    const fitTo = (coords: LngLat[]) => {
+      if (coords.length === 0) return;
+      const b = new mapboxgl.LngLatBounds();
+      for (const c of coords) b.extend(c);
+      map.fitBounds(b, { padding: 70, maxZoom: 16, duration: GLIDE_MS });
+    };
+    const stopAnim = () => { if (raf.current !== null) { cancelAnimationFrame(raf.current); raf.current = null; } };
 
-      if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
-      const start = performance.now();
-      const animate = (now: number) => {
-        const t = Math.min((now - start) / MARKER_ANIMATION_MS, 1);
-        marker.setLngLat([from.lng + (tech.lng - from.lng) * t, from.lat + (tech.lat - from.lat) * t]);
-        if (t < 1) {
-          animationFrame.current = requestAnimationFrame(animate);
-        } else {
-          animationFrame.current = null;
-        }
+    // Glide the car straight between raw pings — only used when there is no road
+    // route to ride (Directions API unavailable), so the pin still moves.
+    const glideStraight = (to: LngLat) => {
+      const origin = lastRawTech.current ?? to;
+      lastRawTech.current = to;
+      if (carRotor.current && (origin[0] !== to[0] || origin[1] !== to[1])) {
+        carRotor.current.style.transform = `rotate(${bearing(origin, to)}deg)`;
+      }
+      stopAnim();
+      const s = performance.now();
+      const step = (now: number) => {
+        const t = Math.min((now - s) / GLIDE_MS, 1);
+        placeCar([origin[0] + (to[0] - origin[0]) * t, origin[1] + (to[1] - origin[1]) * t]);
+        raf.current = t < 1 ? requestAnimationFrame(step) : null;
       };
-      animationFrame.current = requestAnimationFrame(animate);
-    }
-    lastTechPoint.current = tech;
+      raf.current = requestAnimationFrame(step);
+      fitTo([to, [customerRef.current.lng, customerRef.current.lat]]);
+    };
 
-    const movedFarEnough = !routeOrigin.current || haversineMeters(routeOrigin.current, tech) > ROUTE_REFETCH_MIN_DISTANCE_M;
-    const cooledDown = Date.now() - lastRouteAttemptAt.current > ROUTE_REFETCH_MIN_INTERVAL_MS;
-    if (movedFarEnough && cooledDown) {
-      lastRouteAttemptAt.current = Date.now();
-      const requestedFor = tech;
+    // Terminal states (arrived / job underway / done / cancelled): no journey to
+    // draw. Drop the line entirely; leave the car where it last was.
+    if (status && TERMINAL_STATUSES.has(status)) {
+      stopAnim();
+      setRouteData([]);
+      routePath.current = null;
+      return;
+    }
+
+    if (!tech) return;
+    const techLngLat: LngLat = [tech.lng, tech.lat];
+
+    // Fetch a (fresh) road route when we have none, or when the technician has
+    // strayed too far from the one we drew (wrong turn / reroute). While a fetch
+    // is in flight we keep riding whatever route we already have.
+    const existing = routePath.current;
+    const offset = existing ? existing.project(techLngLat).offset : Infinity;
+    const needRoute = !existing || offset > OFFROUTE_THRESHOLD_M;
+    const mayFetch = !existing || Date.now() - lastFetchAt.current > ROUTE_REFETCH_COOLDOWN_MS;
+    if (needRoute && mayFetch) {
+      lastFetchAt.current = Date.now();
+      if (!existing) placeCar(techLngLat); // honest pin until the route resolves
       void fetchDrivingRoute(tech, customerRef.current).then((route) => {
-        if (!route || mapRef.current !== map) return;
-        const source = map.getSource(TECH_ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
-        source?.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } });
-        routeOrigin.current = requestedFor;
-        // Real streets rarely run in a straight line between the two
-        // endpoints — a route can bulge well outside a box fitted to just
-        // the customer + technician points (one-way streets, a loop around
-        // a block, a highway on/off-ramp). Re-fit to the actual drawn path
-        // once it arrives so it's never rendered partly off-screen.
-        const routeBounds = new mapboxgl.LngLatBounds();
-        for (const [lng, lat] of route.coordinates) routeBounds.extend([lng, lat]);
-        map.fitBounds(routeBounds, { padding: 64, maxZoom: 15, duration: MARKER_ANIMATION_MS });
+        if (mapRef.current !== map || !route || route.coordinates.length < 2) return;
+        const path = new RoutePath(route.coordinates);
+        routePath.current = path;
+        progress.current = 0;
+        lastRawTech.current = techLngLat;
+        stopAnim();
+        setRouteData(path.slice(0, path.length));
+        placeCar(path.pointAt(0), path.bearingAt(0));
+        fitTo(path.coords);
       });
     }
 
-    const bounds = new mapboxgl.LngLatBounds();
-    bounds.extend([customerRef.current.lng, customerRef.current.lat]);
-    bounds.extend([tech.lng, tech.lat]);
-    map.fitBounds(bounds, { padding: 64, maxZoom: 15, duration: MARKER_ANIMATION_MS });
-  }, [tech?.lat, tech?.lng]);
+    // No usable route yet (first fetch still in flight, or it failed) → straight
+    // fallback for this ping.
+    const path = routePath.current;
+    if (!path) { glideStraight(techLngLat); return; }
+    if (path.length < 1) { setRouteData([]); placeCar([customerRef.current.lng, customerRef.current.lat]); return; }
+
+    // ── ride the route ────────────────────────────────────────────────────────
+    // Project the ping onto the route; never let the car slide backward on a
+    // jittery / out-of-order fix.
+    const along = Math.min(path.project(techLngLat).along, path.length);
+    const target = Math.max(progress.current, along);
+    const from = progress.current;
+
+    stopAnim();
+    const start = performance.now();
+    const frame = (now: number) => {
+      const t = Math.min((now - start) / GLIDE_MS, 1);
+      const d = from + (target - from) * t;
+      progress.current = d;
+      placeCar(path.pointAt(d), path.bearingAt(d));
+      // Drop the road already covered; keep only what's still ahead. Clears
+      // entirely once the car is essentially at the destination.
+      setRouteData(path.length - d < ARRIVE_EPS_M ? [] : path.slice(d, path.length));
+      raf.current = t < 1 ? requestAnimationFrame(frame) : null;
+    };
+    raf.current = requestAnimationFrame(frame);
+    fitTo(path.slice(target, path.length));
+  }, [tech?.lat, tech?.lng, status]);
 
   if (!hasMapbox) {
     return (
@@ -206,4 +256,8 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
     );
   }
   return <div ref={el} className="rounded-xl overflow-hidden" style={{ height, width: '100%' }} aria-label="خريطة التتبّع" />;
+}
+
+function emptyLine() {
+  return { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: [] as LngLat[] } };
 }
