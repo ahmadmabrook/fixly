@@ -181,6 +181,14 @@ export default function TrackingMap({ customer, tech, height = 300 }: { customer
         const source = map.getSource(TECH_ROUTE_SOURCE_ID) as GeoJSONSource | undefined;
         source?.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } });
         routeOrigin.current = requestedFor;
+        // Real streets rarely run in a straight line between the two
+        // endpoints — a route can bulge well outside a box fitted to just
+        // the customer + technician points (one-way streets, a loop around
+        // a block, a highway on/off-ramp). Re-fit to the actual drawn path
+        // once it arrives so it's never rendered partly off-screen.
+        const routeBounds = new mapboxgl.LngLatBounds();
+        for (const [lng, lat] of route.coordinates) routeBounds.extend([lng, lat]);
+        map.fitBounds(routeBounds, { padding: 64, maxZoom: 15, duration: MARKER_ANIMATION_MS });
       });
     }
 
