@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useT } from '../lib/i18n';
 import { useTheme } from '../lib/store';
 import { useUnreadCount } from '../hooks/useUnreadCount';
-import { COLOR_BADGE_DOT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
+import { COLOR_BADGE_DOT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_SURFACE_TRANSLUCENT, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 interface TopNavProps {
   authed: boolean;
@@ -54,7 +54,7 @@ export default function TopNav({ authed, onLogin, onLogout }: TopNavProps) {
   return (
     <header
       className="sticky top-0 z-20"
-      style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${COLOR_BORDER}` }}
+      style={{ background: COLOR_SURFACE_TRANSLUCENT, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${COLOR_BORDER}` }}
     >
       <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center gap-6">
         <button

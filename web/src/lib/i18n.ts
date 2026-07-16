@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { STORAGE_KEY_LANG } from './constants';
 
 export type Lang = 'ar' | 'en';
 
@@ -10,7 +11,7 @@ interface LangState {
 // EN translation is incomplete — force AR until it's ready. The toggle is
 // hidden (TopNav) but the infra (useT, useLang, dictionaries) stays so we
 // can re-enable when translation is complete.
-const _stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null) as Lang | null;
+const _stored = (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_LANG) : null) as Lang | null;
 void _stored; // keep lint happy — intentionally unused while EN is disabled
 
 /** App language + direction. Arabic/RTL is the default; English is the LTR
@@ -19,7 +20,7 @@ export const useLang = create<LangState>((set) => ({
   lang: 'ar',
   setLang(lang) {
     try {
-      localStorage.setItem('lang', lang);
+      localStorage.setItem(STORAGE_KEY_LANG, lang);
     } catch {
       /* ignore storage errors */
     }

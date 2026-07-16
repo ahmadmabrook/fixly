@@ -1,4 +1,4 @@
-import { COLOR_BG_SUBTLE, COLOR_BORDER } from '../../lib/theme';
+import { COLOR_BG_SUBTLE, COLOR_BORDER, SHADOW_CARD } from '../../lib/theme';
 
 /* ── Skeleton shimmer placeholder ──────────────────────────────────────────── */
 
@@ -56,7 +56,7 @@ export function SkeletonGrid({ count = 5, cardHeight = 180 }: { count?: number; 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 8px rgba(15,23,42,0.06)' }}>
+        <div key={i} className="rounded-2xl overflow-hidden" style={{ boxShadow: SHADOW_CARD }}>
           <Skeleton height={cardHeight} borderRadius={16} />
         </div>
       ))}

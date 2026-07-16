@@ -3,7 +3,7 @@ import {
   Zap, Droplets, Snowflake, PaintRoller, Sofa, BadgeCheck, Wrench, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_CATEGORY_CYAN_BG, COLOR_CATEGORY_CYAN_FG, COLOR_CATEGORY_ORANGE_FG, COLOR_CATEGORY_PINK_BG, COLOR_CATEGORY_PINK_FG, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WHITE } from '../../lib/theme';
+import { SHADOW_CARD, COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_CATEGORY_CYAN_BG, COLOR_CATEGORY_CYAN_FG, COLOR_CATEGORY_ORANGE_FG, COLOR_CATEGORY_PINK_BG, COLOR_CATEGORY_PINK_FG, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WHITE } from '../../lib/theme';
 
 export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info') => {
   if (kind === 'success') toast.success(msg);
@@ -85,7 +85,7 @@ export function Card({
   return (
     <div
       className={`bg-white rounded-2xl ${className}`}
-      style={{ boxShadow: '0 2px 8px rgba(15, 23, 42, 0.06)', ...style }}
+      style={{ boxShadow: SHADOW_CARD, ...style }}
       {...rest}
     >
       {children}

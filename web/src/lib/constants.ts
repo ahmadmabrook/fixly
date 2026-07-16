@@ -9,6 +9,14 @@
  *  watching a screen that depends on it. */
 export const REALTIME_POLL_INTERVAL_MS = 30_000;
 
+/** Cadence at which an available technician's position is pushed to the backend
+ *  and broadcast to the customer's tracking room (see useTechnicianLocationPush).
+ *  Must stay comfortably under the backend's HEARTBEAT_STALE_MS (30s — see
+ *  backend/src/infrastructure/cache/redis.ts), and is the cadence TrackingMap
+ *  animates against, so both ends read it from here rather than each hard-coding
+ *  the same 2s and drifting apart. */
+export const LOCATION_PING_INTERVAL_MS = 2_000;
+
 /** Minimum balance a technician can withdraw per request (see also the
  *  matching backend rule in WithdrawalService). */
 export const MIN_WITHDRAWAL_JOD = 20;
@@ -23,3 +31,18 @@ export const PROTECTION_GUARANTEE_DAYS = 90;
 /** Protection-plan per-service discount, used as the fallback when the
  *  subscription payload omits `discountPercent`. */
 export const DEFAULT_PROTECTION_DISCOUNT_PERCENT = 15;
+
+/**
+ * localStorage keys. Centralized because a key is a contract between the code
+ * that writes it and every other place that reads it — a typo at one call site
+ * reads as "absent" at the others rather than failing loudly.
+ * Note: no credential is stored here. The access token is memory-only and the
+ * refresh token is an httpOnly cookie (see lib/store.ts).
+ */
+export const STORAGE_KEY_ROLE = 'role';
+export const STORAGE_KEY_LANG = 'lang';
+export const STORAGE_KEY_THEME = 'theme';
+export const STORAGE_KEY_ONBOARDED = 'fixly_onboarded';
+/** Written only by app versions that predate the httpOnly refresh cookie; read
+ *  solely to scrub it on logout. */
+export const STORAGE_KEY_LEGACY_REFRESH_TOKEN = 'refresh_token';

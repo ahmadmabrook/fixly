@@ -1,6 +1,6 @@
 import { ReactNode, useId } from 'react';
 import { useDialog } from '../../hooks/useDialog';
-import { COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
+import { COLOR_BRAND_PRIMARY, COLOR_SCRIM, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 /**
  * Accessible modal shell: backdrop click + Escape close, focus trap, focus
@@ -30,7 +30,7 @@ export function Modal({
   return (
     <div
       className={`fixed inset-0 z-50 flex justify-center ${align}`}
-      style={{ background: 'rgba(0,0,0,0.45)' }}
+      style={{ background: COLOR_SCRIM }}
       onClick={onClose}
     >
       <div
@@ -61,7 +61,7 @@ export function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.45)' }}
+      style={{ background: COLOR_SCRIM }}
       onClick={onCancel}
     >
       <div

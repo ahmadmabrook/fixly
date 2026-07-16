@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_BRAND_PRIMARY, COLOR_TEXT_PRIMARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../lib/theme';
+import { STORAGE_KEY_ONBOARDED } from '../lib/constants';
+import { COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_BRAND_PRIMARY, COLOR_SCRIM_STRONG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../lib/theme';
 
-const STORAGE_KEY = 'fixly_onboarded';
+
 
 const slides = [
   { emoji: '🔧', title: 'فني محترف خلال 30 دقيقة', subtitle: 'اطلب أي خدمة صيانة وسيصلك فني معتمد بسرعة.' },
@@ -18,7 +19,7 @@ export default function OnboardingSplash() {
     // localStorage access can throw in private mode / disabled-storage browsers.
     // Treat any failure as "already onboarded" so the splash never blocks the app.
     try {
-      if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
+      if (!localStorage.getItem(STORAGE_KEY_ONBOARDED)) setVisible(true);
     } catch {
       /* storage unavailable — skip the splash */
     }
@@ -26,7 +27,7 @@ export default function OnboardingSplash() {
 
   const dismiss = useCallback(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, '1');
+      localStorage.setItem(STORAGE_KEY_ONBOARDED, '1');
     } catch {
       /* storage unavailable — still dismiss for this session */
     }
@@ -72,7 +73,7 @@ export default function OnboardingSplash() {
       aria-label="مرحباً بك في Fixly"
       tabIndex={-1}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.6)', outline: 'none' }}
+      style={{ background: COLOR_SCRIM_STRONG, outline: 'none' }}
       onClick={(e) => { if (e.target === e.currentTarget && !isLast) next(); }}
     >
       <div

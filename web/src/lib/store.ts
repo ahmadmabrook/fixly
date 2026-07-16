@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { STORAGE_KEY_LEGACY_REFRESH_TOKEN, STORAGE_KEY_ROLE, STORAGE_KEY_THEME } from './constants';
 
 /* ── Dark-mode preference ──────────────────────────────────────────────────── */
 
@@ -13,7 +14,7 @@ interface ThemeState {
   setPref: (p: ThemePref) => void;
 }
 
-const storedTheme = (typeof localStorage !== 'undefined' ? localStorage.getItem('theme') : null) as ThemePref | null;
+const storedTheme = (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_THEME) : null) as ThemePref | null;
 
 function systemPrefersDark(): boolean {
   return (
@@ -42,7 +43,7 @@ export const useTheme = create<ThemeState>((set) => ({
   isDark: resolveIsDark(storedTheme ?? 'system'),
   setPref(pref) {
     try {
-      localStorage.setItem('theme', pref);
+      localStorage.setItem(STORAGE_KEY_THEME, pref);
     } catch {
       /* ignore */
     }
@@ -80,16 +81,16 @@ interface AuthState {
 
 export const useAuth = create<AuthState>((set) => ({
   accessToken: null,
-  role: localStorage.getItem('role'),
+  role: localStorage.getItem(STORAGE_KEY_ROLE),
   setTokens(access, role) {
-    localStorage.setItem('role', role);
+    localStorage.setItem(STORAGE_KEY_ROLE, role);
     set({ accessToken: access, role });
   },
   logout() {
-    localStorage.removeItem('role');
+    localStorage.removeItem(STORAGE_KEY_ROLE);
     // Defensive: scrub any refresh token persisted by older app versions so a
     // stale, JS-readable credential can't linger in the browser after logout.
-    localStorage.removeItem('refresh_token');
+    localStorage.removeItem(STORAGE_KEY_LEGACY_REFRESH_TOKEN);
     set({ accessToken: null, role: null });
   },
 }));

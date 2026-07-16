@@ -10,6 +10,7 @@ import { BookingSocketProvider } from './lib/socket-provider';
 import TopNav from './components/TopNav';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
+import { STORAGE_KEY_ROLE } from './lib/constants';
 import OnboardingSplash from './components/OnboardingSplash';
 import { OfflineBanner } from './components/shared';
 import { COLOR_BG_APP, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_TEXT_SECONDARY } from './lib/theme';
@@ -96,9 +97,9 @@ function AppShell() {
   // restoreSession resolves — a redirect that already happened and won't
   // undo itself once the token comes back. `sessionReady` holds route
   // rendering until that race is settled.
-  const [sessionReady, setSessionReady] = useState(() => !localStorage.getItem('role'));
+  const [sessionReady, setSessionReady] = useState(() => !localStorage.getItem(STORAGE_KEY_ROLE));
   useEffect(() => {
-    if (!localStorage.getItem('role')) return;
+    if (!localStorage.getItem(STORAGE_KEY_ROLE)) return;
     void restoreSession().finally(() => setSessionReady(true));
   }, []);
 

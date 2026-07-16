@@ -9,7 +9,7 @@ import { useT } from '../lib/i18n';
 import { Card, GuaranteePill, Stars, ServiceIcon, PriceBadge, StatusBadge, SkeletonGrid } from '../components/shared';
 import NearbyTechniciansMap from '../components/NearbyTechniciansMap';
 import { REALTIME_POLL_INTERVAL_MS } from '../lib/constants';
-import { COLOR_ACCENT_AMBER, COLOR_ACCENT_PURPLE, COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
+import { COLOR_OVERLAY_ON_BRAND, SHADOW_ELEVATED, COLOR_ACCENT_AMBER, COLOR_ACCENT_PURPLE, COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 // Amman, Jordan — sensible default until/unless the browser grants location.
 const DEFAULT_LAT = 31.9522;
@@ -120,7 +120,7 @@ export default function Landing() {
 
           <form
             className="mt-7 p-2 bg-white rounded-2xl flex items-center gap-2"
-            style={{ boxShadow: '0 10px 30px rgba(15,23,42,0.08)' }}
+            style={{ boxShadow: SHADOW_ELEVATED }}
             onSubmit={(e) => {
               e.preventDefault();
               navigate('/services');
@@ -210,7 +210,7 @@ export default function Landing() {
         <Card className="p-8 overflow-hidden relative" style={{ background: `linear-gradient(120deg,${COLOR_BRAND_PRIMARY_DARK} 0%,${COLOR_BRAND_PRIMARY} 60%,${COLOR_BRAND_ACCENT_TEAL} 100%)` }}>
           <div className="grid md:grid-cols-2 gap-6 items-center">
             <div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.2)', color: COLOR_WHITE, fontSize: 12, fontWeight: 700 }}>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full" style={{ background: COLOR_OVERLAY_ON_BRAND, color: COLOR_WHITE, fontSize: 12, fontWeight: 700 }}>
                 <Star size={12} fill={COLOR_ACCENT_AMBER} strokeWidth={0} aria-hidden="true" /> خطة الحماية
               </span>
               <h2 className="mt-3" style={{ fontWeight: 800, fontSize: 30, color: COLOR_WHITE }}>اشترك ووفّر على كل خدمة</h2>
@@ -228,7 +228,7 @@ export default function Landing() {
             <div className="grid gap-2.5">
               {PROTECTION_BENEFITS.map((b) => (
                 <div key={b} className="flex items-center gap-2" style={{ color: COLOR_WHITE, fontSize: 15 }}>
-                  <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.2)' }}>
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: COLOR_OVERLAY_ON_BRAND }}>
                     <Check size={14} color={COLOR_WHITE} aria-hidden="true" />
                   </span>
                   {b}

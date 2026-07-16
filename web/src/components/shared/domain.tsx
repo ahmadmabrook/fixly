@@ -3,7 +3,7 @@ import { Flag } from 'lucide-react';
 import { api, ConductReportKind } from '../../lib/api';
 import { Modal } from './dialogs';
 import { InlineRow, notify } from './misc';
-import { COLOR_BG_PAGE_ALT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BG_SOFT, COLOR_ERROR_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
+import { COLOR_BG_PAGE_ALT, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BG_SOFT, COLOR_ERROR_TEXT, COLOR_SCRIM, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
 /* ── Report technician (conduct reports) ───────────────────────────────────── */
 
@@ -155,7 +155,7 @@ export function CancelBookingModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.45)' }}
+      style={{ background: COLOR_SCRIM }}
       onClick={() => setReason(null)}
     >
       <div

@@ -93,8 +93,13 @@ export async function fetchDrivingRoute(
   }
 }
 
-/** Great-circle distance in meters — used to decide whether the technician
- *  has moved far enough to justify re-fetching the driving route. */
+/** Great-circle distance in meters between two points.
+ *
+ *  NOTE: currently exercised only by its own tests — TrackingMap decides when to
+ *  re-fetch a route from `RoutePath.project().offset` (perpendicular distance
+ *  from the drawn route) instead, which is the question it actually needs
+ *  answered. Kept as a general geo utility; the comment previously claimed the
+ *  route-refetch role, which was never true of this function. */
 export function haversineMeters(a: { lng: number; lat: number }, b: { lng: number; lat: number }): number {
   const R = 6_371_000;
   const toRad = (d: number) => (d * Math.PI) / 180;

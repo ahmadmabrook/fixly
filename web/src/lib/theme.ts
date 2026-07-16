@@ -76,3 +76,22 @@ export const COLOR_CATEGORY_PINK_FG = '#BE185D';
 
 /** Light text used on top of the brand-gradient cards (e.g. tech portal support banner). */
 export const COLOR_ON_GRADIENT_TEXT = '#CFE0FB';
+
+// Translucent surfaces. Kept as rgba() rather than hex because each is composited
+// over unknown page content and needs its alpha channel.
+/** Standard modal/dialog backdrop scrim. */
+export const COLOR_SCRIM = 'rgba(0,0,0,0.45)';
+/** Heavier scrim for the full-screen onboarding takeover. */
+export const COLOR_SCRIM_STRONG = 'rgba(0,0,0,0.6)';
+/** Frosted top-nav surface (pairs with a backdrop blur). */
+export const COLOR_SURFACE_TRANSLUCENT = 'rgba(255,255,255,0.95)';
+/** Chips/badges laid over the brand gradient — a white wash, not a solid fill. */
+export const COLOR_OVERLAY_ON_BRAND = 'rgba(255,255,255,0.2)';
+
+// Elevation. Mirrors --shadow-card / --shadow-elevated in index.css; these are the
+// values for consumers that build inline styles rather than classes.
+export const SHADOW_CARD = '0 2px 8px rgba(15, 23, 42, 0.06)';
+export const SHADOW_ELEVATED = '0 10px 30px rgba(15, 23, 42, 0.08)';
+/** Drop shadow on map markers — darker than SHADOW_CARD so a marker stays legible
+ *  over satellite/street tiles rather than over a page background. */
+export const SHADOW_MAP_MARKER = '0 2px 6px rgba(0,0,0,0.35)';
