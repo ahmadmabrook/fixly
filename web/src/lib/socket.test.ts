@@ -21,7 +21,7 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket),
 }));
 
-import { useBookingSocket, getOrCreateSocket, disconnectSocket, getSharedSocket, dispatchStatus, subscribeToNotifications } from './socket';
+import { useBookingSocket, useBookingLocation, getOrCreateSocket, disconnectSocket, getSharedSocket, dispatchStatus, subscribeToNotifications, subscribeToStatus } from './socket';
 import { useAuth } from './store';
 
 beforeEach(() => {
@@ -69,6 +69,105 @@ describe('useBookingSocket', () => {
     expect(result.current).toBe('CONFIRMED');
     id = null;
     rerender();
+    expect(result.current).toBeNull();
+  });
+});
+
+describe('booking room membership', () => {
+  function fireConnect() {
+    for (const cb of listeners['connect'] ?? []) cb(undefined);
+  }
+
+  it('joins the room on connect for a subscription made before the socket existed', () => {
+    // The real cold-load ordering on /tracking/:id: React runs the page's own
+    // effects (which subscribe) *before* BookingSocketProvider's effect, which is
+    // what actually creates the socket. Nothing may be lost in that window.
+    expect(getSharedSocket()).toBeNull();
+    const unsub = subscribeToStatus('b-cold', () => {});
+    getOrCreateSocket('tok');
+    fireConnect();
+    expect(mockSocket.emit).toHaveBeenCalledWith('booking:join', 'b-cold');
+    unsub();
+  });
+
+  it('re-joins every subscribed room on a later connect (auto-reconnect)', () => {
+    getOrCreateSocket('tok');
+    const unsub = subscribeToStatus('b-live', () => {});
+    mockSocket.emit.mockClear();
+    // socket.io reconnects after a network drop; the server has forgotten our
+    // rooms, but our subscribers are all still mounted.
+    fireConnect();
+    expect(mockSocket.emit).toHaveBeenCalledWith('booking:join', 'b-live');
+    unsub();
+  });
+
+  it('stops re-joining a room once its last subscriber has left', () => {
+    getOrCreateSocket('tok');
+    subscribeToStatus('b-gone', () => {})();
+    mockSocket.emit.mockClear();
+    fireConnect();
+    expect(mockSocket.emit).not.toHaveBeenCalledWith('booking:join', 'b-gone');
+  });
+
+  it('keeps the room while a second subscriber is still listening', () => {
+    getOrCreateSocket('tok');
+    const first = subscribeToStatus('b-shared', () => {});
+    const second = subscribeToStatus('b-shared', () => {});
+    first();
+    expect(mockSocket.emit).not.toHaveBeenCalledWith('booking:leave', 'b-shared');
+    mockSocket.emit.mockClear();
+    fireConnect();
+    expect(mockSocket.emit).toHaveBeenCalledWith('booking:join', 'b-shared');
+    second();
+    expect(mockSocket.emit).toHaveBeenCalledWith('booking:leave', 'b-shared');
+  });
+});
+
+describe('useBookingLocation', () => {
+  function fireLocation(e: { bookingId: string; lat: number; lng: number; at?: number }) {
+    for (const cb of listeners['location:update'] ?? []) cb(e);
+  }
+
+  it('delivers pings to a hook mounted before the socket existed', () => {
+    // Same cold-load race as above. Binding to getSharedSocket() at mount time
+    // (the previous implementation) bound to null here and the customer's car
+    // never moved for the whole journey.
+    const { result } = renderHook(() => useBookingLocation('b-1'));
+    expect(result.current).toBeNull();
+    getOrCreateSocket('tok');
+    act(() => fireLocation({ bookingId: 'b-1', lat: 31.95, lng: 35.91, at: 42 }));
+    expect(result.current).toEqual({ lat: 31.95, lng: 35.91, at: 42 });
+  });
+
+  it('ignores pings for a different booking', () => {
+    getOrCreateSocket('tok');
+    const { result } = renderHook(() => useBookingLocation('b-1'));
+    act(() => fireLocation({ bookingId: 'b-other', lat: 1, lng: 2, at: 1 }));
+    expect(result.current).toBeNull();
+  });
+
+  it('keeps delivering after the socket is re-created (user switch)', () => {
+    getOrCreateSocket('user-A');
+    const { result } = renderHook(() => useBookingLocation('b-1'));
+    disconnectSocket();
+    Object.keys(listeners).forEach((k) => delete listeners[k]);
+    getOrCreateSocket('user-B');
+    act(() => fireLocation({ bookingId: 'b-1', lat: 31.9, lng: 35.9, at: 7 }));
+    expect(result.current).toEqual({ lat: 31.9, lng: 35.9, at: 7 });
+  });
+
+  it('stops listening on unmount', () => {
+    getOrCreateSocket('tok');
+    const { result, unmount } = renderHook(() => useBookingLocation('b-1'));
+    unmount();
+    act(() => fireLocation({ bookingId: 'b-1', lat: 9, lng: 9, at: 9 }));
+    expect(result.current).toBeNull();
+  });
+
+  it('returns null and does not subscribe for a null bookingId', () => {
+    getOrCreateSocket('tok');
+    const { result } = renderHook(() => useBookingLocation(null));
+    act(() => fireLocation({ bookingId: 'b-1', lat: 9, lng: 9, at: 9 }));
     expect(result.current).toBeNull();
   });
 });

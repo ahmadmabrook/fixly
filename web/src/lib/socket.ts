@@ -19,14 +19,31 @@ interface BookingStatusEvent {
 
 let sharedSocket: Socket | null = null;
 const statusListeners = new Map<string, Set<(s: string) => void>>();
-// Joins queued before the socket is connected — flushed on `connect`.
-const pendingJoins = new Set<string>();
 // Notification listeners are kept in a module-level set so they survive socket
 // re-creation (login/user-switch). The actual `notification:new` handler is
 // (re)bound once per socket in getOrCreateSocket — this avoids the race where a
 // consumer (e.g. the unread badge) subscribes *before* the socket exists or
 // against a socket that is about to be torn down.
 const notificationListeners = new Set<() => void>();
+// Location listeners follow the same module-level pattern as notifications, and
+// for the same reason: the customer's tracking page subscribes from a child
+// effect, which React runs *before* BookingSocketProvider's own effect creates
+// the socket. A listener bound to `getSharedSocket()` at subscribe time would
+// therefore bind to `null` on a cold load of /tracking/:id (and to a dead
+// instance after a user switch), silently never delivering a single ping.
+const locationListeners = new Set<(e: LocationUpdateEvent) => void>();
+
+interface LocationUpdateEvent {
+  bookingId: string;
+  lat: number;
+  lng: number;
+  at?: number;
+}
+
+/** Every booking room a live subscriber currently cares about. */
+function subscribedBookingIds(): string[] {
+  return [...statusListeners.keys()];
+}
 
 /** Lazily open a single socket for the whole app. We tear it down on logout. */
 export function getOrCreateSocket(token: string): Socket {
@@ -41,19 +58,25 @@ export function getOrCreateSocket(token: string): Socket {
     auth: { token },
     transports: ['websocket', 'polling'],
   });
-  // Flush any joins that arrived before the handshake completed. Without
-  // this, a route that subscribed synchronously on mount would silently miss
-  // every status event until the next re-render.
+  // (Re)join every room a subscriber currently holds, on every `connect`. This
+  // covers three cases with one rule: a subscription made before the handshake
+  // completed, a subscription made before this socket even existed, and — the
+  // one a queue of pending joins silently misses — a socket.io auto-reconnect
+  // after a network drop, where the server has forgotten our room membership
+  // but our subscribers are all still mounted and expecting events.
   sharedSocket.on('connect', () => {
     if (!sharedSocket) return;
-    for (const bookingId of pendingJoins) sharedSocket.emit('booking:join', bookingId);
-    pendingJoins.clear();
+    for (const bookingId of subscribedBookingIds()) sharedSocket.emit('booking:join', bookingId);
   });
   // Bind the notification fan-out once per socket. Consumers register via
   // subscribeToNotifications and are notified regardless of when they
   // subscribed relative to the socket's creation.
   sharedSocket.on('notification:new', () => {
     for (const cb of notificationListeners) cb();
+  });
+  // Same fan-out for technician location pings (see `locationListeners`).
+  sharedSocket.on('location:update', (e: LocationUpdateEvent) => {
+    for (const cb of locationListeners) cb(e);
   });
   return sharedSocket;
 }
@@ -88,20 +111,24 @@ export function subscribeToStatus(bookingId: string, cb: (s: string) => void): (
     statusListeners.set(bookingId, bucket);
   }
   bucket.add(cb);
-  // Tell the server we're interested in this booking. If the socket is
-  // still handshaking, queue the join and flush on `connect` (see
-  // getOrCreateSocket) so a late-arriving component doesn't miss events.
+  // Tell the server we're interested in this booking. If the socket isn't
+  // connected yet (still handshaking, or not even created — see the `connect`
+  // handler in getOrCreateSocket), membership is registered purely by this
+  // entry in `statusListeners`, and the next `connect` joins the room for us.
   if (sharedSocket?.connected) {
     sharedSocket.emit('booking:join', bookingId);
-  } else if (sharedSocket) {
-    pendingJoins.add(bookingId);
   }
+  const holder = bucket;
   return () => {
-    bucket?.delete(cb);
-    if (sharedSocket?.connected && bucket?.size === 0) {
-      sharedSocket.emit('booking:leave', bookingId);
-      statusListeners.delete(bookingId);
-    }
+    holder.delete(cb);
+    if (holder.size > 0) return;
+    // Last subscriber for this booking left. Drop the entry unconditionally —
+    // gating this on `connected` (as before) leaked an empty bucket forever
+    // whenever the socket happened to be down at unmount, and, worse, left the
+    // room in `subscribedBookingIds()` so the next reconnect re-joined a room
+    // nobody was listening to.
+    statusListeners.delete(bookingId);
+    if (sharedSocket?.connected) sharedSocket.emit('booking:leave', bookingId);
   };
 }
 
@@ -138,6 +165,23 @@ export interface LiveLocation {
 }
 
 /**
+ * Subscribe to one booking's technician location pings. Survives socket
+ * re-creation and pre-socket subscription for the same reason
+ * subscribeToNotifications does (see `locationListeners`). Returns an
+ * unsubscribe function.
+ */
+export function subscribeToLocation(bookingId: string, cb: (loc: LiveLocation) => void): () => void {
+  const onLocation = (e: LocationUpdateEvent) => {
+    // Pings for other bookings share the same fan-out — ignore them here.
+    if (e.bookingId === bookingId) cb({ lat: e.lat, lng: e.lng, at: e.at ?? Date.now() });
+  };
+  locationListeners.add(onLocation);
+  return () => {
+    locationListeners.delete(onLocation);
+  };
+}
+
+/**
  * Subscribe to the assigned technician's live location for a booking. Returns
  * the latest point, or null until the first ping.
  *
@@ -147,7 +191,6 @@ export interface LiveLocation {
  *     socket is still handshaking on mount, and
  *   - we never emit a bare `booking:leave` that would yank the room out from
  *     under a still-active status listener (a race when both hooks unmount).
- * The location listener itself is keyed by bookingId so stale pings are ignored.
  */
 export function useBookingLocation(bookingId: string | null): LiveLocation | null {
   const [loc, setLoc] = useState<LiveLocation | null>(null);
@@ -160,13 +203,9 @@ export function useBookingLocation(bookingId: string | null): LiveLocation | nul
     // Hold the room open for the lifetime of this hook (no-op callback — we only
     // need the join/leave bookkeeping, not status updates).
     const releaseRoom = subscribeToStatus(bookingId, () => {});
-    const sock = getSharedSocket();
-    const onLoc = (e: { bookingId: string; lat: number; lng: number; at?: number }) => {
-      if (e.bookingId === bookingId) setLoc({ lat: e.lat, lng: e.lng, at: e.at ?? Date.now() });
-    };
-    sock?.on('location:update', onLoc);
+    const unsubscribe = subscribeToLocation(bookingId, setLoc);
     return () => {
-      sock?.off('location:update', onLoc);
+      unsubscribe();
       releaseRoom();
     };
   }, [bookingId]);
