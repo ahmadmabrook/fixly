@@ -67,6 +67,26 @@ describe('useTechnicianLocationPush', () => {
     expect(postCallsAfterSecondHeartbeat).toBe(3);
   });
 
+  it('heartbeats the newest fix, not the one that happened to beat the throttle', async () => {
+    renderHook(() => useTechnicianLocationPush(true), { wrapper });
+
+    watchCallback!({ coords: { latitude: 31.95, longitude: 35.93 } });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A second fix lands inside the throttle window: too soon to push on its own,
+    // but it is now the technician's true position. Dropping it outright (the
+    // previous behaviour) meant the heartbeat a moment later re-sent the *stale*
+    // coordinates, so a moving technician's pin lagged a full ping behind.
+    watchCallback!({ coords: { latitude: 31.96, longitude: 35.94 } });
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const locationPosts = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call: unknown[]) => call[0] === '/api/v1/technician/location',
+    );
+    const lastBody = JSON.parse((locationPosts.at(-1)![1] as RequestInit).body as string);
+    expect(lastBody).toEqual({ lat: 31.96, lng: 35.94 });
+  });
+
   it('does not push anything before any GPS fix has ever arrived', async () => {
     renderHook(() => useTechnicianLocationPush(true), { wrapper });
     await vi.advanceTimersByTimeAsync(30_000);

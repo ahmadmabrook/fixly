@@ -11,6 +11,13 @@ import {
 import TrackingMap from '../components/TrackingMap';
 import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
+// Below this the countdown stops quoting minutes and just says "about to
+// arrive" — rounding 30s up to "1 minute" reads as wrong to someone watching
+// the car turn onto their street.
+const ETA_ARRIVING_SOON_SECONDS = 45;
+const ETA_TICK_MS = 1_000;
+const SECONDS_PER_MINUTE = 60;
+
 const STEPS: ReadonlyArray<readonly [string, string]> = [
   ['CONFIRMED', 'تم القبول'],
   ['EN_ROUTE', 'في الطريق'],
@@ -31,11 +38,11 @@ export default function TrackingPage() {
   const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
   useEffect(() => {
     if (etaSeconds === null || etaSeconds <= 0) return;
-    const t = setInterval(() => setEtaSeconds((s) => (s === null ? null : Math.max(0, s - 1))), 1000);
+    const t = setInterval(() => setEtaSeconds((s) => (s === null ? null : Math.max(0, s - ETA_TICK_MS / 1_000))), ETA_TICK_MS);
     return () => clearInterval(t);
   }, [etaSeconds === null]);
 
-  const { data: booking, isLoading, refetch } = useQuery({
+  const { data: booking, isLoading, isError, refetch } = useQuery({
     queryKey: ['booking', id],
     queryFn: () =>
       api.get<Booking & { technicianId: string | null; addressLat: number; addressLng: number; discountJod?: string | number }>(
@@ -78,6 +85,19 @@ export default function TrackingPage() {
   }
 
   if (isLoading) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: COLOR_TEXT_MUTED }}>جارٍ التحميل...</p></main>;
+  // A failed request is not a missing booking. Telling a customer their live
+  // booking "does not exist" because their phone dropped off the network is
+  // alarming and, unlike a real 404, it's recoverable — so offer the retry.
+  if (isError) {
+    return (
+      <main className="max-w-[900px] mx-auto px-6 py-16 text-center">
+        <p style={{ color: COLOR_ERROR_TEXT }}>تعذّر تحميل الحجز — تحقّق من اتصالك بالإنترنت</p>
+        <button onClick={() => void refetch()} className="mt-4 h-11 px-6 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
+          إعادة المحاولة
+        </button>
+      </main>
+    );
+  }
   if (!booking) return <main className="max-w-[900px] mx-auto px-6 py-16 text-center"><p style={{ color: COLOR_ERROR_TEXT }}>الحجز غير موجود</p></main>;
 
   const cancellable = !['COMPLETED', 'CANCELLED'].includes(status);
@@ -124,9 +144,9 @@ export default function TrackingPage() {
               <span className="mt-2 inline-block px-3 py-1 rounded-full" style={{ background: COLOR_ENROUTE_BG, color: COLOR_ENROUTE_TEXT, fontWeight: 700, fontSize: 13 }}>
                 {etaSeconds === null
                   ? 'الفني في الطريق إليك'
-                  : etaSeconds <= 45
+                  : etaSeconds <= ETA_ARRIVING_SOON_SECONDS
                     ? 'الفني على وشك الوصول'
-                    : <>الوصول خلال <span style={{ fontFamily: 'Inter' }}>{Math.round(etaSeconds / 60)}</span> دقائق</>}
+                    : <>الوصول خلال <span style={{ fontFamily: 'Inter' }}>{Math.round(etaSeconds / SECONDS_PER_MINUTE)}</span> دقائق</>}
               </span>
             )}
             <div className="mt-5 space-y-0" role="list" aria-label="مراحل الطلب">
