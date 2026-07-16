@@ -20,6 +20,27 @@ export function maskIban(iban: string | null | undefined): string {
   return `${head} •••• ${tail}`;
 }
 
+/** Scheme every attachment/media URL rendered by the admin panel must use. */
+const SAFE_URL_SCHEME = 'https://';
+
+/**
+ * Gate a backend-supplied URL before it reaches an `href`.
+ *
+ * Attachment URLs (technician ID docs, certificates, selfies, intro videos,
+ * guarantee media, quote videos) originate from user/technician uploads, so
+ * they are untrusted input. React does not sanitize `href`, which means a
+ * stored `javascript:` URL would execute in the admin origin the moment an
+ * admin clicked the link — the highest-privilege context in the product.
+ * Returning `undefined` for anything that isn't plain https renders an inert
+ * link instead of a script sink.
+ *
+ * Callers should treat `undefined` as "no usable attachment" and hide the link.
+ */
+export function safeHttpsUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith(SAFE_URL_SCHEME) ? url : undefined;
+}
+
 /** Format a JOD amount to 2 decimals (accepts the API's string | number money). */
 export function fmtJod(amount: string | number): string {
   return Number(amount).toFixed(2);

@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, Search, FileText, PlayCircle } from 'lucide-react';
 import { api, DEFAULT_PAGE_SIZE, TechnicianItem, TechnicianDetail, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, OpsStatTile, Pill } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, ActionBtn, ConfirmDialog, notify, Pagination, OpsStatTile, Pill, Drawer } from '../components/shared';
+import { safeHttpsUrl } from '../lib/format';
 import {
   COLOR_BORDER_LIGHT,
   COLOR_BRAND_PRIMARY,
@@ -189,12 +190,20 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
     onSuccess: () => { notify('تم إعادة تفعيل الفني', 'success'); onChanged(); },
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
-  const docs: Array<[string, string | null | undefined]> = t
-    ? [['الهوية', t.idDocUrl], ['الشهادة', t.certificateUrl], ['صورة شخصية', t.selfieUrl]]
+  // Uploaded document URLs are untrusted input — gate them to https before they
+  // reach an href. A rejected URL becomes undefined and renders the same inert
+  // "no document" tile as a missing one.
+  const docs: Array<[string, string | undefined]> = t
+    ? [
+        ['الهوية', safeHttpsUrl(t.idDocUrl)],
+        ['الشهادة', safeHttpsUrl(t.certificateUrl)],
+        ['صورة شخصية', safeHttpsUrl(t.selfieUrl)],
+      ]
     : [];
+  const introVideoUrl = safeHttpsUrl(t?.introVideoUrl);
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
-      <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
+    <>
+      <Drawer ariaLabel="ملف الفني" onClose={onClose}>
         {isLoading && <Spinner />}
         {isError && <EmptyState message="تعذّر تحميل بيانات الفني" />}
         {t && (
@@ -251,10 +260,10 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
                 ))}
               </div>
             </div>
-            {t.introVideoUrl && (
+            {introVideoUrl && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>الفيديو التعريفي</div>
-                <a href={t.introVideoUrl} target="_blank" rel="noreferrer" aria-label="تشغيل الفيديو التعريفي" className="mt-1 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: COLOR_TEXT_PRIMARY }}>
+                <a href={introVideoUrl} target="_blank" rel="noreferrer" aria-label="تشغيل الفيديو التعريفي" className="mt-1 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: COLOR_TEXT_PRIMARY }}>
                   <PlayCircle size={36} color={COLOR_WHITE} />
                 </a>
               </div>
@@ -287,7 +296,7 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
             </div>
           </div>
         )}
-      </div>
+      </Drawer>
 
       <ConfirmDialog
         open={confirmAction !== null}
@@ -310,6 +319,6 @@ function DetailDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
         }}
         onCancel={() => setConfirmAction(null)}
       />
-    </div>
+    </>
   );
 }

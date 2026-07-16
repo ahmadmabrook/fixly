@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlayCircle } from 'lucide-react';
 import { api, DEFAULT_PAGE_SIZE } from '../lib/api';
 import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
-import { fmtJod, shortId } from '../lib/format';
+import { fmtJod, shortId, safeHttpsUrl } from '../lib/format';
 import {
   COLOR_BORDER_LIGHT,
   COLOR_BRAND_PRIMARY,
@@ -88,7 +88,10 @@ export default function Quotes() {
       {!isLoading && !isError && items.length === 0 && <Card><EmptyState message="لا توجد طلبات" /></Card>}
       {!isLoading && !isError && items.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {items.map((q) => (
+          {items.map((q) => {
+            // Untrusted upload URL — gate to https before it reaches an href.
+            const videoUrl = safeHttpsUrl(q.videoUrl);
+            return (
             <Card key={q.id} className="p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -101,8 +104,8 @@ export default function Quotes() {
                 <span style={{ fontWeight: 600 }}>{q.service?.nameAr ?? '—'}</span>
                 {q.description && <span style={{ color: COLOR_TEXT_MUTED }}> — {q.description}</span>}
               </div>
-              {q.videoUrl.startsWith('https://') ? (
-                <a href={q.videoUrl} target="_blank" rel="noreferrer" className="mt-3 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: COLOR_TEXT_PRIMARY }}>
+              {videoUrl ? (
+                <a href={videoUrl} target="_blank" rel="noreferrer" className="mt-3 w-full aspect-video rounded-lg flex items-center justify-center" style={{ background: COLOR_TEXT_PRIMARY }}>
                   <PlayCircle size={40} color={COLOR_WHITE} />
                 </a>
               ) : (
@@ -132,7 +135,8 @@ export default function Quotes() {
                 </div>
               )}
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
       <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />
