@@ -132,15 +132,20 @@ export class AdminOpsService {
       GROUP BY 1
       ORDER BY 1 ASC
     `);
+    // Derive every row the same way the totals below are derived — as exact
+    // decimals, surfaced as numbers only at the boundary. Doing the net subtraction
+    // in float here (and rounding it back with toFixed) meant the series and the
+    // totals used two different arithmetics for the same quantity, so a row's
+    // technicianNet could disagree with the total it contributes to.
     const series = rows.map((r) => {
-      const gross = Number(r.gross ?? 0);
-      const fee = Number(r.fee ?? 0);
+      const gross = new Prisma.Decimal(r.gross ?? 0);
+      const fee = new Prisma.Decimal(r.fee ?? 0);
       return {
         period: r.period,
         bookings: Number(r.bookings),
-        grossJod: gross,
-        platformFeeJod: fee,
-        technicianNetJod: Number((gross - fee).toFixed(3)),
+        grossJod: Number(gross),
+        platformFeeJod: Number(fee),
+        technicianNetJod: Number(gross.minus(fee)),
       };
     });
     // Accumulate totals as exact decimals (not floats) to avoid drift across
