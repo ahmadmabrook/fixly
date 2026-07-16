@@ -282,6 +282,42 @@ describe('BookingService', () => {
       expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.en_route' }) }));
     });
 
+    // The event name each transition emits is the contract the outbox handlers
+    // subscribe to (main.ts) and NotificationService keys its templates off. It
+    // used to be derived from the status string, so a BookingStatus rename would
+    // have silently emitted an event nothing consumes — pin all three.
+    it('advances EN_ROUTE → ARRIVED with the booking.arrived event', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const create = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'EN_ROUTE', version: 2, customerId: 'c1', slaArriveBy: null }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'ARRIVED', arrivedAt: new Date() }) },
+          outboxEvent: { create },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+        }),
+      );
+
+      await service.advanceStatus('b1', 'u1', 'ARRIVED');
+
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.arrived' }) }));
+    });
+
+    it('advances ARRIVED → IN_PROGRESS with the booking.in_progress event', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const create = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }) },
+          outboxEvent: { create },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+        }),
+      );
+
+      await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');
+
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.in_progress' }) }));
+    });
+
     it('refuses ARRIVED → IN_PROGRESS when the pre-start SOP checklist has not been submitted', async () => {
       mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
       const update = jest.fn();

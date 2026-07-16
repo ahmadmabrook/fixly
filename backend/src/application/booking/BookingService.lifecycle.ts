@@ -23,6 +23,21 @@ const TECH_TRANSITIONS: Partial<Record<BookingStatus, BookingStatus[]>> = {
 };
 export const ADVANCEABLE_TO: BookingStatus[] = ['EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
 
+/**
+ * The outbox event each technician-driven transition emits. Previously derived
+ * as `booking.${to.toLowerCase()}`, which coupled two vocabularies — Prisma's
+ * BookingStatus and the outbox's event names (see shared/outboxEvents.ts) — by
+ * nothing but spelling coincidence. Renaming a BookingStatus member would have
+ * silently produced an event no handler subscribes to (main.ts) and no
+ * notification template matches (NotificationService), with no compile error and
+ * no runtime warning. Mapping explicitly makes any such drift a type error.
+ */
+const ADVANCE_OUTBOX_EVENT: Readonly<Partial<Record<BookingStatus, OutboxEventType>>> = {
+  [BookingStatus.EN_ROUTE]: OutboxEventType.BOOKING_EN_ROUTE,
+  [BookingStatus.ARRIVED]: OutboxEventType.BOOKING_ARRIVED,
+  [BookingStatus.IN_PROGRESS]: OutboxEventType.BOOKING_IN_PROGRESS,
+};
+
 const LOCK_TTL_SECONDS = 30;
 
 /**
@@ -177,10 +192,18 @@ export class BookingLifecycleFlow {
         }
       }
 
+      const eventType = ADVANCE_OUTBOX_EVENT[to];
+      if (!eventType) {
+        // Unreachable: `to` is validated against ADVANCEABLE_TO at the route and
+        // re-checked against TECH_TRANSITIONS above. Fail loudly rather than
+        // writing an event nothing consumes if a new advanceable status is ever
+        // added without a matching outbox mapping.
+        throw new ValidationError(`No outbox event mapped for status ${to}`);
+      }
       await tx.outboxEvent.create({
         data: {
           bookingId,
-          eventType: `booking.${to.toLowerCase()}`,
+          eventType,
           payload: { bookingId, customerId: fresh.customerId, status: to },
         },
       });
