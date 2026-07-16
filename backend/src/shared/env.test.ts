@@ -113,3 +113,62 @@ describe('env — JWT_KEYS (RS256 signing keys + rotation)', () => {
     expect(e.JWT_KEYS.previous).toEqual({ kid: 'previous-2026-06', publicKey: previous.publicKey });
   });
 });
+
+describe('env — numeric knob validation (positiveIntEnv)', () => {
+  // Every numeric env var is a timeout, interval, radius, batch size or port.
+  // A bare parseInt would turn a typo into NaN, and NaN never throws — it just
+  // makes the feature it configures quietly stop working (`x > NaN` === false).
+  it.each([
+    ['AUTH_HOLD_EXPIRY_DAYS', 'AUTH_HOLD_EXPIRY_DAYS'],
+    ['OUTBOX_POLL_MS', 'OUTBOX_POLL_MS'],
+    ['OUTBOX_BATCH_SIZE', 'OUTBOX_BATCH_SIZE'],
+    ['OUTBOX_MAX_BATCHES_PER_TICK', 'OUTBOX_MAX_BATCHES_PER_TICK'],
+    ['PORT', 'PORT'],
+    ['CHECKOUT_TTL_MINUTES', 'CHECKOUT_TTL_MINUTES'],
+    ['DISPATCH_ACCEPT_TIMEOUT_MS', 'DISPATCH_ACCEPT_TIMEOUT_MS'],
+    ['DISPATCH_SWEEP_INTERVAL_MS', 'DISPATCH_SWEEP_INTERVAL_MS'],
+  ])('rejects a non-numeric %s instead of silently yielding NaN', (name) => {
+    const { loadEnv } = freshEnv({ [name]: 'not-a-number', NODE_ENV: 'test' });
+    expect(() => loadEnv()).toThrow(new RegExp(`${name} must be a positive integer`));
+  });
+
+  it.each([['AUTH_HOLD_EXPIRY_DAYS', '0'], ['OUTBOX_POLL_MS', '-1'], ['PORT', '1.5']])(
+    'rejects a non-positive/non-integer %s = %s',
+    (name, value) => {
+      const { loadEnv } = freshEnv({ [name]: value, NODE_ENV: 'test' });
+      expect(() => loadEnv()).toThrow(new RegExp(`${name} must be a positive integer`));
+    },
+  );
+
+  it('falls back to the documented default when a knob is unset', () => {
+    const { loadEnv } = freshEnv({
+      AUTH_HOLD_EXPIRY_DAYS: undefined,
+      OUTBOX_POLL_MS: undefined,
+      PORT: undefined,
+      NODE_ENV: 'test',
+    });
+    const e = loadEnv();
+    expect(e.AUTH_HOLD_EXPIRY_DAYS).toBe(6);
+    expect(e.OUTBOX_POLL_MS).toBe(2000);
+    expect(e.PORT).toBe(4000);
+  });
+
+  it('accepts a valid override', () => {
+    const { loadEnv } = freshEnv({ AUTH_HOLD_EXPIRY_DAYS: '9', NODE_ENV: 'test' });
+    expect(loadEnv().AUTH_HOLD_EXPIRY_DAYS).toBe(9);
+  });
+
+  it('rejects an initial dispatch radius above the hard cap (ladder could never climb)', () => {
+    const { loadEnv } = freshEnv({
+      DISPATCH_INITIAL_RADIUS_KM: '60',
+      DISPATCH_MAX_RADIUS_KM: '50',
+      NODE_ENV: 'test',
+    });
+    expect(() => loadEnv()).toThrow('DISPATCH_INITIAL_RADIUS_KM must be <= DISPATCH_MAX_RADIUS_KM');
+  });
+
+  it('PLATFORM_COMMISSION_PCT default matches its documented 20%', () => {
+    const { loadEnv } = freshEnv({ PLATFORM_COMMISSION_PCT: undefined, NODE_ENV: 'test' });
+    expect(loadEnv().PLATFORM_COMMISSION_PCT).toBe(20);
+  });
+});

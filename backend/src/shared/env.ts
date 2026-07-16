@@ -47,7 +47,9 @@ interface Env {
   OUTBOX_MAX_BATCHES_PER_TICK: number;
   /** Bearer token guarding GET /metrics. Empty = open (dev only; hidden in prod). */
   METRICS_TOKEN: string;
-  /** Platform commission (%) withheld from a technician's payout. Default 15%. */
+  /** Platform commission (%) withheld from a technician's payout. Default 20%
+   *  (see PLATFORM_COMMISSION_PCT in loadEnv — keep this doc and that default
+   *  in step; they are the contract every payout split is computed from). */
   PLATFORM_COMMISSION_PCT: number;
   /** Days a pre-authorization hold is assumed valid before capture needs a re-auth. */
   AUTH_HOLD_EXPIRY_DAYS: number;
@@ -114,6 +116,25 @@ function required(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+/**
+ * Reads a positive-integer env var, falling back to `fallback` when unset.
+ * Fails fast on a non-numeric or non-positive value rather than letting a bare
+ * `parseInt` yield NaN — NaN silently poisons every downstream comparison
+ * (`age > NaN` is always false, `setInterval(fn, NaN)` fires continuously), so
+ * a typo'd value would otherwise disable a timeout or a sweep with no error at
+ * all. Centralised so every numeric knob is validated the same way instead of
+ * some being checked ad-hoc and others not at all.
+ */
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer (got "${raw}")`);
+  }
+  return parsed;
 }
 
 /**
@@ -265,30 +286,18 @@ export function loadEnv(): Env {
     }
   }
 
-  const CHECKOUT_TTL_MINUTES = parseInt(process.env.CHECKOUT_TTL_MINUTES ?? '30', 10);
-  if (!Number.isFinite(CHECKOUT_TTL_MINUTES) || CHECKOUT_TTL_MINUTES <= 0) {
-    throw new Error('CHECKOUT_TTL_MINUTES must be a positive integer');
-  }
+  const CHECKOUT_TTL_MINUTES = positiveIntEnv('CHECKOUT_TTL_MINUTES', 30);
 
-  const DISPATCH_ACCEPT_TIMEOUT_MS = parseInt(process.env.DISPATCH_ACCEPT_TIMEOUT_MS ?? '300000', 10);
-  if (!Number.isFinite(DISPATCH_ACCEPT_TIMEOUT_MS) || DISPATCH_ACCEPT_TIMEOUT_MS <= 0) {
-    throw new Error('DISPATCH_ACCEPT_TIMEOUT_MS must be a positive integer');
-  }
-  const DISPATCH_INITIAL_RADIUS_KM = parseInt(process.env.DISPATCH_INITIAL_RADIUS_KM ?? '10', 10);
-  if (!Number.isFinite(DISPATCH_INITIAL_RADIUS_KM) || DISPATCH_INITIAL_RADIUS_KM <= 0) {
-    throw new Error('DISPATCH_INITIAL_RADIUS_KM must be a positive integer');
-  }
-  const DISPATCH_RADIUS_STEP_KM = parseInt(process.env.DISPATCH_RADIUS_STEP_KM ?? '5', 10);
-  if (!Number.isFinite(DISPATCH_RADIUS_STEP_KM) || DISPATCH_RADIUS_STEP_KM <= 0) {
-    throw new Error('DISPATCH_RADIUS_STEP_KM must be a positive integer');
-  }
-  const DISPATCH_MAX_RADIUS_KM = parseInt(process.env.DISPATCH_MAX_RADIUS_KM ?? '50', 10);
-  if (!Number.isFinite(DISPATCH_MAX_RADIUS_KM) || DISPATCH_MAX_RADIUS_KM <= 0) {
-    throw new Error('DISPATCH_MAX_RADIUS_KM must be a positive integer');
-  }
-  const DISPATCH_SWEEP_INTERVAL_MS = parseInt(process.env.DISPATCH_SWEEP_INTERVAL_MS ?? '15000', 10);
-  if (!Number.isFinite(DISPATCH_SWEEP_INTERVAL_MS) || DISPATCH_SWEEP_INTERVAL_MS <= 0) {
-    throw new Error('DISPATCH_SWEEP_INTERVAL_MS must be a positive integer');
+  const DISPATCH_ACCEPT_TIMEOUT_MS = positiveIntEnv('DISPATCH_ACCEPT_TIMEOUT_MS', 300_000);
+  const DISPATCH_INITIAL_RADIUS_KM = positiveIntEnv('DISPATCH_INITIAL_RADIUS_KM', 10);
+  const DISPATCH_RADIUS_STEP_KM = positiveIntEnv('DISPATCH_RADIUS_STEP_KM', 5);
+  const DISPATCH_MAX_RADIUS_KM = positiveIntEnv('DISPATCH_MAX_RADIUS_KM', 50);
+  const DISPATCH_SWEEP_INTERVAL_MS = positiveIntEnv('DISPATCH_SWEEP_INTERVAL_MS', 15_000);
+  // The radius ladder must actually be able to climb: an initial radius already
+  // at/over the cap makes every escalation round a no-op, silently narrowing
+  // dispatch to the first ring forever. Cheaper to catch at boot than in prod.
+  if (DISPATCH_INITIAL_RADIUS_KM > DISPATCH_MAX_RADIUS_KM) {
+    throw new Error('DISPATCH_INITIAL_RADIUS_KM must be <= DISPATCH_MAX_RADIUS_KM');
   }
 
   // Cloudflare R2 (S3-compatible) media uploads. Required only when selected —
@@ -309,7 +318,7 @@ export function loadEnv(): Env {
 
   cached = {
     NODE_ENV,
-    PORT: parseInt(process.env.PORT ?? '4000', 10),
+    PORT: positiveIntEnv('PORT', 4000),
     DATABASE_URL: required('DATABASE_URL'),
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     JWT_SECRET,
@@ -318,12 +327,15 @@ export function loadEnv(): Env {
     CORS_ORIGIN,
     OTP_PROVIDER,
     PAYMENT_PROVIDER,
-    OUTBOX_POLL_MS: parseInt(process.env.OUTBOX_POLL_MS ?? '2000', 10),
-    OUTBOX_BATCH_SIZE: parseInt(process.env.OUTBOX_BATCH_SIZE ?? '200', 10),
-    OUTBOX_MAX_BATCHES_PER_TICK: parseInt(process.env.OUTBOX_MAX_BATCHES_PER_TICK ?? '50', 10),
+    OUTBOX_POLL_MS: positiveIntEnv('OUTBOX_POLL_MS', 2000),
+    OUTBOX_BATCH_SIZE: positiveIntEnv('OUTBOX_BATCH_SIZE', 200),
+    OUTBOX_MAX_BATCHES_PER_TICK: positiveIntEnv('OUTBOX_MAX_BATCHES_PER_TICK', 50),
     METRICS_TOKEN: process.env.METRICS_TOKEN ?? '',
     PLATFORM_COMMISSION_PCT,
-    AUTH_HOLD_EXPIRY_DAYS: parseInt(process.env.AUTH_HOLD_EXPIRY_DAYS ?? '6', 10),
+    // Feeds the capture path's expired-hold check. A NaN here would make
+    // `holdAgeMs > expiryMs` always false → expired holds silently captured
+    // without re-authorization → declines at the PSP. Validated, not bare-parsed.
+    AUTH_HOLD_EXPIRY_DAYS: positiveIntEnv('AUTH_HOLD_EXPIRY_DAYS', 6),
     CURRENCY: process.env.CURRENCY ?? 'JOD',
     PSP_WEBHOOK_SECRET,
     HYPERPAY_ENTITY_ID,
