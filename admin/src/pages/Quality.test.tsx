@@ -88,7 +88,10 @@ describe('Quality page (kanban board)', () => {
 
     await user.selectOptions(screen.getByDisplayValue('موثّق'), 'PRO');
 
-    const dialog = await screen.findByRole('dialog');
+    // Scoped by accessible name: the technician drawer is itself a dialog now,
+    // so an unscoped role query would ambiguously match both it and this
+    // confirmation.
+    const dialog = await screen.findByRole('dialog', { name: /تأكيد تغيير فئة الثقة/ });
     expect(within(dialog).getByText(/تأكيد تغيير فئة الثقة/)).toBeInTheDocument();
 
     // Not called yet — confirmation is required first.

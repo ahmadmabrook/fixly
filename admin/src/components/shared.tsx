@@ -23,6 +23,10 @@ import {
   COLOR_TEXT_SECONDARY,
   COLOR_TEXT_SUBTLE,
   COLOR_WHITE,
+  COLOR_OVERLAY_DRAWER,
+  COLOR_OVERLAY_MODAL,
+  SHADOW_CARD,
+  SHADOW_MODAL,
 } from '../lib/theme';
 
 export const notify = (msg: string, kind: 'info' | 'success' | 'error' = 'info') => {
@@ -35,7 +39,7 @@ export function Card({ children, className = '', style }: { children: ReactNode;
   return (
     <div
       className={`bg-white rounded-2xl ${className}`}
-      style={{ boxShadow: '0 2px 8px rgba(15,23,42,0.06)', ...style }}
+      style={{ boxShadow: SHADOW_CARD, ...style }}
     >
       {children}
     </div>
@@ -344,7 +348,7 @@ function ConfirmDialogBody({
       style={{
         position: 'fixed', inset: 0, zIndex: 50,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(15,23,42,0.5)',
+        background: COLOR_OVERLAY_MODAL,
       }}
     >
       <div
@@ -356,7 +360,7 @@ function ConfirmDialogBody({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: COLOR_WHITE, borderRadius: 16, padding: 24, width: '100%',
-          maxWidth: 380, margin: '0 16px', boxShadow: '0 24px 48px rgba(15,23,42,0.18)',
+          maxWidth: 380, margin: '0 16px', boxShadow: SHADOW_MODAL,
         }}
         dir="rtl"
       >
@@ -383,6 +387,56 @@ function ConfirmDialogBody({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Default width of a detail side drawer. Wide enough for the two-column
+ *  label/value rows every admin drawer renders, narrow enough to leave the
+ *  underlying table visible for context. */
+const DRAWER_WIDTH_DEFAULT = 460;
+
+interface DrawerProps {
+  /** Accessible name for the drawer, announced when focus enters it.
+   *  Required — a dialog without a name is unusable via a screen reader. */
+  ariaLabel: string;
+  onClose: () => void;
+  children: ReactNode;
+  /** Override only when the content genuinely needs a different measure. */
+  width?: number;
+}
+
+/**
+ * Right-anchored detail drawer shared by every admin "open a row" surface
+ * (bookings, technicians, customers, quality, guarantee).
+ *
+ * Previously each page hand-rolled this overlay, which meant none of them
+ * were keyboard-operable: no Escape, no focus trap, no focus restore and no
+ * role/aria-modal, so a keyboard or screen-reader admin could open a drawer
+ * and never get out of it, while Tab silently walked the table *behind* the
+ * scrim. Routing every drawer through `useDialog` (the same hook that already
+ * backs ConfirmDialog) fixes all five at once and keeps the two dialog
+ * surfaces behaving identically.
+ *
+ * Mount only while open (`{open && <Drawer …>}`) so the Escape/focus-trap
+ * listener never runs for a closed drawer.
+ */
+export function Drawer({ ariaLabel, onClose, children, width = DRAWER_WIDTH_DEFAULT }: DrawerProps) {
+  const ref = useDialog<HTMLDivElement>(onClose);
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: COLOR_OVERLAY_DRAWER }} onClick={onClose}>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        className="h-full bg-white overflow-auto"
+        style={{ width }}
+        onClick={(e) => e.stopPropagation()}
+        dir="rtl"
+      >
+        {children}
       </div>
     </div>
   );

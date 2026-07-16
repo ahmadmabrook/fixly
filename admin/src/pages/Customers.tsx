@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api, DEFAULT_PAGE_SIZE, CustomerItem, CustomerBookingItem } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill, OpsStatTile } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, StatusBadge, ConfirmDialog, notify, Pill, OpsStatTile, Drawer } from '../components/shared';
 import {
   COLOR_BRAND_PRIMARY,
   COLOR_NEUTRAL_FAINT,
@@ -152,8 +152,7 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
     .filter((b) => b.status === 'COMPLETED')
     .reduce((sum, b) => sum + Number(b.totalJod), 0);
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
-      <div className="h-full bg-white overflow-auto" style={{ width: 440 }} onClick={(e) => e.stopPropagation()} dir="rtl">
+    <Drawer ariaLabel="سجل حجوزات العميل" onClose={onClose} width={440}>
         <div className="p-6">
           <div className="flex items-center gap-3">
             <Avatar name={customer?.name ?? null} size={44} />
@@ -188,7 +187,6 @@ function HistoryDrawer({ id, customer, onClose }: { id: string; customer: Custom
           </div>
           <button onClick={onClose} className="mt-5 w-full h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>إغلاق</button>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

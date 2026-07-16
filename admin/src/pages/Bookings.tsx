@@ -3,7 +3,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { api, DEFAULT_PAGE_SIZE, AdminStats, BookingItem, BookingDetail } from '../lib/api';
-import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, ActionBtn, notify } from '../components/shared';
+import { Card, StatusBadge, Spinner, EmptyState, TableWrapper, Th, Td, Pagination, ActionBtn, notify, Drawer } from '../components/shared';
 import { fmtJod, shortId } from '../lib/format';
 import BookingsMap from '../components/BookingsMap';
 import {
@@ -225,8 +225,7 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
   const booking = data?.booking;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
-      <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
+    <Drawer ariaLabel="تفاصيل الحجز" onClose={onClose}>
         {isLoading && <Spinner />}
         {isError && <EmptyState message="تعذّر تحميل تفاصيل الحجز" />}
         {booking && (
@@ -334,7 +333,6 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Drawer>
   );
 }

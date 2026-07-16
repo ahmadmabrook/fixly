@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, DEFAULT_PAGE_SIZE, GuaranteeAdminItem } from '../lib/api';
-import { shortId } from '../lib/format';
-import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
+import { shortId, safeHttpsUrl } from '../lib/format';
+import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill, Drawer } from '../components/shared';
 import {
   COLOR_BORDER_LIGHT,
   COLOR_BRAND_PRIMARY,
@@ -74,7 +74,7 @@ export default function Guarantee() {
           {items.map((t) => {
             const sla = slaLabel(t.expiresAt);
             const inReview = t.status === 'OPEN' || t.status === 'IN_REVIEW';
-            const media = t.mediaUrls.filter((u) => u.startsWith('https://'));
+            const media = t.mediaUrls.map(safeHttpsUrl).filter((u): u is string => u !== undefined);
             return (
               <Card key={t.id} className="p-5">
                 <div className="flex items-center justify-between">
@@ -131,8 +131,8 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
     onError: (e) => notify(e instanceof Error ? e.message : 'خطأ', 'error'),
   });
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
-      <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
+    <>
+      <Drawer ariaLabel="مراجعة تذكرة الضمان" onClose={onClose}>
         <div className="p-6">
           <h2 style={{ fontWeight: 800, fontSize: 18 }}>مراجعة تذكرة الضمان</h2>
           <div className="mt-4 space-y-1" style={{ fontSize: 14 }}>
@@ -142,7 +142,7 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
           <p className="mt-4 p-3 rounded-lg" style={{ background: COLOR_SURFACE_SUBTLE, fontSize: 14 }}>{ticket.description}</p>
           {ticket.mediaUrls.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {ticket.mediaUrls.filter((u) => u.startsWith('https://')).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 13 }}>مرفق {i + 1}</a>)}
+              {ticket.mediaUrls.map(safeHttpsUrl).filter((u): u is string => u !== undefined).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 13 }}>مرفق {i + 1}</a>)}
             </div>
           )}
           <label className="block mt-5" style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>ملاحظة للعميل</label>
@@ -155,7 +155,7 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
             <button onClick={onClose} className="px-4 rounded-lg" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>إغلاق</button>
           </div>
         </div>
-      </div>
+      </Drawer>
 
       <ConfirmDialog
         open={confirmDecision !== null}
@@ -174,6 +174,6 @@ function ReviewDrawer({ ticket, onClose, onDone }: { ticket: GuaranteeAdminItem;
         }}
         onCancel={() => setConfirmDecision(null)}
       />
-    </div>
+    </>
   );
 }

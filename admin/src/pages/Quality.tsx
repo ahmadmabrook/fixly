@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, TechnicianScorecard } from '../lib/api';
-import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile, Pill } from '../components/shared';
+import { Card, Avatar, Spinner, EmptyState, ConfirmDialog, notify, OpsStatTile, Pill, Drawer } from '../components/shared';
 import {
   COLOR_BORDER_LIGHT,
   COLOR_BRAND_PRIMARY,
@@ -172,8 +172,8 @@ function QualityDrawer({
   const [pendingTier, setPendingTier] = useState<string | null>(null);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(15,23,42,0.4)' }} onClick={onClose}>
-      <div className="h-full bg-white overflow-auto" style={{ width: 460 }} onClick={(e) => e.stopPropagation()} dir="rtl">
+    <>
+      <Drawer ariaLabel="تفاصيل جودة وثقة الفني" onClose={onClose}>
         <div className="p-6 space-y-4">
           <div className="flex items-center gap-3">
             <Avatar name={tech.user?.name ?? '—'} size={48} />
@@ -241,7 +241,7 @@ function QualityDrawer({
             <button onClick={onClose} className="px-4 h-9 rounded-lg" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>إغلاق</button>
           </div>
         </div>
-      </div>
+      </Drawer>
 
       <ConfirmDialog
         open={pendingTier !== null}
@@ -252,6 +252,6 @@ function QualityDrawer({
         onConfirm={() => { if (pendingTier) onSetTier(pendingTier); setPendingTier(null); }}
         onCancel={() => setPendingTier(null)}
       />
-    </div>
+    </>
   );
 }

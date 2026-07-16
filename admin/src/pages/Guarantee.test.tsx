@@ -61,12 +61,17 @@ describe('Guarantee page (approve/reject are confirm-gated)', () => {
 
     // Click approve — should open confirm dialog, not fire mutation
     await user.click(screen.getByTestId('approve-guarantee-btn'));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/تأكيد الموافقة على الضمان/)).toBeInTheDocument();
+    // Scoped by accessible name: the guarantee drawer is itself a dialog now,
+    // so an unscoped role query would ambiguously match both it and this
+    // confirmation.
+    const confirmName = /تأكيد الموافقة على الضمان/;
+    const dialog = await screen.findByRole('dialog', { name: confirmName });
+    expect(within(dialog).getByText(confirmName)).toBeInTheDocument();
 
-    // Cancel
+    // Cancel — only the confirmation closes; the drawer stays open behind it.
     await user.click(within(dialog).getByRole('button', { name: /إلغاء/ }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: confirmName })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: 'مراجعة تذكرة الضمان' })).toBeInTheDocument();
 
     const reviewCall = seq.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/guarantee/g1/review'));
     expect(reviewCall).toBeUndefined();
@@ -86,7 +91,7 @@ describe('Guarantee page (approve/reject are confirm-gated)', () => {
     await waitFor(() => expect(screen.getByText('مراجعة تذكرة الضمان')).toBeInTheDocument());
 
     await user.click(screen.getByTestId('approve-guarantee-btn'));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: /تأكيد الموافقة على الضمان/ });
     await user.click(within(dialog).getByRole('button', { name: /موافقة/ }));
 
     await waitFor(() => {
@@ -108,7 +113,7 @@ describe('Guarantee page (approve/reject are confirm-gated)', () => {
     await waitFor(() => expect(screen.getByText('مراجعة تذكرة الضمان')).toBeInTheDocument());
 
     await user.click(screen.getByTestId('reject-guarantee-btn'));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: /تأكيد رفض الضمان/ });
     expect(within(dialog).getByText(/تأكيد رفض الضمان/)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /إلغاء/ }));
@@ -131,7 +136,7 @@ describe('Guarantee page (approve/reject are confirm-gated)', () => {
     await waitFor(() => expect(screen.getByText('مراجعة تذكرة الضمان')).toBeInTheDocument());
 
     await user.click(screen.getByTestId('reject-guarantee-btn'));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: /تأكيد رفض الضمان/ });
     await user.click(within(dialog).getByRole('button', { name: /رفض/ }));
 
     await waitFor(() => {
