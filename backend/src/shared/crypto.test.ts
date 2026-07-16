@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { encryptField, decryptField } from './crypto';
+import { encryptField, decryptField, constantTimeEquals } from './crypto';
 
 /** A valid 32-byte (64 hex char) AES-256 key. */
 const KEY = randomBytes(32).toString('hex');
@@ -60,5 +60,30 @@ describe('crypto (AES-256-GCM field encryption)', () => {
     const plaintext = 'عمر ٩٨٩';
     const enc = encryptField(plaintext, KEY);
     expect(decryptField(enc, KEY)).toBe(plaintext);
+  });
+});
+
+describe('constantTimeEquals', () => {
+  it('returns true for identical strings', () => {
+    expect(constantTimeEquals('123456', '123456')).toBe(true);
+  });
+
+  it('returns false for same-length strings that differ', () => {
+    expect(constantTimeEquals('123456', '123457')).toBe(false);
+    expect(constantTimeEquals('123456', '923456')).toBe(false); // differs at first byte
+  });
+
+  it('returns false (never throws) on a length mismatch', () => {
+    // timingSafeEqual throws on unequal lengths — the helper must absorb that,
+    // otherwise a short OTP guess would 500 instead of being rejected.
+    expect(() => constantTimeEquals('123', '123456')).not.toThrow();
+    expect(constantTimeEquals('123', '123456')).toBe(false);
+    expect(constantTimeEquals('', '123456')).toBe(false);
+  });
+
+  it('handles empty strings and multi-byte characters', () => {
+    expect(constantTimeEquals('', '')).toBe(true);
+    expect(constantTimeEquals('é', 'é')).toBe(true);
+    expect(constantTimeEquals('é', 'e')).toBe(false); // differing byte length
   });
 });

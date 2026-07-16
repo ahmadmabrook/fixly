@@ -1,6 +1,6 @@
 import express, { Express } from 'express';
 import http from 'http';
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
 import { logger } from '../../shared/logger';
 import { env } from '../../shared/env';
+import { constantTimeEquals } from '../../shared/crypto';
 import { registry, httpRequestDuration, httpRequestsTotal } from '../../shared/metrics';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFound';
@@ -111,11 +112,8 @@ export function createApp(): { app: Express; httpServer: http.Server } {
       const token = env().METRICS_TOKEN;
       if (token) {
         // Constant-time compare so a timing side-channel can't be used to recover
-        // the token byte-by-byte. timingSafeEqual throws on unequal length, so
-        // gate on length first (a length mismatch is already a non-match).
-        const expected = Buffer.from(`Bearer ${token}`);
-        const provided = Buffer.from(req.headers.authorization ?? '');
-        if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        // the token byte-by-byte (see shared/crypto for the length-gate rationale).
+        if (!constantTimeEquals(req.headers.authorization ?? '', `Bearer ${token}`)) {
           res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Metrics token required' } });
           return;
         }

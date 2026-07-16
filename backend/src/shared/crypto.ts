@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'crypto';
 
 /**
  * AES-256-GCM helpers for encrypting sensitive at-rest fields (currently the
@@ -9,6 +9,24 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
  * Ciphertext layout (single Buffer, so a single BYTEA column holds everything
  * needed to decrypt): [12-byte IV][16-byte auth tag][ciphertext].
  */
+
+/**
+ * Constant-time string comparison for secrets (OTP codes, bearer tokens).
+ * A plain `a !== b` short-circuits at the first differing byte, so how long it
+ * takes to fail leaks how much of the prefix was correct — recoverable
+ * byte-by-byte given enough samples. `timingSafeEqual` throws on length
+ * mismatch, so length is checked first (an unequal length is already a
+ * non-match, and the length of a secret is not itself the secret).
+ *
+ * Single definition so every secret comparison in the app gets the same
+ * treatment rather than each call site re-deriving the Buffer/length dance.
+ */
+export function constantTimeEquals(a: string, b: string): boolean {
+  const bufferA = Buffer.from(a, 'utf8');
+  const bufferB = Buffer.from(b, 'utf8');
+  if (bufferA.length !== bufferB.length) return false;
+  return timingSafeEqual(bufferA, bufferB);
+}
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96-bit GCM nonce (NIST-recommended size).

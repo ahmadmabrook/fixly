@@ -1,4 +1,5 @@
 import { randomInt, createHash } from 'crypto';
+import { constantTimeEquals } from '../../shared/crypto';
 import type { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import type { Prisma } from '@prisma/client';
@@ -65,7 +66,10 @@ export class AuthService {
     }
 
     const stored = await redis.get(`otp:${phone}`);
-    if (!stored || stored !== code) throw new UnauthorizedError('Invalid or expired OTP');
+    // Constant-time compare: a byte-wise early-exit would leak the correct prefix
+    // through response timing. The attempt cap above already bounds guessing, but
+    // that caps GUESSES, not the timing oracle — they are different defences.
+    if (!stored || !constantTimeEquals(stored, code)) throw new UnauthorizedError('Invalid or expired OTP');
 
     await redis.del(`otp:${phone}`);
     await redis.del(attemptsKey);
