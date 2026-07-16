@@ -14,6 +14,7 @@ import {
   COLOR_TEXT_MUTED,
   COLOR_TEXT_PRIMARY,
   COLOR_WHITE,
+  COLOR_OVERLAY_ON_BRAND,
 } from '../lib/theme';
 
 const SEGMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -95,7 +96,7 @@ export default function Broadcast() {
           <div className="mt-4 mx-auto" style={{ width: 280 }}>
             <div className="rounded-2xl p-4" style={{ background: `linear-gradient(135deg,${COLOR_BRAND_PRIMARY} 0%,${COLOR_BRAND_PRIMARY_DARK} 100%)`, color: COLOR_WHITE }}>
               <div className="flex items-center gap-2" style={{ fontSize: 12, opacity: 0.8 }}>
-                <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.2)' }}><Wrench size={12} /></div>
+                <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: COLOR_OVERLAY_ON_BRAND }}><Wrench size={12} /></div>
                 Fixly · الآن
               </div>
               <div className="mt-2" style={{ fontWeight: 700, fontSize: 14 }}>{title || '—'}</div>

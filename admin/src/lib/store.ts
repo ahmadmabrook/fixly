@@ -2,6 +2,14 @@ import { create } from 'zustand';
 
 export type AdminRole = 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT';
 
+/**
+ * localStorage key holding the persisted (non-credential) admin profile.
+ * Single source of truth — the store reads/writes it and App.tsx reads it as
+ * the "a session may exist" hint before attempting a silent refresh. Never
+ * store the access token here; it stays in memory only.
+ */
+export const ADMIN_PROFILE_STORAGE_KEY = 'admin_user';
+
 interface AdminUser {
   id: string;
   name: string;
@@ -23,18 +31,18 @@ export const useAuth = create<AuthState>((set) => ({
   accessToken: null,
   admin: (() => {
     try {
-      const raw = localStorage.getItem('admin_user');
+      const raw = localStorage.getItem(ADMIN_PROFILE_STORAGE_KEY);
       return raw ? (JSON.parse(raw) as AdminUser) : null;
     } catch {
       return null;
     }
   })(),
   setAuth(token, admin) {
-    localStorage.setItem('admin_user', JSON.stringify(admin));
+    localStorage.setItem(ADMIN_PROFILE_STORAGE_KEY, JSON.stringify(admin));
     set({ accessToken: token, admin });
   },
   logout() {
-    localStorage.removeItem('admin_user');
+    localStorage.removeItem(ADMIN_PROFILE_STORAGE_KEY);
     set({ accessToken: null, admin: null });
   },
 }));

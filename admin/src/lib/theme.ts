@@ -66,6 +66,25 @@ export const COLOR_SURFACE_SUBTLE = '#F8FAFC';
 /** Page-level background (Layout shell, Login screen). */
 export const COLOR_APP_BACKGROUND = '#F6F8FB';
 
+/* ── Overlays & elevation ───────────────────────────────────────────── */
+
+/** Scrim behind a side drawer (slightly lighter than the modal scrim, so a
+ *  drawer reads as "layered over" the page rather than blocking it). */
+export const COLOR_OVERLAY_DRAWER = 'rgba(15,23,42,0.4)';
+/** Scrim behind a centered modal dialog (ConfirmDialog) — deliberately
+ *  darker than the drawer scrim to signal a blocking decision. */
+export const COLOR_OVERLAY_MODAL = 'rgba(15,23,42,0.5)';
+/** Translucent white wash used on top of the brand gradient (Broadcast
+ *  segment icon chips). */
+export const COLOR_OVERLAY_ON_BRAND = 'rgba(255,255,255,0.2)';
+
+/** Resting elevation for content cards. */
+export const SHADOW_CARD = '0 2px 8px rgba(15,23,42,0.06)';
+/** Elevation for the login panel — a softer, wider lift than SHADOW_CARD. */
+export const SHADOW_PANEL = '0 4px 24px rgba(15,23,42,0.10)';
+/** Elevation for a modal dialog floating above the scrim. */
+export const SHADOW_MODAL = '0 24px 48px rgba(15,23,42,0.18)';
+
 /* ── Status pairs (bg + fg used together on badges/pills) ────────────── */
 
 export const COLOR_STATUS_DANGER = '#B91C1C';

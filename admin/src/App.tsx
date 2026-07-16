@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from './lib/store';
+import { useAuth, ADMIN_PROFILE_STORAGE_KEY } from './lib/store';
 import { onAuthExpired, restoreSession } from './lib/api';
 import { canAccessRoute } from './lib/permissions';
 import { COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY } from './lib/theme';
@@ -84,7 +84,7 @@ export function AppShell() {
     let active = true;
     // Only refresh if a prior session is hinted (persisted admin profile), so
     // an anonymous visitor goes straight to /login without a pointless 401.
-    const hadSession = localStorage.getItem('admin_user') !== null;
+    const hadSession = localStorage.getItem(ADMIN_PROFILE_STORAGE_KEY) !== null;
     (hadSession ? restoreSession() : Promise.resolve(false)).finally(() => {
       if (active) setReady(true);
     });

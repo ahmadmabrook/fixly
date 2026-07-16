@@ -11,6 +11,7 @@ import {
   COLOR_TEXT_MUTED,
   COLOR_TEXT_PRIMARY,
   COLOR_WHITE,
+  SHADOW_PANEL,
 } from '../lib/theme';
 
 export default function Login() {
@@ -57,7 +58,7 @@ export default function Login() {
       <Toaster position="top-center" richColors />
       <div
         className="bg-white rounded-2xl p-8 w-full"
-        style={{ maxWidth: 400, boxShadow: '0 4px 24px rgba(15,23,42,0.10)' }}
+        style={{ maxWidth: 400, boxShadow: SHADOW_PANEL }}
       >
         <div className="mb-8 text-center">
           <div className="flex items-center justify-center gap-2">
