@@ -198,11 +198,61 @@ describe('OutboxWorker (drainToEmpty — burst throughput)', () => {
   it('respects maxBatchesPerTick so one tick cannot run unbounded', async () => {
     worker = new OutboxWorker({ batchSize: 1, maxBatchesPerTick: 3 });
     worker.register('booking.created', jest.fn().mockResolvedValue(undefined));
-    // Always returns a full batch → would loop forever without the cap.
-    mockedPrisma.outboxEvent.findMany.mockResolvedValue([makeEvent()]);
+    // A never-ending stream of DISTINCT new events (a genuinely busy queue) →
+    // would loop forever without the cap. Ids must differ per batch: repeating one
+    // id would model the same row being re-fetched, which the per-tick attempt
+    // guard now (correctly) filters out.
+    let nextId = 0;
+    mockedPrisma.outboxEvent.findMany.mockImplementation(() => {
+      nextId += 1;
+      return Promise.resolve([makeEvent({ id: `e${nextId}`, bookingId: `b${nextId}` })]);
+    });
 
     expect(await worker.drainToEmpty()).toBe(3);
     expect(mockedPrisma.outboxEvent.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not re-attempt an event that already failed in this tick (retry budget is not burned intra-tick)', async () => {
+    worker = new OutboxWorker({ batchSize: 2, maxAttempts: 5 });
+    const okHandler = jest.fn().mockResolvedValue(undefined);
+    const failHandler = jest.fn().mockRejectedValue(new Error('PSP 503'));
+    worker.register('booking.created', okHandler);
+    worker.register('payment.preauth', failHandler);
+
+    const failing = makeEvent({ id: 'bad', bookingId: 'b-bad', eventType: 'payment.preauth' });
+    mockedPrisma.outboxEvent.findMany
+      // b-ok succeeds, b-bad fails → processed>0 so the loop continues...
+      .mockResolvedValueOnce([makeEvent({ id: 'ok', bookingId: 'b-ok' }), failing])
+      // ...and the failed row is back to PENDING, so it is fetched again here.
+      .mockResolvedValue([failing]);
+
+    await worker.drainToEmpty();
+
+    // Exactly ONE attempt this tick, despite being re-fetched: the retry belongs
+    // to a later tick. Previously this burned a second attempt immediately.
+    expect(failHandler).toHaveBeenCalledTimes(1);
+    // ...and it went back to PENDING for that later retry, not terminal FAILED.
+    expect(mockedPrisma.outboxEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bad' },
+        data: expect.objectContaining({ status: 'PENDING' }),
+      }),
+    );
+  });
+
+  it('still drains new events that arrive alongside a failed one', async () => {
+    worker = new OutboxWorker({ batchSize: 2 });
+    worker.register('booking.created', jest.fn().mockResolvedValue(undefined));
+    worker.register('payment.preauth', jest.fn().mockRejectedValue(new Error('PSP 503')));
+
+    const failing = makeEvent({ id: 'bad', bookingId: 'b-bad', eventType: 'payment.preauth' });
+    mockedPrisma.outboxEvent.findMany
+      .mockResolvedValueOnce([makeEvent({ id: 'ok1', bookingId: 'b1' }), failing])
+      // The failed row lingers, but a genuinely new event arrived — it must still drain.
+      .mockResolvedValueOnce([failing, makeEvent({ id: 'ok2', bookingId: 'b2' })])
+      .mockResolvedValue([failing]);
+
+    expect(await worker.drainToEmpty()).toBe(2); // ok1 + ok2
   });
 
   it('stops early when a batch makes no progress (all claimed by other instances)', async () => {

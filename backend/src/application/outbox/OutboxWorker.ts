@@ -134,11 +134,19 @@ export class OutboxWorker {
    */
   async drainToEmpty(): Promise<number> {
     let total = 0;
+    // Event ids that already had an attempt during THIS tick. A failed handler
+    // returns its event straight to PENDING, so without this guard the very next
+    // batch in this same loop re-fetches and re-attempts it with zero delay —
+    // burning the entire retry budget (maxAttempts) in milliseconds and turning a
+    // transient provider blip into a terminal FAILED payment event. Retries are
+    // meant to land on a LATER tick; this keeps them there while still letting the
+    // loop drain genuinely-new events aggressively (the burst-throughput intent).
+    const attemptedThisTick = new Set<string>();
     for (let i = 0; i < this.options.maxBatchesPerTick; i++) {
-      const { fetched, processed } = await this.drainBatch();
+      const { fetched, processed } = await this.drainBatch(attemptedThisTick);
       total += processed;
-      // Empty queue, or a batch that made no progress (all claimed by other
-      // instances / all failing) — stop and let the next tick retry.
+      // Nothing new left to claim (empty queue, or every remaining row is a retry
+      // deferred to the next tick), or a batch that made no progress — stop.
       if (fetched === 0 || processed === 0) break;
     }
     return total;
@@ -164,19 +172,26 @@ export class OutboxWorker {
   }
 
   /** One batch: reap stale rows, fetch up to batchSize PENDING, dispatch them.
-   *  Returns how many were fetched (to decide whether to keep draining) and how
-   *  many reached DONE. */
-  private async drainBatch(): Promise<{ fetched: number; processed: number }> {
+   *  `attemptedThisTick` carries the ids already attempted in the current
+   *  drainToEmpty pass so a failed event isn't retried again within that pass.
+   *  Returns how many NEW events were fetched (to decide whether to keep
+   *  draining) and how many reached DONE. */
+  private async drainBatch(attemptedThisTick: Set<string> = new Set()): Promise<{ fetched: number; processed: number }> {
     if (Date.now() - this.lastReapAt > REAP_INTERVAL_MS) {
       this.lastReapAt = Date.now();
       await this.reapStale();
     }
 
-    const events = await prisma.outboxEvent.findMany({
+    const fetchedEvents = await prisma.outboxEvent.findMany({
       where: { status: OutboxStatus.PENDING },
       orderBy: { createdAt: 'asc' },
       take: this.options.batchSize,
     });
+
+    // Drop rows this tick already attempted — they are failures that bounced back
+    // to PENDING and must wait for the next tick rather than re-burn attempts now.
+    const events = fetchedEvents.filter((event) => !attemptedThisTick.has(event.id));
+    for (const event of events) attemptedThisTick.add(event.id);
 
     // A booking's events are causally ordered (created → confirmed → … →
     // completed): the capture handler depends on the pre-auth handler having
