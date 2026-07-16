@@ -98,16 +98,28 @@ export class RoutePath {
   /** Project a live GPS point onto the route. Returns the distance-along of the
    *  nearest point and the perpendicular `offset` from the route (meters) — the
    *  offset tells the caller whether the technician strayed off the planned
-   *  route (took a wrong turn / got rerouted) and a fresh route is warranted. */
-  project(point: LngLat): { along: number; offset: number } {
+   *  route (took a wrong turn / got rerouted) and a fresh route is warranted.
+   *
+   *  `near` constrains the search to segments within `window` meters (along the
+   *  route) of that distance. Real routes double back and run alongside
+   *  themselves — a U-turn, a road paralleling the one you're on, a highway
+   *  beside its own off-ramp — so the *globally* nearest point can sit on a
+   *  completely different leg and would teleport the vehicle forward. Searching
+   *  around where the vehicle already is keeps it on the leg it's actually
+   *  driving. Omit `near` (first fix, no position yet) to search the whole line. */
+  project(point: LngLat, near?: number, window = 400): { along: number; offset: number } {
     const px = EARTH_R * toRad(point[0]) * this.cosRef;
     const py = EARTH_R * toRad(point[1]);
     if (this.coords.length === 1) {
       const [x0, y0] = this.xy[0];
       return { along: 0, offset: Math.hypot(px - x0, py - y0) };
     }
+    const lo = near === undefined ? -Infinity : near - window;
+    const hi = near === undefined ? Infinity : near + window;
     let best = { along: 0, offset: Infinity };
     for (let i = 0; i < this.xy.length - 1; i++) {
+      // Skip segments entirely outside the search window.
+      if (this.cum[i + 1] < lo || this.cum[i] > hi) continue;
       const [x0, y0] = this.xy[i];
       const [x1, y1] = this.xy[i + 1];
       const dx = x1 - x0;
@@ -117,6 +129,9 @@ export class RoutePath {
       const offset = Math.hypot(px - (x0 + dx * t), py - (y0 + dy * t));
       if (offset < best.offset) best = { along: this.cum[i] + t * Math.sqrt(segLenSq), offset };
     }
+    // Window contained no segments (e.g. `near` past the end) → fall back to a
+    // full scan so we always return a real projection.
+    if (best.offset === Infinity && near !== undefined) return this.project(point);
     return best;
   }
 }

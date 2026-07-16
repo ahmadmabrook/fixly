@@ -212,7 +212,7 @@ export default function TrackingMap({
     // strayed too far from the one we drew (wrong turn / reroute). While a fetch
     // is in flight we keep riding whatever route we already have.
     const existing = routePath.current;
-    const offset = existing ? existing.project(techLngLat).offset : Infinity;
+    const offset = existing ? existing.project(techLngLat, progress.current).offset : Infinity;
     const needRoute = !existing || offset > OFFROUTE_THRESHOLD_M;
     const mayFetch = !existing || Date.now() - lastFetchAt.current > ROUTE_REFETCH_COOLDOWN_MS;
     if (needRoute && mayFetch) {
@@ -242,7 +242,7 @@ export default function TrackingMap({
     // ── ride the route ────────────────────────────────────────────────────────
     // Project the ping onto the route; never let the car slide backward on a
     // jittery / out-of-order fix.
-    const along = Math.min(path.project(techLngLat).along, path.length);
+    const along = Math.min(path.project(techLngLat, progress.current).along, path.length);
     const target = Math.max(progress.current, along);
     const from = progress.current;
 

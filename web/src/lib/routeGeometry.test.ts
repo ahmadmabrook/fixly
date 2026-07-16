@@ -76,6 +76,38 @@ describe('RoutePath.project', () => {
     const { along } = route.project(beforeStart);
     expect(along).toBeGreaterThanOrEqual(0);
   });
+
+  // A route that doubles back and runs alongside itself: out along 31.95, then
+  // back west along 31.9505 (~55m to the north). Without a search window a ping
+  // early on the outbound leg is nearly equidistant from the return leg and can
+  // snap onto it, teleporting the vehicle most of the way to the destination.
+  const loop = new RoutePath([
+    [35.90, 31.95], [35.94, 31.95],       // outbound east
+    [35.94, 31.9505], [35.90, 31.9505],   // return west, right alongside
+  ]);
+
+  it('snaps to the leg the vehicle is actually on, not a nearby later leg', () => {
+    // GPS noise nudges the ping ~9m toward the parallel return leg while the
+    // vehicle is really ~950m along the outbound one.
+    const noisyPing: LngLat = [35.91, 31.95042];
+    const outboundLen = new RoutePath([[35.90, 31.95], [35.94, 31.95]]).length;
+
+    // Unconstrained, the globally-nearest point is on the RETURN leg — which
+    // would teleport the vehicle ~5.7km ahead and read as "about to arrive".
+    const blind = loop.project(noisyPing);
+    expect(blind.along).toBeGreaterThan(outboundLen); // demonstrates the trap
+
+    // Windowed around where the vehicle actually is, it stays on the outbound leg.
+    const windowed = loop.project(noisyPing, 950);
+    expect(windowed.along).toBeLessThan(outboundLen);
+    expect(windowed.along).toBeCloseTo(943, -2);
+  });
+
+  it('falls back to a full scan when the window covers no segments', () => {
+    const p: LngLat = [35.91, 31.95];
+    const { offset } = loop.project(p, 999_999); // window way past the end
+    expect(offset).toBeLessThan(100); // still found a real projection
+  });
 });
 
 describe('RoutePath.slice', () => {
