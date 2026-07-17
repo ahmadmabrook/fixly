@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuth } from '../lib/store';
 import { notify } from '../components/shared';
+import { ApiError, login } from '../lib/api';
 import {
   COLOR_APP_BACKGROUND,
   COLOR_BORDER_LIGHT,
@@ -25,26 +26,11 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/admin/login', {
-        method: 'POST',
-        credentials: 'include', // accept the httpOnly refresh cookie
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const payload = await res.json();
-      if (!res.ok) {
-        const msg = payload?.error?.message ?? payload?.message ?? 'فشل تسجيل الدخول';
-        notify(msg, 'error');
-        return;
-      }
-      const { accessToken, admin } = payload.data as {
-        accessToken: string;
-        admin: { id: string; name: string; email: string };
-      };
+      const { accessToken, admin } = await login(email, password);
       setAuth(accessToken, admin);
       navigate('/dashboard', { replace: true });
-    } catch {
-      notify('حدث خطأ، حاول مجدداً', 'error');
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : 'حدث خطأ، حاول مجدداً', 'error');
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@
  * safe to ship in the browser bundle. All map code degrades gracefully when the
  * token is absent (build/test/no-config) — `hasMapbox` gates every map render.
  */
+import { REQUEST_TIMEOUT_MS } from './constants';
 export const MAPBOX_TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) ?? '';
 export const hasMapbox = MAPBOX_TOKEN.startsWith('pk.');
 
@@ -24,7 +25,7 @@ export async function forwardGeocode(query: string, near = AMMAN): Promise<Geoco
   const url = `${GEOCODE_BASE}/forward?q=${encodeURIComponent(query.trim())}` +
     `&access_token=${MAPBOX_TOKEN}&country=jo&language=ar&limit=5&proximity=${near.lng},${near.lat}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!res.ok) return [];
     const body = (await res.json()) as { features?: Array<{ properties?: { full_address?: string; name?: string }; geometry?: { coordinates?: [number, number] } }> };
     return (body.features ?? [])
@@ -45,7 +46,7 @@ export async function reverseGeocode(lng: number, lat: number): Promise<string |
   const url = `${GEOCODE_BASE}/reverse?longitude=${lng}&latitude=${lat}` +
     `&access_token=${MAPBOX_TOKEN}&language=ar&limit=1`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!res.ok) return null;
     const body = (await res.json()) as { features?: Array<{ properties?: { full_address?: string; name?: string } }> };
     const f = body.features?.[0];
@@ -76,7 +77,7 @@ export async function fetchDrivingRoute(
   const url = `${DIRECTIONS_BASE}/${from.lng},${from.lat};${to.lng},${to.lat}` +
     `?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!res.ok) return null;
     const body = (await res.json()) as {
       routes?: Array<{ geometry?: { coordinates?: [number, number][] }; distance?: number; duration?: number }>;

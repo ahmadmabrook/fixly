@@ -2,6 +2,10 @@ import { useAuth, type AdminRole } from './store';
 
 const BASE = '/api/v1/admin';
 
+/** Hard ceiling on any single API request so a stalled connection surfaces as
+ *  an error instead of a spinner that never resolves. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 /** Default page size for admin list/table views (bookings, technicians,
  *  payouts, withdrawals, etc.) — a single shared default so every page's
  *  pagination behaves the same unless a page has an explicit reason not to. */
@@ -45,7 +49,11 @@ async function tryRefresh(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
-      const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
+      const res = await fetch(BASE + '/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
       if (!res.ok) return false;
       const body = (await res.json()) as { data?: { accessToken?: string; admin?: { id: string; name: string; email: string; role?: AdminRole } } };
       const access = body.data?.accessToken;
@@ -67,10 +75,22 @@ export async function restoreSession(): Promise<boolean> {
   return tryRefresh();
 }
 
+/** Admin login. Throws ApiError on bad credentials (caller shows the message). */
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role?: AdminRole } }> {
+  return request('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+}
+
 /** Revoke the admin session server-side (clears the cookie) + drop local state. */
 export async function logout(): Promise<void> {
   try {
-    await fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(BASE + '/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
   } finally {
     useAuth.getState().logout();
     fireAuthExpired();
@@ -83,6 +103,7 @@ async function rawRequest(path: string, opts: RequestInit = {}, retried = false)
   const res = await fetch(BASE + path, {
     ...opts,
     credentials: 'include', // send/receive the httpOnly refresh cookie
+    signal: opts.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

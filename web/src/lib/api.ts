@@ -1,4 +1,5 @@
 import { useAuth } from './store';
+import { REQUEST_TIMEOUT_MS } from './constants';
 
 const BASE = '/api/v1';
 
@@ -42,7 +43,11 @@ async function tryRefresh(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
-      const res = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
+      const res = await fetch(BASE + '/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       const body = (await res.json()) as { data: { accessToken: string } };
       const access = body.data.accessToken;
@@ -66,7 +71,11 @@ export async function restoreSession(): Promise<boolean> {
 /** Revoke the session server-side (clears the cookie) and drop local state. */
 export async function logout(): Promise<void> {
   try {
-    await fetch(BASE + '/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(BASE + '/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
   } finally {
     useAuth.getState().logout();
   }
@@ -77,6 +86,7 @@ async function request<T>(path: string, opts: RequestInit = {}, retried = false)
   const res = await fetch(BASE + path, {
     ...opts,
     credentials: 'include', // send/receive the httpOnly refresh cookie
+    signal: opts.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -112,8 +122,8 @@ async function request<T>(path: string, opts: RequestInit = {}, retried = false)
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body: unknown, headers?: HeadersInit) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body), headers }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

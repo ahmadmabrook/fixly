@@ -9,6 +9,16 @@
  *  watching a screen that depends on it. */
 export const REALTIME_POLL_INTERVAL_MS = 30_000;
 
+/** Hard ceiling on any single API request (see lib/api.ts's `request`) so a
+ *  stalled connection surfaces as an error instead of a spinner that never
+ *  resolves. Also applied to the direct Mapbox calls in lib/mapbox.ts. */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Header name for client-generated idempotency keys on money-moving POSTs
+ *  (see backend/src/interface/http/middleware/idempotency.ts). A retry sent
+ *  with the same key replays the original response instead of double-booking. */
+export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+
 /** Cadence at which an available technician's position is pushed to the backend
  *  and broadcast to the customer's tracking room (see useTechnicianLocationPush).
  *  Must stay comfortably under the backend's HEARTBEAT_STALE_MS (30s — see
