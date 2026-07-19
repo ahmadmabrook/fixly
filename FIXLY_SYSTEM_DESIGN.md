@@ -47,7 +47,7 @@
 15. [Code Templates](#15-code-templates)
 16. [Local Development (Free Tier)](#16-local-development-free-tier--run-the-whole-app-for-0)
 17. [MVP Operating Model — Business & Operations Requirements](#17-mvp-operating-model--business--operations-requirements)
-18. [Appendix A — Phasing & Open Decisions](#appendix--phasing--open-decisions)
+18. [Appendix A — Phasing & Open Decisions](#appendix-a--phasing--open-decisions)
 19. [Appendix B — Changelog narratives](#appendix-b--changelog-narratives-historical-record)
 
 ---
@@ -2646,6 +2646,8 @@ Every service must have a written SOP. SOPs protect the customer (no surprises),
 ### 17.5 Pricing & Materials Model (the complete pricing spec)
 
 > **Why this section exists.** v1.6 priced *labour* and never modeled **materials**. For material-heavy work (painting is the canonical case) the final cost is driven by wall area, coat count, surface prep (putty/sanding/primer), paint type, brand tier, and colour — none of which a catalogue price can know. Selling that as an instant flat price produces exactly the outcomes Fixly exists to prevent: price disputes, material padding, complaints, a guarantee that cannot be funded, and the platform degrading into "the traditional market with an app UI". This section is the authoritative pricing spec; §0.2 #4 is its strategic summary.
+
+> **Implementation status (verified against `backend/prisma/schema.prisma`, 2026-07-19).** Everything in this document **through v1.6** exists in code — `BookingQuote`, `Subscription`, `ServiceCredit`, `ConductReport`, trust tiers, the extra-work gate, dispatch/guarantee/payout services are all implemented. **This entire §17.5 materials & pricing layer (v1.7–v1.13) is SPEC-ONLY**: none of `quote_lines`, `material_catalog`, `booking_materials`, `service_material_policies`, `suppliers`, `service_rate_cards`, `category_readiness_gate`, `material_verification_requests`, or `price_index_readings` exist in the schema yet. That is consistent with the phasing — all three launch categories are `fixed_scope` and Painting is gated (§17.13) — but nobody should read "the quote engine" here as running code. It is the next build increment, not the current system.
 
 #### 17.5.1 The two pricing archetypes
 
