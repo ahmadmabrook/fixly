@@ -195,7 +195,7 @@ Bottom tabs: **الرئيسية (Home) · حجوزاتي (Bookings) · الضم�
 25. Ticket status: timeline (مفتوح → قيد المراجعة → موافق/مرفوض → تم الحل), admin response, if approved "زيارة مجانية مجدولة".
 
 **Account & support**
-26. Profile: name, phone, edit; **Protection «عضو الحماية» member badge if subscribed**; **service-credit balance chip**; quick links to الحماية (Protection), المحفظة/الرصيد (Wallet), الفحص المرئي (Video pre-check), **«ادعُ صديقاً» (Referral — invite → both get service credit)**.
+26. Profile: name, phone, edit; **Protection «عضو الحماية» member badge if subscribed**; **service-credit balance chip**; quick links to الحماية (Protection), المحفظة/الرصيد (Wallet), عروض الأسعار (Quotes — screen 34), **«ادعُ صديقاً» (Referral — invite → both get service credit)**.
 27. Saved addresses (add/edit/delete).
 28. Payment methods (saved cards, default, remove).
 29. Notifications list (booking accepted, technician nearby, completed, guarantee updates, **credit added, quote priced, subscription renewed**).
@@ -221,7 +221,7 @@ Bottom tabs: **الطلبات (Jobs) · الأرباح (Earnings) · حسابي 
 4. Home dashboard: **availability toggle (متاح/غير متاح)**, **trust-tier chip + Certified badge**, today's earnings, jobs count, **nearby job requests** (list + map). Probation techs see a "قيد التجربة" ribbon.
 5. **Incoming job request**: service, distance, address area, **expected earnings for this job (payout after fee)**, **5-min accept countdown**, accept/reject. Warning state after 3 consecutive rejects.
 6. Active job: customer location, navigate (open maps), call (masked), **«وصلت» (mark arrival)**, **«العميل لم يحضر» (mark customer no-show)**; then a **pre-start SOP checklist «قائمة ما قبل البدء»** must be confirmed + **capture «before» photos** where the SOP requires → **«بدء الخدمة»**.
-6a. **Draft the Bill of Materials (v1.9 — before starting any materials job):** a **catalogue picker** — the technician **selects items from the Fixly price book, never types a price** (search + category filter; each item shows tier, unit, and the *fixed* catalogue price), sets qty, records the **customer-chosen brand**; **micro-materials** below the threshold are marked "ضمن الأجرة" automatically. **Off-catalogue item** path: name + price + **mandatory invoice-photo capture** («الفاتورة الأصلية مطلوبة») — cannot submit without it. A line above the reference band shows a **variance warning** («أعلى من السعر المرجعي — اذكر السبب») with the reason picker (نوع خاص / ماركة مستوردة / صعوبة وصول / أخرى). Submit → "بانتظار اعتماد العميل" → locked once approved.
+6a. **Draft the Bill of Materials (v1.9 — before starting any materials job):** a **catalogue picker** — the technician **selects items from the Fixly price book, never types a price** (search + category filter; each item shows tier, unit, and the *fixed* catalogue price), sets qty, records the **customer-chosen brand**; **micro-materials** below the threshold are marked "ضمن الأجرة" automatically. **Off-catalogue item** path: name + price + **mandatory invoice-photo capture** («الفاتورة الأصلية مطلوبة») — cannot submit without it. Variance states (two thresholds, v1.10): **>15% over reference** → the line flags «قيد المراجعة» automatically; **>20%** → additionally the technician **cannot submit without a reason** («أعلى من السعر المرجعي — اذكر السبب»: نوع خاص / ماركة مستوردة / صعوبة وصول / أخرى) and the customer must consent (screen §6.18b). Submit → "بانتظار اعتماد العميل" → locked once approved.
 6b. **Substitution flow (v1.12):** replace a line only with **same-or-higher tier** («بديل بنفس الجودة أو أعلى»); links old→new; any price increase returns to customer approval.
 7. In-progress: timer, **add additional work (description + price → sends to customer for in-app approval; not billable until approved)**; mid-job discovery follows **«توقّف عند نقطة آمنة واطلب موافقة»** (stop-at-safe-point rule — never continue-and-bill); before finishing, a **pre-close SOP checklist «قائمة ما قبل الإغلاق»** + **«after» photos** → **«إنهاء الخدمة»**.
 8. Completion: summary, request review, "تم".
@@ -242,10 +242,10 @@ Bottom tabs: **الطلبات (Jobs) · الأرباح (Earnings) · حسابي 
 Reuse customer flows; add a marketing surface. Provide **desktop (1440)** and **mobile web (390)** layouts.
 1. Landing/marketing: hero (tagline + CTA), value props (**Fixly Certified** / fixed price / 30-day guarantee / 30-min + late-comp / 24-7 support), services + prices (3 launch + 2 coming soon), how-it-works, **Protection-plan section**, trust/reviews, footer.
 2. Login (phone + OTP).
-3. Service catalog → service detail (**includes / not-included SOP scope**, callout-fee note, video-pre-check entry).
-4. Booking flow (time, map location, payment) — desktop 2-column (form + **price breakdown incl. subscription discount + credits**).
-5. Live tracking (map + status, **Certified tech card**, arrived + late-comp).
-6. Account: bookings, receipts, guarantee, addresses, payment methods, support, **Protection plan, wallet/credits, video pre-check quotes**.
+3. Service catalog → service detail — **both archetype variants (§6.8)**: fixed_scope (price + SOP scope + materials-policy note + callout-fee note) and **quote_first (دهان: «حسب المعاينة» + inspection fee + «اطلب عرض سعر»)**; video-pre-check entry.
+4. Booking flow (time incl. **emergency-surcharge chip**, map location, payment) — desktop 2-column (form + **price breakdown incl. surcharge, subscription discount + credits**; quote-first bookings show the accepted itemized offer).
+5. Live tracking (map + status, **Certified tech card**, arrived + late-comp) + the **BOM approval / variance-consent / invoice-photo moments (§6.18a–c)** as web modals.
+6. Account: bookings, **three-line receipts (أجور · مواد · رسوم + JoFotara no.)**, guarantee (with warranty-boundary labels), addresses, payment methods, support, **Protection plan, wallet/credits, quotes «عروض الأسعار»** (itemized-offer view same as §6.34).
 
 ---
 
@@ -258,7 +258,7 @@ This is a real **Ops Console** for running the city day-to-day, not a cosmetic a
 4. **Conduct reports** (new): queue of reports (off-platform / no-show / quality / safety / other) with filters (open/upheld/dismissed); **resolve → «تأكيد» (upheld, raises the tech's flags → possible demotion/suspension) / «رفض» (dismissed)**; confirmation dialog on upheld.
 5. **Bookings**: **live map of active bookings** + table, filters by status (awaiting_payment/pending/confirmed/en_route/arrived/in_progress/completed/cancelled/disputed) **and by zone (شمال/وسط عمّان)**, detail (customer, technician, **event timeline (created → accepted → arrived → started → completed / complained / warranty-returned)**, payment, additional-work items).
 6. **Guarantee tickets**: queue with SLA timer (2h), **review photos/video**, approve/reject + notes, schedule free visit.
-7. **Video pre-check quotes** (new): queue (pending/quoted/accepted), **watch the problem video**, **set a firm price «تسعير»** on pending requests; shows which became bookings.
+7. **Quotes (video pre-check + quote-first, v1.7-upgraded):** queue (pending/quoted/accepted/expired), **watch the problem media + read dimensions/tier**, then **build the itemized offer** — add lines (أجور عمل / مادة / تجهيز), material lines picked **from the catalogue at its fixed prices** (an off-catalogue or over-band line flags for review), totals compute automatically, set validity → **«إرسال العرض»**. An **ops-review interstitial** appears for offers over the threshold. Shows which offers became bookings and their price-deviation vs final (feeds the readiness gate, screen 17).
 8. **Subscriptions** (new): active/past-due counts + **MRR**, list of Protection members with status + renewal date.
 9. **Support & complaints**: inbox, conversation view, **canned replies (macros)**, **complaint categorization** (جودة / تأخير / تسعير / سلوك / سلامة / أخرى), **escalation** action, reply, resolve, process refund. Surface the SLAs: **first response ≤ 5 min**, guarantee decision ≤ 2h.
 10. **Customers**: table, detail, block/unblock, **service-credit balance**, booking history.
