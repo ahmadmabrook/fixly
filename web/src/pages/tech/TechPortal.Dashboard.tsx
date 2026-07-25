@@ -14,8 +14,8 @@ import { COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG,
 const TRUST_TIER_LABELS: Record<TrustTier, { ar: string; bg: string; fg: string }> = {
   PROBATION: { ar: 'تحت التجربة', bg: COLOR_WARNING_BG, fg: COLOR_WARNING_TEXT },
   VERIFIED:  { ar: 'موثّق',      bg: COLOR_BADGE_INFO_BG, fg: COLOR_BRAND_PRIMARY },
-  PRO:       { ar: 'محترف',      bg: COLOR_SUCCESS_BG, fg: COLOR_SUCCESS_TEXT },
-  ELITE:     { ar: 'نخبة',       bg: COLOR_TIER_ELITE_BG, fg: COLOR_TIER_ELITE_FG },
+  PRO:       { ar: 'محترف',      bg: COLOR_TIER_ELITE_BG, fg: COLOR_TIER_ELITE_FG },
+  ELITE:     { ar: 'نخبة',       bg: COLOR_SUCCESS_BG, fg: COLOR_SUCCESS_TEXT },
 };
 
 function TrustTierBadge({ tier }: { tier: TrustTier }) {

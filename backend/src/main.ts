@@ -22,6 +22,7 @@ import { BookingService } from './application/booking/BookingService';
 import { DispatchService, setDispatchService, getDispatchService } from './application/dispatch/DispatchService';
 import { SubscriptionService } from './application/subscription/SubscriptionService';
 import { TrustService } from './application/technician/TrustService';
+import { MaterialVerificationService } from './application/materials/MaterialVerificationService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
 import {
   outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge,
@@ -35,6 +36,9 @@ const CHECKOUT_RECONCILE_INTERVAL_MS = 60_000;
 // billing/tier changes don't need finer granularity and this keeps DB load low.
 const SUBSCRIPTION_BILLER_INTERVAL_MS = 60 * 60_000;
 const TRUST_RECOMPUTE_INTERVAL_MS = 60 * 60_000;
+// §17.5.14 step 4: a 24h dispute deadline doesn't need fine-grained polling —
+// 15 minutes keeps the overshoot small without adding meaningful DB load.
+const MATERIAL_VERIFICATION_SETTLE_INTERVAL_MS = 15 * 60_000;
 
 async function main() {
   const env = loadEnv(); // fail-fast on missing/unsafe config
@@ -119,11 +123,29 @@ async function main() {
   }, TRUST_RECOMPUTE_INTERVAL_MS);
   trustRecomputeTimer.unref();
 
+  // Price-variance dispute auto-settle (§17.5.14 step 4): once a customer
+  // declines a justified over-reference line, the technician has 24h to
+  // upload the original invoice; past deadline the difference is deducted
+  // from their dues automatically (via LedgerEntry, refKey-guarded exactly-once).
+  const materialVerificationService = new MaterialVerificationService();
+  const materialVerificationSettleTimer = setInterval(() => {
+    void materialVerificationService
+      .settleExpiredVerifications()
+      .then((r) => {
+        if (r.settled) logger.info(r, 'Material-verification auto-settle cycle');
+      })
+      .catch((err) => logger.warn({ err }, 'Material-verification auto-settle cycle failed'));
+  }, MATERIAL_VERIFICATION_SETTLE_INTERVAL_MS);
+  materialVerificationSettleTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
 
-  registerShutdown(httpServer, io.close.bind(io), worker, [gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer, subscriptionBillerTimer, trustRecomputeTimer]);
+  registerShutdown(httpServer, io.close.bind(io), worker, [
+    gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer,
+    subscriptionBillerTimer, trustRecomputeTimer, materialVerificationSettleTimer,
+  ]);
 }
 
 async function refreshPendingGauge(): Promise<void> {

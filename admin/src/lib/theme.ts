@@ -110,7 +110,7 @@ export const COLOR_WARNING_SOFT_BG = '#FFFBEB';
 export const COLOR_ACCENT_TEAL = '#0FB5A6';
 /** "PRO" trust-tier badge pair (Quality page). */
 export const COLOR_TIER_PRO = '#7C3AED';
-export const COLOR_TIER_PRO_BG = '#EDE9FE';
+export const COLOR_TIER_PRO_BG = '#F3E8FF';
 
 /* ── Chart series (Dashboard / Reports / Bookings distribution) ──────── */
 

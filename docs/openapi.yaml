@@ -30,7 +30,12 @@ tags:
   - name: Credits
     description: Customer service-credit wallet (late-arrival compensation, referral, goodwill).
   - name: Quotes
-    description: Video pre-check quotes — a customer uploads a problem video for a firm price before booking.
+    description: >-
+      Video pre-check (fixed_scope convenience) and quote-first (mandatory for
+      quote_first services, §17.5) firm quotes — a customer uploads a problem
+      video or site media, and the quote becomes the booking price on accept.
+  - name: Verifications
+    description: Price-variance dispute protocol (§17.5.14) — technician-side invoice upload against a 24h deadline.
   - name: Conduct
     description: Customer-filed conduct reports (off-platform solicitation, no-show, quality, safety).
   - name: Referrals
@@ -367,20 +372,124 @@ components:
 
     BookingQuote:
       type: object
+      description: >-
+        Video pre-check (fixed_scope convenience) OR itemized quote-first
+        (mandatory for quote_first services, §17.5) — `lines` is empty for the
+        former, populated for the latter; labourFils/materialsFils are summed
+        from `lines` for the itemized path.
       properties:
         id: { type: string, format: uuid }
         customerId: { type: string, format: uuid }
         serviceId: { type: string }
         status: { type: string, enum: [PENDING, QUOTED, ACCEPTED, DECLINED, EXPIRED] }
-        videoUrl: { type: string, format: uri }
+        videoUrl: { type: string, format: uri, nullable: true }
+        siteMediaUrls: { type: array, items: { type: string, format: uri } }
+        dimensionsNote: { type: string, nullable: true }
+        requestedTier: { type: string, nullable: true, enum: [ECONOMY, STANDARD, PREMIUM] }
         description: { type: string, nullable: true }
-        quotedJod: { type: string, nullable: true, example: '75.000' }
+        quotedJod: { type: string, nullable: true, example: '105.000' }
+        labourFils: { type: integer, nullable: true, example: 45000 }
+        materialsFils: { type: integer, nullable: true, example: 60000 }
+        opsReviewedById: { type: string, format: uuid, nullable: true }
+        opsReviewedAt: { type: string, format: date-time, nullable: true }
+        lines: { type: array, items: { $ref: '#/components/schemas/QuoteLine' } }
         addressLine: { type: string, nullable: true }
         addressLat: { type: number, nullable: true }
         addressLng: { type: number, nullable: true }
         bookingId: { type: string, format: uuid, nullable: true }
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+
+    QuoteLine:
+      type: object
+      description: One itemized labour/material/prep/fee line on a quote-first BookingQuote (§17.5.3).
+      properties:
+        id: { type: string, format: uuid }
+        quoteId: { type: string, format: uuid }
+        kind: { type: string, enum: [LABOUR, MATERIAL, PREP, FEE] }
+        materialId: { type: string, format: uuid, nullable: true, description: References MaterialCatalog; null = off-catalogue (routes to ops review). }
+        description: { type: string }
+        qty: { type: string, example: '2.00' }
+        unit: { type: string, nullable: true, example: bucket }
+        unitPriceFils: { type: integer, example: 12000 }
+        totalFils: { type: integer, example: 24000 }
+        source: { type: string, enum: [TECHNICIAN_PROCURED, CUSTOMER_SUPPLIED, PLATFORM_ARRANGED] }
+        createdAt: { type: string, format: date-time }
+
+    MaterialCatalogItem:
+      type: object
+      description: A price-book entry (§17.5.6-§17.5.8) — unitPriceFils must sit within [priceMinFils, priceMaxFils].
+      properties:
+        id: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid, nullable: true }
+        supplierId: { type: string, format: uuid, nullable: true }
+        catalogSource: { type: string, enum: [RETAIL_OBSERVED, SUPPLIER_QUOTE, INTERNAL_STANDARD] }
+        refreshCadence: { type: string, enum: [MONTHLY, QUARTERLY, SEMIANNUAL] }
+        priceConfidence: { type: string, enum: [CONFIRMED, ESTIMATED, UNDER_REVIEW] }
+        slug: { type: string }
+        subcategory: { type: string, nullable: true }
+        nameAr: { type: string }
+        nameEn: { type: string }
+        brand: { type: string, nullable: true }
+        tier: { type: string, enum: [ECONOMY, STANDARD, PREMIUM] }
+        unit: { type: string }
+        unitPriceFils: { type: integer }
+        priceMinFils: { type: integer }
+        priceMaxFils: { type: integer }
+        varianceAlertBps: { type: integer, example: 1500 }
+        coverageNote: { type: string, nullable: true }
+        isActive: { type: boolean }
+
+    Supplier:
+      type: object
+      description: A pilot retail-shop referral partner (§17.5.16) — no wholesale contract, commission only on an actual referred sale.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        contactPhone: { type: string, nullable: true }
+        categories: { type: array, items: { type: string } }
+        isPilot: { type: boolean }
+        referralCommissionBps: { type: integer, nullable: true }
+        agreementKind: { type: string, enum: [verbal, message, written] }
+        trialStartedAt: { type: string, format: date-time, nullable: true }
+        trialEndsAt: { type: string, format: date-time, nullable: true }
+        commissionPaidOk: { type: boolean, nullable: true }
+        priceManipulationObserved: { type: boolean, nullable: true }
+        isActive: { type: boolean }
+
+    BookingMaterial:
+      type: object
+      description: One Bill-of-Materials line on a booking, created and approved BEFORE execution (§17.5.9).
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        materialId: { type: string, format: uuid, nullable: true }
+        source: { type: string, enum: [TECHNICIAN_PROCURED, CUSTOMER_SUPPLIED, PLATFORM_ARRANGED] }
+        status: { type: string, enum: [PENDING, PENDING_REVIEW, APPROVED, DECLINED, REPLACED, UNUSED, LOCKED] }
+        description: { type: string }
+        qty: { type: string }
+        unitPriceFils: { type: integer }
+        totalFils: { type: integer }
+        referencePriceFils: { type: integer, nullable: true }
+        varianceBps: { type: integer, nullable: true }
+        varianceReason: { type: string, nullable: true, enum: [SPECIAL_TYPE, IMPORTED_BRAND, ACCESS_DIFFICULTY, OTHER] }
+        customerAckAt: { type: string, format: date-time, nullable: true }
+        supplierInvoiceUrl: { type: string, nullable: true }
+
+    MaterialVerificationRequest:
+      type: object
+      description: Price-variance dispute (§17.5.14) — technician has 24h to upload the original invoice before auto-settle deducts the difference.
+      properties:
+        id: { type: string, format: uuid }
+        bookingMaterialId: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        technicianId: { type: string, format: uuid }
+        status: { type: string, enum: [OPEN, INVOICE_PROVIDED, UPHELD, DEDUCTED, WITHDRAWN] }
+        referencePriceFils: { type: integer }
+        chargedPriceFils: { type: integer }
+        deltaFils: { type: integer }
+        invoiceUrl: { type: string, nullable: true }
+        deadlineAt: { type: string, format: date-time }
 
     ConductReport:
       type: object
@@ -1560,7 +1669,11 @@ paths:
   /quotes:
     post:
       tags: [Quotes]
-      summary: Upload a problem video for a firm price
+      summary: Request a firm quote — video pre-check (fixed_scope) or quote-first assessment (mandatory for quote_first services)
+      description: >-
+        Exactly one of videoUrl (fixed_scope) or siteMediaUrls (quote_first) is
+        required, decided by the target service's pricingModel — enforced
+        server-side regardless of which is sent.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -1568,10 +1681,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [serviceId, videoUrl]
+              required: [serviceId]
               properties:
                 serviceId: { type: string, format: uuid }
-                videoUrl: { type: string, format: uri, maxLength: 500, description: HTTPS URL only. }
+                videoUrl: { type: string, format: uri, maxLength: 500, description: HTTPS URL only; required for a fixed_scope service. }
+                siteMediaUrls: { type: array, maxItems: 20, items: { type: string, format: uri }, description: HTTPS URLs; required for a quote_first service. }
+                dimensionsNote: { type: string, maxLength: 1000 }
+                requestedTier: { type: string, enum: [ECONOMY, STANDARD, PREMIUM] }
                 description: { type: string, maxLength: 1000 }
                 addressLine: { type: string, maxLength: 500 }
                 addressLat: { type: number, minimum: -90, maximum: 90 }
@@ -1584,6 +1700,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } }
         '404': { description: Service not found. }
         '409': { description: Service is not active. }
+        '422': { description: Wrong intake shape for this service's pricing archetype. }
     get:
       tags: [Quotes]
       summary: My video pre-check quotes
@@ -1621,6 +1738,67 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Booking' } } }
         '403': { $ref: '#/components/schemas/Error' }
         '409': { description: Quote is not QUOTED, already accepted, or its expiresAt has passed. }
+
+  # ---- Bill of Materials (§17.5.9) — technician-managed, customer ack/decline ----
+  /bookings/{id}/materials:
+    get:
+      tags: [Bookings]
+      summary: BOM lines for a booking (customer or assigned technician)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: BOM lines., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/BookingMaterial' } } } } } } } }
+    post:
+      tags: [Bookings]
+      summary: Add a BOM line (technician)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [description, unitPriceFils], properties: { materialId: { type: string, format: uuid, nullable: true }, description: { type: string, maxLength: 300 }, brand: { type: string, maxLength: 60 }, qty: { type: number, exclusiveMinimum: 0 }, unit: { type: string, maxLength: 20 }, unitPriceFils: { type: integer, minimum: 0 } } } } } }
+      responses: { '201': { description: Line created (auto pending_review if off-catalogue or over-band)., content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingMaterial' } } } } } }, '409': { description: 'Booking is past the BOM-creatable window (use additional-work instead).' } }
+  /bookings/{id}/materials/{lineId}:
+    patch:
+      tags: [Bookings]
+      summary: Update a BOM line while it's still editable (technician)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated line. }, '409': { description: Line is locked or already resolved. } }
+  /bookings/{id}/materials/{lineId}/invoice:
+    post:
+      tags: [Bookings]
+      summary: Upload the required purchase-invoice photo (technician); above VARIANCE_JUSTIFY_BPS requires a variance reason
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [invoiceUrl], properties: { invoiceUrl: { type: string, format: uri }, varianceReasonKind: { type: string, enum: [SPECIAL_TYPE, IMPORTED_BRAND, ACCESS_DIFFICULTY, OTHER] }, varianceReasonNote: { type: string, maxLength: 500 } } } } } }
+      responses: { '200': { description: Updated line. } }
+  /bookings/{id}/materials/{lineId}/ack:
+    post:
+      tags: [Bookings]
+      summary: Customer digitally acknowledges a justified over-reference line before execution (§17.5.14 step 2)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Acknowledged. } }
+  /bookings/{id}/materials/{lineId}/decline:
+    post:
+      tags: [Bookings]
+      summary: Customer declines a justified over-reference line — opens a MaterialVerificationRequest (§17.5.14 step 3)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Verification request opened; 24h invoice deadline. } }
+
+  # ---- Price-variance verifications (§17.5.14) — technician side ----
+  /verifications:
+    get:
+      tags: [Verifications]
+      summary: My open/resolved verification requests (technician)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Requests., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/MaterialVerificationRequest' } } } } } } } }
+  /verifications/{id}/invoice:
+    post:
+      tags: [Verifications]
+      summary: Upload the original purchase invoice to resolve a dispute within its 24h deadline (technician)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [invoiceUrl], properties: { invoiceUrl: { type: string, format: uri } } } } } }
+      responses: { '200': { description: Invoice recorded, status INVOICE_PROVIDED pending ops resolution. }, '409': { description: Deadline has passed. } }
 
   # ---- Conduct reports (§0.2 #2 — anti-disintermediation + quality) ----
   /conduct-reports:
@@ -1882,6 +2060,154 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } }
         '409': { description: Quote is not PENDING. }
+
+  # ---- Admin: itemized quote-line drafting (OPS) — §17.5.3/§17.5.12 ----
+  /admin/quotes/{id}/lines:
+    post:
+      tags: [Admin]
+      summary: Draft one itemized labour/material/prep/fee line on a pending quote (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, description, unitPriceFils], properties: { kind: { type: string, enum: [LABOUR, MATERIAL, PREP, FEE] }, materialId: { type: string, format: uuid, nullable: true }, description: { type: string, maxLength: 300 }, qty: { type: number, exclusiveMinimum: 0 }, unit: { type: string, maxLength: 20 }, unitPriceFils: { type: integer, minimum: 0 }, source: { type: string, enum: [TECHNICIAN_PROCURED, CUSTOMER_SUPPLIED, PLATFORM_ARRANGED] } } } } } }
+      responses: { '201': { description: Line added; quote's labourFils/materialsFils recomputed., content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/BookingQuote' } } } } } }, '409': { description: 'Quote is not PENDING (lines are immutable once sent).' } }
+  /admin/quotes/{id}/lines/{lineId}:
+    patch:
+      tags: [Admin]
+      summary: Edit a draft line (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated quote. } }
+    delete:
+      tags: [Admin]
+      summary: Remove a draft line (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }, { in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated quote. } }
+  /admin/quotes/{id}/ops-review:
+    post:
+      tags: [Admin]
+      summary: Ops sign-off gate, required before /send for quotes at/above OPS_REVIEW_THRESHOLD_FILS or with an off-catalogue line (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: opsReviewedById/opsReviewedAt set. } }
+  /admin/quotes/{id}/send:
+    post:
+      tags: [Admin]
+      summary: Send the itemized quote to the customer — quotedJod = sum of lines (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Quoted (status QUOTED); customer notified. }, '409': { description: No lines, or review required and not yet done. } }
+
+  # ---- Admin: materials price book (OPS) — §17.5.6-§17.5.8 ----
+  /admin/materials:
+    get:
+      tags: [Admin]
+      summary: Materials catalog list (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: serviceId, schema: { type: string, format: uuid } }, { in: query, name: isActive, schema: { type: boolean } }, { in: query, name: limit, schema: { type: integer, default: 100 } }, { in: query, name: offset, schema: { type: integer, default: 0 } }]
+      responses: { '200': { description: Paginated catalog items., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/MaterialCatalogItem' } } } } } } } }
+    post:
+      tags: [Admin]
+      summary: Create a catalog item (OPS)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [slug, nameAr, nameEn, unit, unitPriceFils, priceMinFils, priceMaxFils], properties: { slug: { type: string, maxLength: 60 }, nameAr: { type: string }, nameEn: { type: string }, unit: { type: string }, unitPriceFils: { type: integer }, priceMinFils: { type: integer }, priceMaxFils: { type: integer } } } } } }
+      responses: { '201': { description: Created., content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/MaterialCatalogItem' } } } } } }, '400': { description: priceMinFils/unitPriceFils/priceMaxFils band violated. } }
+  /admin/materials/{id}:
+    get:
+      tags: [Admin]
+      summary: A catalog item (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Item. } }
+    patch:
+      tags: [Admin]
+      summary: Update a catalog item — re-validates the full price band (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated item. } }
+
+  # ---- Admin: suppliers (OPS) — §17.5.16 pilot referral partners ----
+  /admin/suppliers:
+    get:
+      tags: [Admin]
+      summary: Suppliers list (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: isActive, schema: { type: boolean } }, { in: query, name: isPilot, schema: { type: boolean } }]
+      responses: { '200': { description: Paginated suppliers., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Supplier' } } } } } } } }
+    post:
+      tags: [Admin]
+      summary: Add a pilot supplier (OPS)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 160 } } } } } }
+      responses: { '201': { description: Created. } }
+  /admin/suppliers/{id}:
+    patch:
+      tags: [Admin]
+      summary: Update a supplier (OPS) — e.g. record the 30-day trial verdict fields
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated supplier. } }
+
+  # ---- Admin: price index (OPS or FINANCE) — §17.5.13 monthly ritual ----
+  /admin/price-index:
+    get:
+      tags: [Admin]
+      summary: Price-index reading history (OPS/FINANCE)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: kind, schema: { type: string, enum: [dos_cpi, dos_cpi_maintenance, memr_fuel, chamber_of_industry] } }]
+      responses: { '200': { description: Paginated readings. } }
+    post:
+      tags: [Admin]
+      summary: Record this month's official reading — re-bases affected catalogue items (OPS/FINANCE)
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, periodMonth, valueNumeric], properties: { kind: { type: string, enum: [dos_cpi, dos_cpi_maintenance, memr_fuel, chamber_of_industry] }, periodMonth: { type: string, format: date }, valueNumeric: { type: number }, sourceUrl: { type: string, format: uri } } } } } }
+      responses: { '201': { description: Reading recorded. } }
+
+  # ---- Admin: category readiness gate (OPS) — §17.5.15 L1->L2 trigger ----
+  /admin/category-readiness:
+    get:
+      tags: [Admin]
+      summary: Readiness gate for every quote_first category (OPS)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: 'e.g. "Painting: 32/50 closed · dispute 5% · deviation 11% — not ready".' } }
+  /admin/category-readiness/{serviceId}:
+    get:
+      tags: [Admin]
+      summary: Readiness gate for one service (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: serviceId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Gate state. } }
+
+  # ---- Admin: BOM review + price verifications (OPS) — §17.5.9/§17.5.14 ----
+  /admin/materials-review:
+    get:
+      tags: [Admin]
+      summary: Queue of BOM lines flagged pending_review — off-catalogue or over-band (OPS)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: Paginated lines. } }
+  /admin/materials-review/{lineId}:
+    post:
+      tags: [Admin]
+      summary: Approve or decline a flagged BOM line (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: lineId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [APPROVED, DECLINED] } } } } } }
+      responses: { '200': { description: Updated line. } }
+  /admin/verifications:
+    get:
+      tags: [Admin]
+      summary: Price-verification disputes queue, with 24h deadline countdowns (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: query, name: status, schema: { type: string, enum: [OPEN, INVOICE_PROVIDED, UPHELD, DEDUCTED, WITHDRAWN] } }]
+      responses: { '200': { description: Paginated requests., content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/MaterialVerificationRequest' } } } } } } } }
+  /admin/verifications/{id}/resolve:
+    post:
+      tags: [Admin]
+      summary: Resolve a price-verification dispute (OPS)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [UPHELD, DEDUCTED, WITHDRAWN] } } } } } }
+      responses: { '200': { description: 'Resolved. DEDUCTED posts a LedgerEntry against the technician (refKey-guarded, exactly-once).' } }
 
   # ---- Admin: operational KPIs ----
   /admin/stats/operational:

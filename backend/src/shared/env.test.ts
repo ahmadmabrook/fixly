@@ -127,6 +127,7 @@ describe('env — numeric knob validation (positiveIntEnv)', () => {
     ['CHECKOUT_TTL_MINUTES', 'CHECKOUT_TTL_MINUTES'],
     ['DISPATCH_ACCEPT_TIMEOUT_MS', 'DISPATCH_ACCEPT_TIMEOUT_MS'],
     ['DISPATCH_SWEEP_INTERVAL_MS', 'DISPATCH_SWEEP_INTERVAL_MS'],
+    ['OPS_REVIEW_THRESHOLD_FILS', 'OPS_REVIEW_THRESHOLD_FILS'],
   ])('rejects a non-numeric %s instead of silently yielding NaN', (name) => {
     const { loadEnv } = freshEnv({ [name]: 'not-a-number', NODE_ENV: 'test' });
     expect(() => loadEnv()).toThrow(new RegExp(`${name} must be a positive integer`));
@@ -170,5 +171,10 @@ describe('env — numeric knob validation (positiveIntEnv)', () => {
   it('PLATFORM_COMMISSION_PCT default matches its documented 20%', () => {
     const { loadEnv } = freshEnv({ PLATFORM_COMMISSION_PCT: undefined, NODE_ENV: 'test' });
     expect(loadEnv().PLATFORM_COMMISSION_PCT).toBe(20);
+  });
+
+  it('OPS_REVIEW_THRESHOLD_FILS default matches its documented 30 JOD', () => {
+    const { loadEnv } = freshEnv({ OPS_REVIEW_THRESHOLD_FILS: undefined, NODE_ENV: 'test' });
+    expect(loadEnv().OPS_REVIEW_THRESHOLD_FILS).toBe(30_000);
   });
 });

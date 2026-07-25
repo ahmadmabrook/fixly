@@ -208,7 +208,11 @@ function Landing({ onCTA, onPickService, onProtection }: { onCTA: () => void; on
                 <span className="absolute top-4 left-4 px-2 py-0.5 rounded-full" style={{ background: "#FEF3C7", color: "#B45309", fontSize: 11, fontWeight: 700 }}>قريباً</span>
                 <ServiceIcon id={s.id} size={28} />
                 <div className="mt-4" style={{ fontWeight: 700, fontSize: 17 }}>{s.ar}</div>
-                <div className="mt-3"><PriceBadge amount={s.price} /></div>
+                <div className="mt-3">
+                  {s.id === "paint"
+                    ? <span className="inline-flex items-center rounded-lg px-2.5 py-1" style={{ background: "#FCE7F3", color: "#9D174D", fontSize: 12, fontWeight: 700 }}>حسب المعاينة</span>
+                    : <PriceBadge amount={s.price} />}
+                </div>
               </Card>
             </button>
           ))}
@@ -351,12 +355,12 @@ function Catalog({ onPick }: { onPick: (s: Svc) => void }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 style={{ fontWeight: 800, fontSize: 32 }}>كل الخدمات</h1>
-      <p style={{ color: "#475569", fontSize: 15 }} className="mt-1">اختر خدمة لعرض التفاصيل والسعر الثابت</p>
+      <p style={{ color: "#475569", fontSize: 15 }} className="mt-1">اختر خدمة — السعر الثابت للخدمات الفورية، وعرض مفصّل للدهان.</p>
       <div className="mt-6 grid md:grid-cols-3 gap-4">
         {SERVICES.map(s => {
           const soon = soonIds.includes(s.id);
           return (
-            <button key={s.id} onClick={() => soon ? notify("قريباً — هذه الخدمة في الطريق") : onPick(s)} className="text-start">
+            <button key={s.id} onClick={() => s.id === "paint" ? onPick(s) : soon ? notify("قريباً — هذه الخدمة في الطريق") : onPick(s)} className="text-start">
               <Card className={`p-5 flex items-center gap-4 ${soon ? "opacity-70" : "hover:-translate-y-0.5 transition"}`}>
                 <ServiceIcon id={s.id} size={28} />
                 <div className="flex-1">
@@ -366,7 +370,7 @@ function Catalog({ onPick }: { onPick: (s: Svc) => void }) {
                   </div>
                   <div style={{ color: "#475569", fontSize: 12 }}>المدة: <span style={{ fontFamily: "Inter" }}>{s.dur}</span> دقيقة</div>
                 </div>
-                <PriceBadge amount={s.price} />
+                {s.id === "paint" ? <span className="px-2.5 py-1 rounded-lg" style={{ background: "#FDF2F8", color: "#9D174D", fontWeight: 700, fontSize: 12 }}>حسب المعاينة</span> : <PriceBadge amount={s.price} />}
               </Card>
             </button>
           );
@@ -434,7 +438,8 @@ function ServicePage({ svc, onBook, onBack, member }: { svc: Svc; onBook: () => 
             <li className="flex items-center gap-2"><ShieldCheck size={15} color="#15803D" /> ضمان {member ? "90" : "30"} يوم مشمول</li>
             <li className="flex items-center gap-2"><CreditCard size={15} /> دفع آمن 100% — لا نقدي</li>
           </ul>
-          <button onClick={onBook} className="mt-5 w-full h-12 rounded-xl active:scale-[0.98] transition" style={{ background: "#1366D6", color: "#FFF", fontWeight: 700 }}>اطلب الآن</button>
+          {svc.id === "paint" && <div className="mb-4 p-3 rounded-xl" style={{ background: "#FDF2F8", color: "#9D174D", fontSize: 13, fontWeight: 600 }}>حسب المعاينة · رسوم معاينة 10 دنانير تُخصم عند قبول العرض. ستظهر أجور العمل والمواد والتجهيز كبنود منفصلة.</div>}
+          <button onClick={onBook} className="mt-5 w-full h-12 rounded-xl active:scale-[0.98] transition" style={{ background: "#1366D6", color: "#FFF", fontWeight: 700 }}>{svc.id === "paint" ? "اطلب عرض سعر" : "اطلب الآن"}</button>
         </Card>
       </div>
     </div>
@@ -487,7 +492,7 @@ function Booking({ svc, member, credit, onBack, onConfirm }: { svc: Svc; member:
               ))}
             </div>
             {when === "later" && (
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-3 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none" style={{ fontFamily: "Inter", fontSize: 14 }} />
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} min="2026-06-08" required aria-label="اختر تاريخ الموعد" className="mt-3 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none focus:border-[#1366D6] focus:ring-2 focus:ring-[#1366D6]/20" style={{ fontFamily: "Inter", fontSize: 14 }} />
             )}
           </Card>
 
@@ -567,6 +572,11 @@ function Tracking({ onDone, onCredit }: { svc: Svc; onDone: () => void; onCredit
   const [cancel, setCancel] = useState(false);
   const [report, setReport] = useState(false);
   const [reviews, setReviews] = useState(false);
+  const [showBom, setShowBom] = useState(false);
+  const [showVariance, setShowVariance] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [bomApproved, setBomApproved] = useState(false);
+  const [varianceApproved, setVarianceApproved] = useState(false);
 
   const statusKey = stage === "en_route" ? "technician_arriving" : stage === "arrived" ? "arrived" : stage === "in_progress" ? "in_progress" : "completed";
   const steps: { k: Stage; l: string }[] = [
@@ -644,6 +654,25 @@ function Tracking({ onDone, onCredit }: { svc: Svc; onDone: () => void; onCredit
             </div>
           </Card>
 
+          {/* Materials transparency quick-action row */}
+          <Card className="p-4">
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>شفافية المواد</div>
+            <div className="space-y-2">
+              <button onClick={() => setShowBom(true)} className="w-full h-11 rounded-xl flex items-center justify-between px-4" style={{ background: bomApproved ? "#DCFCE7" : "#E8F1FE", color: bomApproved ? "#15803D" : "#1366D6", fontWeight: 700, fontSize: 13 }}>
+                <span>{bomApproved ? "✓ تم اعتماد قائمة المواد" : "اعتماد قائمة المواد"}</span>
+                {!bomApproved && <ChevronLeft size={16} />}
+              </button>
+              <button onClick={() => setShowVariance(true)} className="w-full h-11 rounded-xl flex items-center justify-between px-4" style={{ background: varianceApproved ? "#DCFCE7" : "#FEF3C7", color: varianceApproved ? "#15803D" : "#B45309", fontWeight: 700, fontSize: 13 }}>
+                <span>{varianceApproved ? "✓ تمت الموافقة على فرق السعر" : "مراجعة فرق سعر — سيفون"}</span>
+                {!varianceApproved && <ChevronLeft size={16} />}
+              </button>
+              <button onClick={() => setShowInvoice(true)} className="w-full h-11 rounded-xl flex items-center justify-between px-4" style={{ background: "#F1F5F9", color: "#475569", fontWeight: 700, fontSize: 13 }}>
+                <span>فاتورة الشراء الأصلية</span>
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </Card>
+
           {stage !== "completed"
             ? <>
                 <button onClick={advance} className="w-full h-12 rounded-xl active:scale-[0.98] transition" style={{ background: "#0FB5A6", color: "#FFF", fontWeight: 700 }}>محاكاة التقدّم →</button>
@@ -666,6 +695,117 @@ function Tracking({ onDone, onCredit }: { svc: Svc; onDone: () => void; onCredit
       )}
       {report && <ReportSheet onClose={() => setReport(false)} />}
       {reviews && <ReviewsSheet onClose={() => setReviews(false)} />}
+
+      {/* BOM approval modal */}
+      {showBom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <Card className="p-6 w-full" style={{ maxWidth: 480 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 style={{ fontWeight: 700, fontSize: 18 }}>اعتماد قائمة المواد</h3>
+              <button onClick={() => setShowBom(false)} aria-label="إغلاق"><X size={20} color="#94A3B8" /></button>
+            </div>
+            <div className="p-3 rounded-xl mb-4" style={{ background: "#FFFBEB" }}>
+              <p style={{ color: "#92400E", fontSize: 13, fontWeight: 600 }}>لن يبدأ العمل قبل اعتمادك لقائمة المواد. المواد بأسعار معتمدة من Fixly.</p>
+            </div>
+            <div className="space-y-2 mb-4">
+              {[
+                { name: "قاطع ABB 16A ×1 (اختيار العميل)", price: "6 دنانير", confidence: "confirmed" },
+                { name: "سلك 2.5مم ×3م", price: "1.8 دينار", confidence: "confirmed" },
+                { name: "علبة كهرباء ×1", price: "—", confidence: "micro" },
+              ].map(({ name, price, confidence }) => {
+                const chip = {
+                  confirmed: { label: "سعر مؤكد", bg: "#DCFCE7", color: "#15803D" },
+                  estimate:  { label: "تقدير", bg: "#FEF3C7", color: "#B45309" },
+                  under_review: { label: "قيد المراجعة", bg: "#FEE2E2", color: "#B91C1C" },
+                  micro:     { label: "مشمول في الأجور", bg: "#F1F5F9", color: "#64748B" },
+                }[confidence];
+                return (
+                  <div key={name} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "#F8FAFC" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }} dir="rtl">{name}</span>
+                    <div className="flex items-center gap-2">
+                      {confidence !== "micro" && <span style={{ fontFamily: "Inter", fontWeight: 700 }}>{price}</span>}
+                      <span className="text-xs rounded-full px-2 py-0.5" style={{ background: chip.bg, color: chip.color }}>{chip.label}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between px-3 pt-2 border-t border-slate-100">
+                <span style={{ fontWeight: 700 }}>إجمالي المواد</span>
+                <span style={{ fontWeight: 800, color: "#1366D6" }}>7.8 دينار</span>
+              </div>
+            </div>
+            {/* §17.5.9 — shop invoice photo visible before final payment */}
+            <div className="p-3 rounded-xl flex items-center gap-3 mb-3" style={{ background: "#F0F9FF" }}>
+              <FileText size={18} color="#0369A1" />
+              <div className="flex-1">
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#0369A1" }}>فاتورة المتجر الأصلية</p>
+                <p style={{ fontSize: 11, color: "#475569" }}>مرفوعة من الفني — مرئية لك قبل الدفع النهائي (§17.5.9)</p>
+              </div>
+              <button onClick={() => notify("تم فتح صورة فاتورة المتجر")} className="text-xs font-bold" style={{ color: "#0369A1" }}>عرض</button>
+            </div>
+            <p style={{ fontSize: 11, color: "#64748B" }} className="mb-3">أي فائض من المواد غير المستخدمة يعود لك — يوثّقه الفني عند الإغلاق.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setBomApproved(true); setShowBom(false); notify("تم اعتماد قائمة المواد — لن تتغير إلا بموافقتك", "success"); }} className="flex-1 h-12 rounded-xl font-bold text-white" style={{ background: "#1366D6" }}>اعتماد قائمة المواد</button>
+              <button onClick={() => setShowBom(false)} className="h-12 px-4 rounded-xl border border-slate-200 font-semibold" style={{ color: "#475569", fontSize: 14 }}>لاحقاً</button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Variance consent modal */}
+      {showVariance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <Card className="p-6 w-full" style={{ maxWidth: 480 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 style={{ fontWeight: 700, fontSize: 18 }}>موافقة على فرق السعر</h3>
+              <button onClick={() => setShowVariance(false)} aria-label="إغلاق"><X size={20} color="#94A3B8" /></button>
+            </div>
+            <div className="p-3 rounded-xl mb-4" style={{ background: "#FEF3C7" }}>
+              <p style={{ color: "#92400E", fontSize: 13, fontWeight: 600 }}>أي زيادة عن السعر المرجعي تحتاج موافقتك — وسترى الفاتورة الأصلية.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="p-4 rounded-xl text-center" style={{ background: "#F1F5F9" }}>
+                <div style={{ color: "#475569", fontSize: 12 }}>السعر المرجعي</div>
+                <div style={{ fontFamily: "Inter", fontWeight: 800, fontSize: 22, color: "#1FAA59" }} className="mt-1">6 JOD</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>سيفون</div>
+              </div>
+              <div className="p-4 rounded-xl text-center" style={{ background: "#FEF2F2" }}>
+                <div style={{ color: "#B91C1C", fontSize: 12 }}>السعر المطلوب</div>
+                <div style={{ fontFamily: "Inter", fontWeight: 800, fontSize: 22, color: "#B91C1C" }} className="mt-1">8 JOD</div>
+                <div style={{ fontSize: 12, color: "#B91C1C" }}>ماركة مستوردة</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: "#475569" }} className="mb-4">السبب المُذكر: ماركة مستوردة (جودة أعلى). يمكنك الموافقة أو طلب تحقق بفاتورة أصلية خلال 24 ساعة.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setVarianceApproved(true); setShowVariance(false); notify("تمت الموافقة على فرق السعر", "success"); }} className="flex-1 h-12 rounded-xl font-bold text-white" style={{ background: "#1366D6" }}>أوافق على 8 دنانير</button>
+              <button onClick={() => { setShowVariance(false); notify("تم فتح طلب تحقق — بانتظار فاتورة الفني 24 ساعة"); }} className="flex-1 h-12 rounded-xl border-2 font-bold" style={{ borderColor: "#E5484D", color: "#E5484D", fontSize: 13 }}>طلب تحقق من السعر</button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Invoice photo modal */}
+      {showInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <Card className="p-6 w-full" style={{ maxWidth: 480 }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 style={{ fontWeight: 700, fontSize: 18 }}>فاتورة الشراء الأصلية</h3>
+              <button onClick={() => setShowInvoice(false)} aria-label="إغلاق"><X size={20} color="#94A3B8" /></button>
+            </div>
+            <div className="rounded-xl overflow-hidden" style={{ background: "#F1F5F9", height: 240 }}>
+              <div className="h-full flex flex-col items-center justify-center gap-3" style={{ color: "#94A3B8" }}>
+                <FileText size={48} />
+                <p style={{ fontSize: 14, fontWeight: 600 }}>فاتورة الشراء — محل النور للكهربائيات</p>
+                <p style={{ fontSize: 12 }}>قاطع ABB 16A · سلك 2.5مم · علبة كهرباء</p>
+                <p style={{ fontSize: 12, fontFamily: "Inter", fontWeight: 700 }}>الإجمالي: 8.7 JOD · 08/07/2026</p>
+                <p style={{ fontSize: 11 }}>[صورة الفاتورة الأصلية المرفوعة من الفني]</p>
+              </div>
+            </div>
+            <p style={{ color: "#475569", fontSize: 12, marginTop: 12 }}>الفاتورة الأصلية مرفوعة من الفني للتحقق والشفافية — مرئية لك قبل الدفع النهائي.</p>
+            <button onClick={() => setShowInvoice(false)} className="mt-4 w-full h-11 rounded-xl font-bold" style={{ background: "#1366D6", color: "#FFF" }}>إغلاق</button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -807,22 +947,57 @@ function Bookings() {
 }
 
 function Receipts() {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const rows = [
-    { id: "FX-2140", svc: "تنظيف تكييف", date: "18/06/2026", total: 35 },
-    { id: "FX-1998", svc: "سباكة", date: "08/06/2026", total: 40 },
+    { id: "FX-2140", svc: "تكييف", date: "18/06/2026", labour: 30, materials: 0, fees: 5, total: 35, jofotara: "JO-2026-140522", warranty: "full" },
+    { id: "FX-1998", svc: "سباكة · مواد العميل", date: "08/06/2026", labour: 40, materials: 0, fees: 0, total: 40, jofotara: "JO-2026-139801", warranty: "labour_only" },
+    { id: "FX-1850", svc: "كهرباء", date: "01/06/2026", labour: 50, materials: 8.7, fees: 5, total: 63.7, jofotara: "JO-2026-138500", warranty: "full" },
   ];
   return (
-    <Panel title="الفواتير">
+    <Panel title="الفواتير الإلكترونية">
       <div className="space-y-3">
         {rows.map(r => (
-          <Card key={r.id} className="p-5 flex items-center gap-4">
-            <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F1F5F9" }}><FileText size={18} color="#475569" /></span>
-            <div className="flex-1">
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{r.svc} <span style={{ color: "#94A3B8", fontSize: 12, fontFamily: "Inter" }}>· {r.id}</span></div>
-              <div style={{ color: "#475569", fontSize: 12, fontFamily: "Inter" }}>{r.date} · دفع آمن</div>
-            </div>
-            <PriceBadge amount={r.total} />
-            <button onClick={() => notify("جارٍ تنزيل الفاتورة")} className="px-3 h-9 rounded-lg" style={{ background: "#E8F1FE", color: "#1366D6", fontWeight: 700, fontSize: 13 }}>تنزيل</button>
+          <Card key={r.id} className="overflow-hidden">
+            <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="w-full p-5 flex items-center gap-4 text-start">
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F1F5F9" }}><FileText size={18} color="#475569" /></span>
+              <div className="flex-1">
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{r.svc} <span style={{ color: "#94A3B8", fontSize: 12, fontFamily: "Inter" }}>· {r.id}</span></div>
+                <div style={{ color: "#475569", fontSize: 12, fontFamily: "Inter" }}>{r.date}</div>
+                {/* Warranty boundary label */}
+                <span className="mt-1 inline-block text-xs font-semibold rounded px-1.5 py-0.5" style={{ background: r.warranty === "full" ? "#DCFCE7" : "#FEF3C7", color: r.warranty === "full" ? "#15803D" : "#B45309" }}>
+                  {r.warranty === "full" ? "ضمان كامل" : "الضمان على العمل فقط — مواد العميل"}
+                </span>
+              </div>
+              <PriceBadge amount={r.total} />
+              <ChevronLeft size={16} color="#94A3B8" style={{ transform: expanded === r.id ? "rotate(-90deg)" : "" }} />
+            </button>
+            {expanded === r.id && (
+              <div className="border-t border-slate-100 px-5 pb-5">
+                {/* Three-line invoice block */}
+                <div className="mt-4 bg-slate-50 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between text-sm"><span style={{ color: "#475569" }}>أجور العمل</span><span style={{ fontWeight: 600 }}>{r.labour} دينار</span></div>
+                  <div className="flex justify-between text-sm"><span style={{ color: "#475569" }}>المواد</span><span style={{ fontWeight: 600 }}>{r.materials > 0 ? `${r.materials} دينار` : "—"}</span></div>
+                  <div className="flex justify-between text-sm"><span style={{ color: "#475569" }}>الرسوم</span><span style={{ fontWeight: 600 }}>{r.fees > 0 ? `${r.fees} دينار` : "—"}</span></div>
+                  <div className="h-px bg-slate-200" />
+                  <div className="flex justify-between"><span style={{ fontWeight: 700 }}>الإجمالي</span><span style={{ fontWeight: 800, color: "#1366D6" }}>{r.total} دينار</span></div>
+                </div>
+                {/* JoFotara */}
+                <div className="mt-3 flex items-center justify-between">
+                  <span style={{ color: "#94A3B8", fontSize: 12 }}>رقم الفاتورة: <span style={{ fontFamily: "Inter", fontWeight: 600 }}>{r.jofotara}</span></span>
+                  <div className="flex gap-2">
+                    <button onClick={() => notify("جارٍ تنزيل الفاتورة")} className="px-3 h-8 rounded-lg" style={{ background: "#E8F1FE", color: "#1366D6", fontWeight: 700, fontSize: 12 }}>تنزيل</button>
+                    <button onClick={() => notify("جارٍ مشاركة الفاتورة")} className="px-3 h-8 rounded-lg" style={{ background: "#F1F5F9", color: "#475569", fontWeight: 700, fontSize: 12 }}>مشاركة</button>
+                  </div>
+                </div>
+                {r.materials > 0 && (
+                  <div className="mt-3 p-3 rounded-lg flex items-center gap-2" style={{ background: "#E8F1FE" }}>
+                    <FileText size={15} color="#1366D6" />
+                    <span style={{ fontSize: 12, color: "#0E4FA8" }}>فاتورة الشراء الأصلية مرفقة — </span>
+                    <button onClick={() => notify("تم فتح فاتورة الشراء الأصلية")} style={{ color: "#1366D6", fontWeight: 700, fontSize: 12 }}>عرض</button>
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
         ))}
       </div>
@@ -840,11 +1015,28 @@ function Guarantee({ member }: { member: boolean }) {
         </div>
       </Card>
       <h3 className="mt-6 mb-3" style={{ fontWeight: 700, fontSize: 16 }}>الحجوزات المؤهلة</h3>
-      <Card className="p-5 flex items-center gap-4">
-        <ServiceIcon id="ac" size={24} />
-        <div className="flex-1"><div style={{ fontWeight: 700, fontSize: 14 }}>تنظيف تكييف · FX-2140</div><div style={{ color: "#475569", fontSize: 12, fontFamily: "Inter" }}>18/06/2026</div></div>
-        <button onClick={() => notify("سيتم الرد خلال ساعتين")} className="px-4 h-10 rounded-lg" style={{ background: "#1366D6", color: "#FFF", fontWeight: 700, fontSize: 13 }}>فتح تذكرة ضمان</button>
-      </Card>
+      <div className="space-y-3">
+        {[
+          { svc: "ac", id: "FX-2140", date: "18/06/2026", warranty: "full" as const },
+          { svc: "plumb", id: "FX-1998", date: "08/06/2026", warranty: "labour_only" as const },
+          { svc: "elec", id: "FX-1850", date: "01/06/2026", warranty: "full" as const },
+        ].map(b => (
+          <Card key={b.id} className="p-5 flex items-center gap-4">
+            <ServiceIcon id={b.svc as any} size={24} />
+            <div className="flex-1">
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {SERVICES.find(s => s.id === b.svc)?.ar} · <span style={{ color: "#94A3B8", fontFamily: "Inter", fontSize: 12 }}>{b.id}</span>
+              </div>
+              <div style={{ color: "#475569", fontSize: 12, fontFamily: "Inter" }}>{b.date}</div>
+              {/* Warranty boundary label — prevents definitional disputes */}
+              <span className="mt-1 inline-block text-xs font-semibold rounded px-1.5 py-0.5" style={{ background: b.warranty === "full" ? "#DCFCE7" : "#FEF3C7", color: b.warranty === "full" ? "#15803D" : "#B45309" }}>
+                {b.warranty === "full" ? "ضمان كامل" : "الضمان على العمل فقط — مواد العميل"}
+              </span>
+            </div>
+            <button onClick={() => notify("سيتم الرد خلال ساعتين")} className="px-4 h-10 rounded-lg shrink-0" style={{ background: "#1366D6", color: "#FFF", fontWeight: 700, fontSize: 13 }}>فتح تذكرة ضمان</button>
+          </Card>
+        ))}
+      </div>
     </Panel>
   );
 }
@@ -911,7 +1103,7 @@ function Protection({ member, onSubscribe, onCancelSub }: { member: boolean; onS
 }
 
 function Quotes() {
-  const quotes = [{ svc: "تنظيف تكييف", desc: "الوحدة لا تبرّد", status: "quoted", price: 45 }];
+  const quotes = [{ svc: "تكييف", desc: "الوحدة لا تبرّد", status: "quoted", price: 45 }];
   return (
     <Panel title="الفحص المرئي">
       <div className="flex justify-end mb-3">

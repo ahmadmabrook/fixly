@@ -46,6 +46,13 @@ export function fmtJod(amount: string | number): string {
   return Number(amount).toFixed(2);
 }
 
+/** 1 JOD = 1000 fils — the materials/pricing engine's money unit (§17.5).
+ *  Format an integer fils amount as a 2-decimal JOD string for display. */
+const FILS_PER_JOD = 1000;
+export function fmtFils(fils: number): string {
+  return (fils / FILS_PER_JOD).toFixed(2);
+}
+
 const MS_PER_DAY = 86_400_000;
 
 /** ISO date (YYYY-MM-DD) for "N days ago", e.g. isoDaysAgo(30) → 30 days

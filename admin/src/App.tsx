@@ -22,6 +22,12 @@ const Quality = lazy(() => import('./pages/Quality'));
 const ConductReports = lazy(() => import('./pages/ConductReports'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions'));
 const Quotes = lazy(() => import('./pages/Quotes'));
+const MaterialsCatalog = lazy(() => import('./pages/MaterialsCatalog'));
+const MaterialsReview = lazy(() => import('./pages/MaterialsReview'));
+const PriceVerifications = lazy(() => import('./pages/PriceVerifications'));
+const Suppliers = lazy(() => import('./pages/Suppliers'));
+const PriceIndex = lazy(() => import('./pages/PriceIndex'));
+const CategoryReadiness = lazy(() => import('./pages/CategoryReadiness'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -129,6 +135,12 @@ export function AppShell() {
           <Route path="conduct"     element={<RequireRole path="/conduct"><ConductReports /></RequireRole>} />
           <Route path="subscriptions" element={<RequireRole path="/subscriptions"><Subscriptions /></RequireRole>} />
           <Route path="quotes"      element={<RequireRole path="/quotes"><Quotes /></RequireRole>} />
+          <Route path="materials"   element={<RequireRole path="/materials"><MaterialsCatalog /></RequireRole>} />
+          <Route path="materials-review" element={<RequireRole path="/materials-review"><MaterialsReview /></RequireRole>} />
+          <Route path="verifications" element={<RequireRole path="/verifications"><PriceVerifications /></RequireRole>} />
+          <Route path="suppliers"   element={<RequireRole path="/suppliers"><Suppliers /></RequireRole>} />
+          <Route path="price-index" element={<RequireRole path="/price-index"><PriceIndex /></RequireRole>} />
+          <Route path="category-readiness" element={<RequireRole path="/category-readiness"><CategoryReadiness /></RequireRole>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

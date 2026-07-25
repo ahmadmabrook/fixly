@@ -27,6 +27,22 @@ export function toMinorUnits(v: Prisma.Decimal | number | string): number {
   return minor.toNumber();
 }
 
+/**
+ * Exact inverse of `toMinorUnits`: integer fils → JOD Decimal. This is the
+ * boundary helper for the §17.5 materials/pricing layer, which stores money as
+ * integer fils (QuoteLine.totalFils, Booking.labourFils/materialsFils, ...)
+ * while the rest of the schema keeps Decimal JOD (Booking.totalJod, ...) — see
+ * the schema comment above the materials models. Always go through this
+ * function at that boundary rather than a bare `/ 1000`, so the conversion is
+ * explicit and grep-able everywhere it happens.
+ */
+export function fromMinorUnits(fils: number): Prisma.Decimal {
+  if (!Number.isInteger(fils)) {
+    throw new Error(`Fils amount ${fils} is not an integer`);
+  }
+  return new Prisma.Decimal(fils).dividedBy(FILS_PER_JOD);
+}
+
 export function isPositive(v: Prisma.Decimal | number | string): boolean {
   return new Prisma.Decimal(v).greaterThan(0);
 }

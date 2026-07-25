@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { ConflictError } from '../../shared/errors';
 import { paymentRequiresHostedCheckout } from '../../shared/env';
+import { toMinorUnits } from '../../shared/money';
 import { PromoService } from '../promo/PromoService';
 import { SubscriptionService } from '../subscription/SubscriptionService';
 import { ServiceCreditService } from '../credit/ServiceCreditService';
@@ -25,6 +26,14 @@ export interface CreateBookingInput {
   /** Firm price from an accepted video pre-check quote (§0.3); overrides the
    *  service list price for this booking. */
   priceOverrideJod?: number | string | Prisma.Decimal;
+  /**
+   * v1.7 labour/materials split (§17.5), from an accepted quote_first
+   * BookingQuote's itemized line totals — see BookingQuoteService.accept.
+   * Optional and additive: existing fixed_scope/video-quote callers omit
+   * these and get the default below, unchanged.
+   */
+  labourFils?: number;
+  materialsFils?: number;
 }
 
 /**

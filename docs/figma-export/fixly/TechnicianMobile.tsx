@@ -14,7 +14,7 @@ import {
 
 type S =
   | "auth" | "otp" | "certify" | "pending" | "approved" | "rejected" | "probation"
-  | "home" | "incoming" | "reject-warning" | "active" | "in-progress" | "completed" | "rate-customer"
+  | "home" | "incoming" | "reject-warning" | "active" | "bom-draft" | "verification" | "in-progress" | "completed" | "rate-customer"
   | "earnings" | "withdraw" | "ratings" | "scorecard" | "profile" | "suspended"
   | "personal-data" | "services-pricing" | "bank-account" | "tech-notifications" | "tech-support";
 
@@ -74,11 +74,13 @@ export default function TechnicianMobile() {
         {s === "incoming" && <Incoming onAccept={() => setS("active")} onReject={() => setS("home")} onBack={() => setS("home")} />}
         {s === "reject-warning" && <RejectWarning onBack={() => setS("home")} />}
         {s === "active" && <Active
-          onStart={() => setS("in-progress")} onBack={() => setS("home")}
+          onStart={() => setS("bom-draft")} onBack={() => setS("home")}
           arrived={arrived} setArrived={setArrived}
           preStartDone={preStartDone} setPreStartDone={setPreStartDone}
           beforePhotos={beforePhotos} setBeforePhotos={setBeforePhotos}
           onNoShow={() => setS("completed")} />}
+        {s === "bom-draft" && <BomDraftTech onBack={() => setS("active")} onSubmit={() => setS("in-progress")} onVerification={() => setS("verification")} />}
+        {s === "verification" && <PriceVerification onBack={() => setS("bom-draft")} />}
         {s === "in-progress" && <InProgressTech onDone={() => setS("completed")} onBack={() => setS("active")} />}
         {s === "completed" && <Completed onRate={() => setS("rate-customer")} onBack={() => setS("home")} />}
         {s === "rate-customer" && <RateCustomer onSubmit={() => setS("home")} onBack={() => setS("completed")} />}
@@ -125,6 +127,35 @@ function Auth({ onNext }: { onNext: () => void }) {
         </div>
         <h1 className="mt-4" style={{ fontWeight: 800, fontSize: 26 }}>Fixly للفنيين</h1>
         <p style={{ color: "#475569", fontSize: 14 }} className="mt-2">سجّل دخولك لتبدأ استقبال الطلبات</p>
+      </div>
+
+      {/* §17.12 Technician value proposition */}
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        {[
+          { emoji: "💼", title: "وظائف أكثر وأفضل أجراً", body: "طلبات موثوقة ومدفوعة من عملاء جادين في عمّان" },
+          { emoji: "⏰", title: "راتبك في 48 ساعة", body: "دفع إلكتروني فوري — لا انتظار، لا نقود كاش" },
+          { emoji: "🛡️", title: "حمايتك مضمونة", body: "نحميك من العملاء المسيئين ونوثّق كل شيء" },
+          { emoji: "📈", title: "شُهرة تبنيها", body: "تقييمك ومستواك يرتفعان مع كل خدمة ناجحة" },
+        ].map(v => (
+          <div key={v.title} className="p-3 rounded-xl" style={{ background: "#F0F9FF" }}>
+            <div style={{ fontSize: 20 }}>{v.emoji}</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#0369A1", marginTop: 4 }}>{v.title}</div>
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 2, lineHeight: 1.5 }}>{v.body}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* §17.3 Subsidy-for-commitment */}
+      <div className="mt-5 p-4 rounded-xl" style={{ background: "#DCFCE7", border: "1px solid #BBF7D0" }}>
+        <div className="flex items-start gap-3">
+          <span style={{ fontSize: 22 }}>🎓</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#15803D" }}>دعم رسوم التدريب</div>
+            <div style={{ fontSize: 12, color: "#166534", marginTop: 3, lineHeight: 1.6 }}>
+              Fixly تتحمّل جزءاً من رسوم الدورات المعتمدة مقابل التزامك بحد أدنى من الطلبات على المنصة. التفاصيل تُحدَّد عند الاتفاق (§17.3).
+            </div>
+          </div>
+        </div>
       </div>
 
       <label style={{ fontSize: 13, fontWeight: 600, color: "#475569" }} className="mt-8">رقم الهاتف</label>
@@ -302,11 +333,33 @@ function Certify({ onSubmit }: { onSubmit: () => void }) {
           </Card>
         </div>
 
-        {/* Agreements */}
-        <div className="space-y-2">
-          <button onClick={() => setAgree(!agree)} className="w-full flex items-start gap-3 text-start p-3 rounded-xl border border-slate-200">
+        {/* ICA — Independent Contractor Agreement (§17.15 launch blocker) */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 style={{ fontWeight: 700, fontSize: 14 }}>اتفاقية المقاول المستقل (ICA)</h3>
+            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "#FEE2E2", color: "#B91C1C" }}>إلزامية قبل الانطلاق</span>
+          </div>
+          <Card className="p-4" style={{ background: "#F8FAFC" }}>
+            <div className="space-y-2">
+              {[
+                "أنت مقاول مستقل وليس موظفاً — لا حصرية، ولا ساعات ثابتة، وتتحكم في قبول الطلبات.",
+                "العمولة: 20% من قيمة العمل تُقتطع لصالح Fixly (صافية من ضريبة المبيعات العامة 16%).",
+                "مواد العمل: هامش الفني المُعلن 10–12% — الهامش الخفي ممنوع.",
+                "الدفع: يُحوّل إلى حسابك البنكي خلال 48 ساعة من اكتمال الخدمة.",
+                "منع التعامل خارج المنصة — الانتهاك يؤدي للإيقاف.",
+                "التأمين: أنت مسؤول عن تأمينك؛ Fixly لا تغطّي حوادث العمل.",
+                "يحق لكلا الطرفين إنهاء الاتفاقية في أي وقت مع إشعار 7 أيام.",
+              ].map((c, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs" style={{ color: "#475569" }}>
+                  <span style={{ color: "#1366D6", fontWeight: 700, fontFamily: "Inter", minWidth: 16 }}>{i + 1}.</span>
+                  {c}
+                </div>
+              ))}
+            </div>
+          </Card>
+          <button onClick={() => setAgree(!agree)} className="w-full flex items-start gap-3 text-start p-3 mt-2 rounded-xl border border-slate-200">
             <span className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5" style={{ borderColor: agree ? "#1366D6" : "#CBD5E1", background: agree ? "#1366D6" : "#FFF" }}>{agree && <Check size={13} color="#FFF" />}</span>
-            <span style={{ fontSize: 12, color: "#475569" }}>أوافق على اتفاقية المقاول مع Fixly.</span>
+            <span style={{ fontSize: 12, color: "#0F172A", fontWeight: 600 }}>قرأت ووافقت على جميع بنود اتفاقية المقاول المستقل.</span>
           </button>
           <button onClick={() => setConduct(!conduct)} className="w-full flex items-start gap-3 text-start p-3 rounded-xl border border-slate-200">
             <span className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5" style={{ borderColor: conduct ? "#1366D6" : "#CBD5E1", background: conduct ? "#1366D6" : "#FFF" }}>{conduct && <Check size={13} color="#FFF" />}</span>
@@ -710,6 +763,255 @@ function Active({
   );
 }
 
+function BomDraftTech({ onBack, onSubmit, onVerification }: { onBack: () => void; onSubmit: () => void; onVerification: () => void }) {
+  const [qty, setQty] = useState(1);
+  const [reason, setReason] = useState("");
+  const [offCatalogue, setOffCatalogue] = useState(false);
+  const [invoice, setInvoice] = useState(false);
+  const [showSubstitute, setShowSubstitute] = useState(false);
+  const [substituteItem, setSubstituteItem] = useState<string | null>(null);
+  const canSubmit = !offCatalogue || invoice;
+
+  const SUBSTITUTE_OPTIONS = [
+    { name: "سيفون Grohe", tier: "ممتاز", price: 9 },
+    { name: "سيفون Kolo", tier: "متوسط", price: 8 },
+    { name: "سيفون محلي", tier: "اقتصادي", price: 5 },
+  ];
+
+  return (
+    <div className="h-full bg-white relative flex flex-col">
+      <TopBar title="قائمة المواد" onBack={onBack} />
+      <div className="flex-1 px-5 py-4 space-y-3 overflow-y-auto pb-28">
+        <Card className="p-3" style={{ background: "#E8F1FE" }}>
+          <b style={{ color: "#0E4FA8" }}>دفتر أسعار Fixly</b>
+          <p style={{ color: "#0E4FA8", fontSize: 12 }}>اختر المواد من القائمة — لا يمكن إدخال سعر يدوي.</p>
+        </Card>
+
+        {/* Micro-material: folded into labour */}
+        <Card className="p-3" style={{ background: "#F8FAFC" }}>
+          <div className="flex justify-between items-center">
+            <div>
+              <b style={{ fontSize: 13 }}>شريط عازل + براغي صغيرة</b>
+              <p style={{ color: "#64748B", fontSize: 11 }}>مادة صغيرة — دون عتبة الـ 2 دينار</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#64748B", fontWeight: 700 }}>مشمول في الأجور</span>
+          </div>
+        </Card>
+
+        {/* Line 1: In-band with quality floor */}
+        <Card className="p-4">
+          <div className="flex justify-between"><b>قاطع ABB 16A</b><span style={{ fontFamily: "Inter", fontWeight: 700 }}>6 دينار</span></div>
+          <p style={{ color: "#64748B", fontSize: 12 }}>اختيار العميل · قطعة · موثّق</p>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#DCFCE7", color: "#15803D", fontWeight: 700 }}>✓ حد الجودة محقق (ABB 16A)</span>
+          </div>
+          <div className="mt-3 flex items-center gap-4">
+            <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg font-bold">−</button>
+            <b style={{ fontFamily: "Inter", fontSize: 16 }}>{qty}</b>
+            <button onClick={() => setQty(qty + 1)} className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg font-bold">+</button>
+            <span className="ms-auto text-xs font-semibold" style={{ color: "#15803D" }}>✓ ضمن النطاق</span>
+          </div>
+        </Card>
+
+        {/* Quality floor violation warning */}
+        <Card className="p-3" style={{ background: "#FEE2E2" }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={15} color="#B91C1C" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#B91C1C" }}>انتباه: الجودة دون الحد المقرر</div>
+              <p style={{ fontSize: 11, color: "#B91C1C" }}>تركيب مادة أدنى من المعتمد بنفس السعر يؤدي لانتهاء الضمان. استخدم بديلاً بنفس الجودة أو أعلى.</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Line 2: Over-band with substitution */}
+        <Card className="p-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <b>{substituteItem ?? "سيفون — ماركة مستوردة"}</b>
+              {substituteItem && <span className="ms-2 text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: "#DCFCE7", color: "#15803D" }}>مستبدل</span>}
+            </div>
+            <span style={{ fontFamily: "Inter", fontWeight: 700 }}>8 دينار</span>
+          </div>
+          <p className="mt-1 text-xs" style={{ color: "#B45309" }}>أعلى من المرجعي بمقدار 15% — قيد المراجعة</p>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="اذكر السبب: نوع خاص / ماركة مستوردة…"
+            className="mt-2 w-full rounded-lg border border-slate-200 p-2 text-xs"
+          />
+          <button
+            onClick={() => setShowSubstitute(true)}
+            className="mt-2 flex items-center gap-1.5 text-xs font-bold"
+            style={{ color: "#7C3AED" }}
+          >
+            <span>↔</span> استبدال بمادة بنفس الجودة أو أعلى
+          </button>
+        </Card>
+
+        {/* Surplus policy disclosure */}
+        <Card className="p-3" style={{ background: "#F8FAFC" }}>
+          <p style={{ fontSize: 11, color: "#64748B" }}>أي فائض من المواد غير المستخدمة يعود للعميل — وثّقه في قائمة الإغلاق. المواد المتبقية الصغيرة تُترك كحسن نية.</p>
+        </Card>
+
+        {/* Off-catalogue item */}
+        <button onClick={() => setOffCatalogue(!offCatalogue)} className="w-full p-3 rounded-xl border text-start text-sm" style={{ borderColor: offCatalogue ? "#1366D6" : "#E2E8F0", fontWeight: 600 }}>
+          مادة خارج القائمة {offCatalogue ? "— الفاتورة الأصلية مطلوبة" : ""}
+        </button>
+        {offCatalogue && (
+          <button onClick={() => { setInvoice(true); notify("تمت إضافة الفاتورة", "success"); }} className="w-full p-3 rounded-xl border-2 border-dashed text-sm flex items-center justify-center gap-2" style={{ borderColor: invoice ? "#15803D" : "#1366D6", color: invoice ? "#15803D" : "#1366D6", fontWeight: 600 }}>
+            <Camera size={17} />{invoice ? "تمت إضافة صورة الفاتورة ✓" : "التقط صورة الفاتورة الأصلية"}
+          </button>
+        )}
+
+        <button onClick={onVerification} className="text-sm font-bold py-2" style={{ color: "#1366D6" }}>
+          فتح طلب تحقق سعري (24 ساعة) ‹
+        </button>
+      </div>
+
+      {/* Substitution bottom sheet */}
+      {showSubstitute && (
+        <div className="absolute inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.45)" }}>
+          <div className="w-full bg-white rounded-t-3xl p-5 pb-8">
+            <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto mb-4" />
+            <h3 style={{ fontWeight: 700, fontSize: 16 }} className="mb-1">استبدال المادة</h3>
+            <p style={{ color: "#475569", fontSize: 12 }} className="mb-4">بديل بنفس الجودة أو أعلى — أي زيادة في السعر تعود لموافقة العميل</p>
+            <div className="space-y-2">
+              {SUBSTITUTE_OPTIONS.map(opt => (
+                <button
+                  key={opt.name}
+                  onClick={() => { setSubstituteItem(opt.name); setShowSubstitute(false); notify(`تم تحديد ${opt.name} كبديل`, "success"); }}
+                  className="w-full p-3 rounded-xl border text-start flex items-center justify-between"
+                  style={{ borderColor: "#E2E8F0" }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{opt.name}</div>
+                    <div style={{ fontSize: 11, color: "#475569" }}>فئة: {opt.tier}</div>
+                  </div>
+                  <span style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 15, color: "#0F172A" }}>{opt.price} دينار</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowSubstitute(false)} className="mt-4 w-full p-3 text-center text-sm font-semibold" style={{ color: "#475569" }}>إلغاء</button>
+          </div>
+        </div>
+      )}
+
+      <FullCTA onClick={() => canSubmit && reason ? onSubmit() : notify("أضف سبب الزيادة وصورة الفاتورة إن وجدت", "error")}>
+        إرسال لاعتماد العميل
+      </FullCTA>
+    </div>
+  );
+}
+
+function PriceVerification({ onBack }: { onBack: () => void }) {
+  const [verState, setVerState] = useState<"open" | "uploaded" | "upheld" | "deducted">("open");
+  const [invoiceUploaded, setInvoiceUploaded] = useState(false);
+
+  const STATE_COPY = {
+    open: { label: "بانتظار الفاتورة", bg: "#FEF3C7", color: "#B45309", icon: "⏱" },
+    uploaded: { label: "فاتورة مرفوعة", bg: "#DBEAFE", color: "#1D4ED8", icon: "📄" },
+    upheld: { label: "مقبول", bg: "#DCFCE7", color: "#15803D", icon: "✓" },
+    deducted: { label: "خُصم الفرق", bg: "#FEE2E2", color: "#DC2626", icon: "−" },
+  };
+  const s = STATE_COPY[verState];
+
+  return (
+    <div className="h-full bg-white relative flex flex-col">
+      <TopBar title="طلب تحقق سعري" onBack={onBack} />
+      <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto pb-32">
+        {/* Status badge */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: s.bg }}>
+          <span style={{ fontSize: 18 }}>{s.icon}</span>
+          <span style={{ color: s.color, fontWeight: 700, fontSize: 14 }}>{s.label}</span>
+        </div>
+
+        {/* Disputed line */}
+        <Card className="p-4 space-y-2">
+          <div style={{ fontWeight: 700, fontSize: 14 }}>المادة المتنازع على سعرها</div>
+          <div className="flex justify-between items-start">
+            <div>
+              <div style={{ fontSize: 14 }}>سيفون — ماركة مستوردة</div>
+              <div style={{ color: "#475569", fontSize: 12 }}>السبب المقدّم: ماركة مستوردة</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="p-3 rounded-xl text-center" style={{ background: "#F1F5F9" }}>
+              <div style={{ fontSize: 11, color: "#475569" }}>السعر المرجعي</div>
+              <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 18, color: "#0F172A" }}>6</div>
+              <div style={{ fontSize: 11, color: "#475569" }}>دينار</div>
+            </div>
+            <div className="p-3 rounded-xl text-center" style={{ background: "#FEF3C7" }}>
+              <div style={{ fontSize: 11, color: "#B45309" }}>السعر المطلوب</div>
+              <div style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 18, color: "#B45309" }}>8</div>
+              <div style={{ fontSize: 11, color: "#B45309" }}>دينار</div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 24h countdown */}
+        {verState === "open" && (
+          <Card className="p-4 flex items-center gap-3" style={{ background: "#FFFBEB" }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ background: "#FDE68A" }}>
+              <span style={{ fontFamily: "Inter", fontWeight: 800, fontSize: 14, color: "#B45309" }}>18:42</span>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#92400E" }}>متبقٍّ من المهلة</div>
+              <p style={{ color: "#92400E", fontSize: 12 }}>إذا لم تُرفع الفاتورة خلال 24 ساعة، سيُخصم الفرق (2 دينار) من مستحقاتك تلقائياً.</p>
+            </div>
+          </Card>
+        )}
+
+        {/* Overdue / deducted state */}
+        {verState === "deducted" && (
+          <Card className="p-4" style={{ background: "#FEE2E2" }}>
+            <div style={{ fontWeight: 700, color: "#DC2626" }}>لم تُرفع الفاتورة في الوقت المحدد</div>
+            <p style={{ color: "#DC2626", fontSize: 12 }} className="mt-1">تم خصم الفرق (2 دينار) من مستحقاتك. راجع تفاصيل الأرباح.</p>
+          </Card>
+        )}
+
+        {/* Upload invoice — only if open */}
+        {verState === "open" && (
+          <div className="space-y-2">
+            <div style={{ fontWeight: 700, fontSize: 14 }}>ارفع صورة الفاتورة الأصلية</div>
+            <button
+              onClick={() => { setInvoiceUploaded(true); setVerState("uploaded"); notify("تم رفع الفاتورة بنجاح", "success"); }}
+              className="w-full p-4 rounded-xl border-2 border-dashed flex items-center justify-center gap-2"
+              style={{ borderColor: invoiceUploaded ? "#15803D" : "#1366D6", background: invoiceUploaded ? "#DCFCE7" : "#F8FAFF" }}
+            >
+              <Camera size={20} color={invoiceUploaded ? "#15803D" : "#1366D6"} />
+              <span style={{ fontWeight: 600, fontSize: 14, color: invoiceUploaded ? "#15803D" : "#1366D6" }}>
+                {invoiceUploaded ? "تمت إضافة الفاتورة ✓" : "التقط أو أرفع صورة الفاتورة"}
+              </span>
+            </button>
+            <p style={{ color: "#94A3B8", fontSize: 11 }}>الفاتورة الأصلية مطلوبة — ترفعها مع الختم والتاريخ.</p>
+          </div>
+        )}
+
+        {/* Resolved state */}
+        {verState === "upheld" && (
+          <Card className="p-4 text-center" style={{ background: "#DCFCE7" }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: "#15803D" }}>تم قبول السعر ✓</div>
+            <p style={{ color: "#166534", fontSize: 12 }} className="mt-1">الفاتورة اعتُمدت. لن يُخصم شيء من مستحقاتك.</p>
+          </Card>
+        )}
+
+        {/* Simulator for demo */}
+        <div className="pt-4 border-t border-slate-100">
+          <p style={{ color: "#94A3B8", fontSize: 11 }} className="mb-2">محاكاة حالات (للعرض التجريبي)</p>
+          <div className="flex gap-2 flex-wrap">
+            {(["open","uploaded","upheld","deducted"] as const).map(st => (
+              <button key={st} onClick={() => setVerState(st)} className="px-3 py-1.5 rounded-full text-xs font-bold border" style={{ borderColor: verState === st ? "#1366D6" : "#E2E8F0", color: verState === st ? "#1366D6" : "#475569", background: verState === st ? "#E8F1FE" : "#FFF" }}>
+                {STATE_COPY[st].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InProgressTech({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
   const [items, setItems] = useState<{ desc: string; price: number; status: "pending" | "approved" }[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -719,8 +1021,10 @@ function InProgressTech({ onDone, onBack }: { onDone: () => void; onBack: () => 
   const [showClose, setShowClose] = useState(false);
   const [closeDone, setCloseDone] = useState(false);
   const [afterPhotos, setAfterPhotos] = useState(0);
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [discoveryPaused, setDiscoveryPaused] = useState(false);
   const allChecked = checks.every(Boolean);
-  const canFinish = closeDone && afterPhotos > 0;
+  const canFinish = closeDone && afterPhotos > 0 && !discoveryPaused;
 
   return (
     <div className="h-full bg-white relative flex flex-col">
@@ -734,8 +1038,25 @@ function InProgressTech({ onDone, onBack }: { onDone: () => void; onBack: () => 
           <div style={{ color: "#475569", fontSize: 13 }} className="mt-2">المدة المنقضية</div>
         </div>
 
+        {/* Mid-job deeper fault discovery */}
+        {discoveryPaused ? (
+          <Card className="mt-5 p-4" style={{ background: "#FEF3C7" }}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={18} color="#B45309" />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#92400E" }}>الخدمة متوقفة — عطل أعمق مكتشف</div>
+                <p style={{ color: "#92400E", fontSize: 12 }} className="mt-1">توقّفت عند نقطة آمنة. العميل بانتظار الموافقة على النطاق الجديد. لا يمكن المتابعة قبل الاعتماد.</p>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <button onClick={() => setShowDiscovery(true)} className="w-full mt-5 p-3 rounded-xl border border-dashed text-sm flex items-center gap-2" style={{ borderColor: "#F5A623", color: "#B45309", fontWeight: 600 }}>
+            <AlertTriangle size={16} /> اكتشفت عطلاً أعمق — توقف واقترح نطاقاً جديداً
+          </button>
+        )}
+
         {/* Additional work */}
-        <Card className="mt-5 p-4 text-start">
+        <Card className="mt-3 p-4 text-start">
           <div style={{ fontWeight: 700, fontSize: 14 }} className="mb-1">عمل إضافي</div>
           <p style={{ color: "#94A3B8", fontSize: 11 }} className="mb-2">لن يُضاف أي مبلغ دون موافقة العميل.</p>
           {items.map((it, i) => (
@@ -797,6 +1118,26 @@ function InProgressTech({ onDone, onBack }: { onDone: () => void; onBack: () => 
         </div>
       )}
 
+      {showDiscovery && (
+        <div className="absolute inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.45)" }}>
+          <div className="w-full bg-white rounded-t-3xl p-5 pb-8">
+            <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto mb-4" />
+            <h3 style={{ fontWeight: 700, fontSize: 17 }} className="mb-1">بروتوكول الاكتشاف في منتصف العمل</h3>
+            <p style={{ color: "#475569", fontSize: 13 }} className="mb-4">اكتشفت عطلاً أعمق من المتفق عليه. توقّف الآن عند نقطة آمنة — لا تكمل وتفوتر لاحقاً.</p>
+            <div className="p-3 rounded-xl space-y-2 mb-4" style={{ background: "#FEF3C7" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#92400E" }}>الخطوات المطلوبة:</div>
+              {["أوقف العمل عند نقطة آمنة", "التقط صورة للعطل المكتشف", "قدّم نطاقاً جديداً ينتظر موافقة العميل", "لا تشتري مواد أو تكمل قبل الاعتماد"].map((s, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm" style={{ color: "#92400E" }}>
+                  <span style={{ fontFamily: "Inter", fontWeight: 700 }}>{i + 1}.</span> {s}
+                </div>
+              ))}
+            </div>
+            <PrimaryButton onClick={() => { setDiscoveryPaused(true); setShowDiscovery(false); notify("الخدمة متوقفة — تم إرسال إشعار للعميل", "success"); }}>توقف وأرسل للعميل</PrimaryButton>
+            <PrimaryButton variant="ghost" onClick={() => setShowDiscovery(false)}>إلغاء</PrimaryButton>
+          </div>
+        </div>
+      )}
+
       {showClose && (
         <div className="absolute inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.45)" }}>
           <div className="w-full bg-white rounded-t-3xl p-5 pb-8">
@@ -817,7 +1158,7 @@ function InProgressTech({ onDone, onBack }: { onDone: () => void; onBack: () => 
         </div>
       )}
 
-      <FullCTA onClick={canFinish ? onDone : () => notify("أكمل قائمة الإغلاق وصور «بعد»", "error")}>إنهاء الخدمة</FullCTA>
+      <FullCTA onClick={canFinish ? onDone : () => notify(discoveryPaused ? "بانتظار موافقة العميل على النطاق الجديد" : "أكمل قائمة الإغلاق وصور «بعد»", "error")}>إنهاء الخدمة</FullCTA>
     </div>
   );
 }

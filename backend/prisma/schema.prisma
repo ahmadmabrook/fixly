@@ -169,9 +169,21 @@ model Service {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  bookings    Booking[]
-  technicians TechnicianProfile[] @relation("TechnicianServices")
-  quotes      BookingQuote[]
+  // v1.7 pricing archetype (§0.2 #4, §17.5.1). FIXED_SCOPE = instant booking at
+  // priceJod (unchanged, existing field — no redundant fils duplicate here).
+  // QUOTE_FIRST = no instant price; priceJod is not shown, inspectionFeeFils is
+  // the disclosed assessment fee instead. Archetype/fee-presence invariant is
+  // enforced in the service layer (this schema has no other @@check either).
+  pricingModel      PricingModel @default(FIXED_SCOPE)
+  inspectionFeeFils Int?
+
+  bookings        Booking[]
+  technicians     TechnicianProfile[]    @relation("TechnicianServices")
+  quotes          BookingQuote[]
+  materialCatalog MaterialCatalog[]
+  rateCards       ServiceRateCard[]
+  materialPolicy  ServiceMaterialPolicy?
+  readinessGate   CategoryReadinessGate?
 
   // Public catalogue query: WHERE isActive ORDER BY category.
   @@index([isActive, category])
@@ -232,14 +244,15 @@ model TechnicianProfile {
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
-  user              User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  techBookings      Booking[]                    @relation("TechnicianBookings")
-  payouts           Payout[]
-  withdrawals       WithdrawalRequest[]
-  services          Service[]                    @relation("TechnicianServices")
-  dispatchOffers    DispatchOffer[]
-  conductReports    ConductReport[]
-  notificationPrefs TechnicianNotificationPrefs?
+  user                 User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  techBookings         Booking[]                     @relation("TechnicianBookings")
+  payouts              Payout[]
+  withdrawals          WithdrawalRequest[]
+  services             Service[]                     @relation("TechnicianServices")
+  dispatchOffers       DispatchOffer[]
+  conductReports       ConductReport[]
+  notificationPrefs    TechnicianNotificationPrefs?
+  verificationRequests MaterialVerificationRequest[]
 
   // getStats counts verified technicians; admin list orders by createdAt.
   @@index([isVerified])
@@ -319,13 +332,20 @@ model Booking {
   preStartPhotoUrls   String[]      @default([])
   preCloseChecklistAt DateTime?
   preClosePhotoUrls   String[]      @default([])
+  // v1.7 labour/materials split (§17.5), set from the accepted quote's line
+  // totals for quote_first bookings. For fixed_scope bookings labourFils =
+  // totalJod*1000 and materialsFils = 0. totalJod remains the authoritative
+  // charge amount; these two are the customer-facing invoice breakdown
+  // (three-line invoice rule, §17.5.4) and must stay in sync with it.
+  labourFils          Int           @default(0)
+  materialsFils       Int           @default(0)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
-  customer             User                   @relation("CustomerBookings", fields: [customerId], references: [id])
-  technician           TechnicianProfile?     @relation("TechnicianBookings", fields: [technicianId], references: [id])
-  service              Service                @relation(fields: [serviceId], references: [id])
-  promoCode            PromoCode?             @relation(fields: [promoCodeId], references: [id])
+  customer             User                          @relation("CustomerBookings", fields: [customerId], references: [id])
+  technician           TechnicianProfile?            @relation("TechnicianBookings", fields: [technicianId], references: [id])
+  service              Service                       @relation(fields: [serviceId], references: [id])
+  promoCode            PromoCode?                    @relation(fields: [promoCodeId], references: [id])
   payment              Payment?
   outboxEvents         OutboxEvent[]
   reviews              Review[]
@@ -336,12 +356,14 @@ model Booking {
   serviceCredits       ServiceCredit[]
   quote                BookingQuote?
   statusHistory        BookingStatusHistory[]
+  materials            BookingMaterial[]
+  verificationRequests MaterialVerificationRequest[]
   // The guarantee ticket opened against this (original) booking.
-  guarantee            GuaranteeTicket?       @relation("GuaranteeTicketBooking")
+  guarantee            GuaranteeTicket?              @relation("GuaranteeTicketBooking")
   // The free re-visit booking created when a guarantee ticket was approved
   // with a scheduled visit — set on the NEW booking, pointing back via
   // GuaranteeTicket.followupBookingId.
-  guaranteeFollowupFor GuaranteeTicket?       @relation("GuaranteeFollowupBooking")
+  guaranteeFollowupFor GuaranteeTicket?              @relation("GuaranteeFollowupBooking")
 
   @@index([customerId])
   @@index([status])
@@ -499,6 +521,10 @@ model LedgerEntry {
   currency    String           @default("JOD")
   amountJod   Decimal          @db.Decimal(10, 3)
   description String?
+  // Exactly-once guard for automatically-posted entries not tied to a specific
+  // payment/payout — e.g. 'matverif:{materialVerificationRequestId}' for the
+  // §17.5.14 variance-dispute auto-settle deduction. Mirrors ServiceCredit.refKey.
+  refKey      String?          @unique
   createdAt   DateTime         @default(now())
 
   payment Payment? @relation(fields: [paymentId], references: [id])
@@ -719,17 +745,17 @@ enum GuaranteeStatus {
 // ─────────────────────────────────────────────
 
 model SupportTicket {
-  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String          @db.Uuid
-  subject   String
-  status    SupportStatus   @default(OPEN)
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String           @db.Uuid
+  subject     String
+  status      SupportStatus    @default(OPEN)
   // Admin-assigned complaint category (set from the conversation, not by the
   // customer at creation) — null until an admin categorizes it.
-  category  SupportCategory?
+  category    SupportCategory?
   // Set when an admin escalates the ticket to the ops lead; null otherwise.
   escalatedAt DateTime?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   user     User             @relation(fields: [userId], references: [id])
   messages SupportMessage[]
@@ -1026,12 +1052,17 @@ model SubscriptionCharge {
 // set and, on accept, becomes the booking price — preserves the "no surprises" promise)
 // ─────────────────────────────────────────────
 
+/// Two uses of one table (§0.3, §17.5.1): (a) fixed_scope convenience — customer
+/// uploads a problem video, tech/ops sets one firm price (v1.6, videoUrl +
+/// quotedJod, unchanged); (b) quote_first categories (mandatory) — inspection/
+/// media assessment produces an ITEMIZED quote via `lines`, and labourFils/
+/// materialsFils are derived totals for display before the quote is accepted.
 model BookingQuote {
   id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId  String      @db.Uuid
   serviceId   String      @db.Uuid
   status      QuoteStatus @default(PENDING)
-  videoUrl    String
+  videoUrl    String?
   description String?
   // FIRM price set on review; becomes the booking's totalJod on accept.
   quotedJod   Decimal?    @db.Decimal(10, 3)
@@ -1044,9 +1075,23 @@ model BookingQuote {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  customer User     @relation("CustomerQuotes", fields: [customerId], references: [id], onDelete: Cascade)
-  service  Service  @relation(fields: [serviceId], references: [id])
-  booking  Booking? @relation(fields: [bookingId], references: [id])
+  // v1.7 quote-first fields (§17.5.3). siteMediaUrls/dimensionsNote/requestedTier
+  // are the customer's scope inputs; labourFils/materialsFils are denormalized
+  // sums of `lines` for cheap reads (recomputed whenever a line changes).
+  siteMediaUrls   String[]      @default([])
+  dimensionsNote  String?
+  requestedTier   MaterialTier?
+  labourFils      Int?
+  materialsFils   Int?
+  // Ops-review gate (§17.5.12): required above OPS_REVIEW_THRESHOLD_FILS or for
+  // any off-catalogue line, before the quote may be sent to the customer.
+  opsReviewedById String?       @db.Uuid
+  opsReviewedAt   DateTime?
+
+  customer User        @relation("CustomerQuotes", fields: [customerId], references: [id], onDelete: Cascade)
+  service  Service     @relation(fields: [serviceId], references: [id])
+  booking  Booking?    @relation(fields: [bookingId], references: [id])
+  lines    QuoteLine[]
 
   @@index([customerId, createdAt])
   @@index([status])
@@ -1059,6 +1104,377 @@ enum QuoteStatus {
   ACCEPTED
   DECLINED
   EXPIRED
+}
+
+// ─────────────────────────────────────────────
+// v1.7-v1.13 — Materials & pricing engine (§17.5). Backs the quote_first
+// archetype: itemized labour/material quote_lines, a governed material price
+// book, mandatory pre-execution BOM, the price-variance dispute protocol, the
+// index-linked price-refresh ritual, and the category-readiness gate that
+// unlocks a quote_first category (e.g. Painting) for launch (§17.13).
+// All money in this section is integer fils (1 JOD = 1000 fils), matching the
+// spec's own convention for this layer; existing tables keep their Decimal
+// JOD fields unchanged (see comments on Service/Booking above).
+// ─────────────────────────────────────────────
+
+enum PricingModel {
+  FIXED_SCOPE
+  QUOTE_FIRST
+}
+
+enum QuoteLineKind {
+  LABOUR
+  MATERIAL
+  PREP
+  FEE
+}
+
+enum MaterialTier {
+  ECONOMY
+  STANDARD
+  PREMIUM
+}
+
+enum MaterialMode {
+  LABOUR_ONLY
+  MICRO_INCLUDED
+  GOVERNED_ADDONS
+  QUOTE_FIRST_BOM
+  PROJECT_STAGED
+}
+
+enum MaterialSource {
+  TECHNICIAN_PROCURED
+  CUSTOMER_SUPPLIED
+  PLATFORM_ARRANGED
+}
+
+enum MaterialLineStatus {
+  PENDING
+  PENDING_REVIEW
+  APPROVED
+  DECLINED
+  REPLACED
+  UNUSED
+  LOCKED
+}
+
+enum CatalogSource {
+  RETAIL_OBSERVED
+  SUPPLIER_QUOTE
+  INTERNAL_STANDARD
+}
+
+enum ReadinessState {
+  COLLECTING
+  READY
+  BLOCKED
+}
+
+enum RefreshCadence {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+}
+
+enum PriceConfidence {
+  CONFIRMED
+  ESTIMATED
+  UNDER_REVIEW
+}
+
+enum PriceIndexKind {
+  DOS_CPI
+  DOS_CPI_MAINTENANCE
+  MEMR_FUEL
+  CHAMBER_OF_INDUSTRY
+}
+
+enum VarianceReason {
+  SPECIAL_TYPE
+  IMPORTED_BRAND
+  ACCESS_DIFFICULTY
+  OTHER
+}
+
+enum VerificationStatus {
+  OPEN
+  INVOICE_PROVIDED
+  UPHELD
+  DEDUCTED
+  WITHDRAWN
+}
+
+enum SubstitutionPolicy {
+  SAME_OR_HIGHER_TIER
+  NOT_ALLOWED
+}
+
+/// Itemized labour/material/prep/fee lines on a quote_first BookingQuote
+/// (§17.5.3). Material lines price against MaterialCatalog and must sit
+/// within its [priceMinFils, priceMaxFils] band (enforced in the service
+/// layer, not a DB constraint — consistent with the rest of this schema).
+model QuoteLine {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quoteId       String         @db.Uuid
+  kind          QuoteLineKind
+  materialId    String?        @db.Uuid
+  description   String
+  qty           Decimal        @default(1) @db.Decimal(8, 2)
+  unit          String?
+  unitPriceFils Int
+  totalFils     Int
+  source        MaterialSource @default(TECHNICIAN_PROCURED)
+  createdAt     DateTime       @default(now())
+
+  quote    BookingQuote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  material MaterialCatalog? @relation(fields: [materialId], references: [id])
+
+  @@index([quoteId])
+  @@map("quote_lines")
+}
+
+/// Wholesale/referral partners (§17.5.6). Day-one suppliers are 2-3 small
+/// retail shops on a zero-risk 30-day referral trial (isPilot, no contract) —
+/// not the wholesale-contract model, which is Stage B / L3 and post-MVP.
+model Supplier {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                      String
+  contactPhone              String?
+  categories                String[]  @default([])
+  contractRef               String?
+  isPilot                   Boolean   @default(true)
+  referralCommissionBps     Int?
+  agreementKind             String    @default("verbal")
+  trialStartedAt            DateTime?
+  trialEndsAt               DateTime?
+  commissionPaidOk          Boolean?
+  priceManipulationObserved Boolean?
+  trialNotes                String?
+  isActive                  Boolean   @default(true)
+  createdAt                 DateTime  @default(now())
+
+  materialCatalog   MaterialCatalog[]
+  priceObservations SupplierPriceObservation[]
+
+  @@map("suppliers")
+}
+
+/// The Fixly price book (§17.5.6-§17.5.8, L2 maturity). Day-one prices are
+/// retail-observed (catalogSource default); wholesale-backed prices are Stage
+/// B / L3, once a supply contract exists. unitPriceFils must sit within
+/// [priceMinFils, priceMaxFils] — enforced on write in the service layer.
+model MaterialCatalog {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serviceId          String?         @db.Uuid
+  supplierId         String?         @db.Uuid
+  catalogSource      CatalogSource   @default(RETAIL_OBSERVED)
+  lastPricedAt       DateTime?
+  refreshCadence     RefreshCadence  @default(MONTHLY)
+  priceConfidence    PriceConfidence @default(CONFIRMED)
+  indexKind          PriceIndexKind?
+  baseReferenceFils  Int?
+  indexedAt          DateTime?
+  slug               String          @unique
+  subcategory        String?
+  allowedForServices String[]        @default([])
+  nameAr             String
+  nameEn             String
+  brand              String?
+  tier               MaterialTier    @default(STANDARD)
+  unit               String
+  wholesaleFils      Int?
+  // v1.11 Asset-Light model: Fixly earns the shop's referral commission, not a
+  // markup on the technician's purchase. Retained at 0 for a funded future.
+  techMarginBps      Int             @default(0)
+  unitPriceFils      Int
+  priceMinFils       Int
+  priceMaxFils       Int
+  varianceAlertBps   Int             @default(1500)
+  coverageNote       String?
+  priceRefreshedAt   DateTime?
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  service           Service?                   @relation(fields: [serviceId], references: [id])
+  supplier          Supplier?                  @relation(fields: [supplierId], references: [id])
+  quoteLines        QuoteLine[]
+  bookingMaterials  BookingMaterial[]
+  priceObservations SupplierPriceObservation[]
+
+  @@index([serviceId])
+  @@map("material_catalog")
+}
+
+/// Tiered per-unit rate cards for area/quantity-driven quote_first work
+/// (§17.5.8) — e.g. painting priced per m². The quote total is COMPUTED
+/// (measured qty × tier rate), removing pricing discretion inside the quote.
+model ServiceRateCard {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serviceId         String       @db.Uuid
+  tier              MaterialTier
+  unit              String
+  rateFils          Int
+  includesMaterials Boolean      @default(true)
+  descriptionAr     String?
+  isActive          Boolean      @default(true)
+  effectiveFrom     DateTime     @default(dbgenerated("CURRENT_DATE")) @db.Date
+  createdAt         DateTime     @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, tier, effectiveFrom])
+  @@map("service_rate_cards")
+}
+
+/// Bill of Materials per booking, created and approved BEFORE execution
+/// (§17.5.9) — never reconstructed from memory or receipts afterwards.
+/// Locked at work start; post-lock discoveries route through the existing
+/// extra-work gate (AdditionalWorkItem), never a silent BOM edit.
+model BookingMaterial {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId          String             @db.Uuid
+  materialId         String?            @db.Uuid
+  source             MaterialSource     @default(TECHNICIAN_PROCURED)
+  status             MaterialLineStatus @default(PENDING)
+  description        String
+  brand              String?
+  qty                Decimal            @default(1) @db.Decimal(8, 2)
+  unit               String?
+  unitPriceFils      Int
+  totalFils          Int
+  referencePriceFils Int?
+  varianceBps        Int?
+  // v1.10 variance-dispute protocol (§17.5.14): above variance_justify_bps
+  // (~20%) the technician must record a reason before the invoice can
+  // complete, and the customer must digitally ack the comparison before work.
+  varianceReason     VarianceReason?
+  varianceReasonNote String?
+  customerAckAt      DateTime?
+  isMicro            Boolean            @default(false)
+  replacesLineId     String?            @db.Uuid
+  supplierInvoiceUrl String?
+  reviewedById       String?            @db.Uuid
+  reviewedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  booking              Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  material             MaterialCatalog?              @relation(fields: [materialId], references: [id])
+  replacesLine         BookingMaterial?              @relation("MaterialSubstitution", fields: [replacesLineId], references: [id])
+  substitutedBy        BookingMaterial[]             @relation("MaterialSubstitution")
+  verificationRequests MaterialVerificationRequest[]
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("booking_materials")
+}
+
+/// The five mandatory Materials-Policy questions (§17.5.5), answered per
+/// service and enforced by the system rather than left to an ops document.
+model ServiceMaterialPolicy {
+  serviceId                String             @id @db.Uuid
+  mode                     MaterialMode       @default(LABOUR_ONLY)
+  microThresholdFils       Int                @default(3000)
+  allowCustomerSupply      Boolean            @default(true)
+  substitution             SubstitutionPolicy @default(SAME_OR_HIGHER_TIER)
+  quoteRequiredAboveFils   Int?
+  quoteValidityHours       Int                @default(168)
+  qualityFloorGrade        MaterialTier       @default(ECONOMY)
+  surplusBelongsToCustomer Boolean            @default(true)
+  updatedAt                DateTime           @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("service_material_policies")
+}
+
+/// Amman retail price-refresh loop (§17.5.6): 3-5 shops per trade, logged by
+/// hand, so the catalogue band tracks real market prices instead of drifting.
+model SupplierPriceObservation {
+  id           Int      @id @default(autoincrement())
+  materialId   String   @db.Uuid
+  supplierId   String?  @db.Uuid
+  shopName     String?
+  area         String?
+  observedFils Int
+  observedAt   DateTime @default(now())
+  observedById String?  @db.Uuid
+  note         String?
+
+  material MaterialCatalog @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  supplier Supplier?       @relation(fields: [supplierId], references: [id])
+
+  @@index([materialId, observedAt])
+  @@map("supplier_price_observations")
+}
+
+/// Price-variance dispute resolution (§17.5.14): one step, one deadline. The
+/// technician has 24h to upload the original purchase invoice; on timeout the
+/// difference is deducted automatically via a LedgerEntry (refKey guards
+/// exactly-once), matching the ServiceCredit exactly-once idiom already used
+/// elsewhere in this schema.
+model MaterialVerificationRequest {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingMaterialId  String             @db.Uuid
+  bookingId          String             @db.Uuid
+  technicianId       String             @db.Uuid
+  status             VerificationStatus @default(OPEN)
+  referencePriceFils Int
+  chargedPriceFils   Int
+  deltaFils          Int
+  invoiceUrl         String?
+  deadlineAt         DateTime
+  resolvedById       String?            @db.Uuid
+  resolvedAt         DateTime?
+  createdAt          DateTime           @default(now())
+
+  bookingMaterial BookingMaterial   @relation(fields: [bookingMaterialId], references: [id], onDelete: Cascade)
+  booking         Booking           @relation(fields: [bookingId], references: [id])
+  technician      TechnicianProfile @relation(fields: [technicianId], references: [id])
+
+  @@index([status, deadlineAt])
+  @@map("material_verification_requests")
+}
+
+/// Monthly re-basing inputs (§17.5.13), captured by hand from official free
+/// Jordanian sources (DoS CPI, Ministry of Energy fuel prices, Chamber of
+/// Industry). Deliberately manual entry, not a scraper/integration.
+model PriceIndexReading {
+  id           Int            @id @default(autoincrement())
+  kind         PriceIndexKind
+  periodMonth  DateTime       @db.Date
+  valueNumeric Decimal        @db.Decimal(12, 4)
+  unit         String?
+  sourceUrl    String?
+  recordedById String?        @db.Uuid
+  recordedAt   DateTime       @default(now())
+  note         String?
+
+  @@unique([kind, periodMonth])
+  @@map("price_index_readings")
+}
+
+/// Quantitative L1->L2 promotion trigger (§17.5.15): a quote_first category
+/// may only switch on once all three thresholds hold simultaneously. Replaces
+/// "the founder feels ready" with a number on a screen.
+model CategoryReadinessGate {
+  serviceId            String         @id @db.Uuid
+  state                ReadinessState @default(COLLECTING)
+  quotesRequired       Int            @default(50)
+  quotesClosed         Int            @default(0)
+  maxDisputeBps        Int            @default(800)
+  disputeBps           Int            @default(0)
+  maxPriceDeviationBps Int            @default(1500)
+  priceDeviationBps    Int            @default(0)
+  lastEvaluatedAt      DateTime?
+  openedAt             DateTime?
+  updatedAt            DateTime       @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("category_readiness_gate")
 }
 
 // ─────────────────────────────────────────────

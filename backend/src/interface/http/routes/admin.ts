@@ -8,6 +8,7 @@ import { authLimiter, rateLimitEnabled } from '../middleware/rateLimit';
 import { AdminService } from '../../../application/admin/AdminService';
 import { adminOpsRouter } from './adminOps';
 import { adminBusinessRouter } from './adminBusiness';
+import { adminMaterialsRouter } from './adminMaterials';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { UnauthorizedError } from '../../../shared/errors';
 import { ADMIN_REFRESH_COOKIE, setAdminRefreshCookie, clearAdminRefreshCookie } from '../cookies';
@@ -272,3 +273,4 @@ adminRouter.post(
 // authenticate + requireActiveAdmin chain runs exactly once per request.
 adminRouter.use(adminOpsRouter);
 adminRouter.use(adminBusinessRouter);
+adminRouter.use(adminMaterialsRouter);

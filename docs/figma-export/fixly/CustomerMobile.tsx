@@ -19,14 +19,14 @@ const isLaunch = (id: string) => (LAUNCH_IDS as readonly string[]).includes(id);
 const CREDIT_BALANCE = 20; // service-credit wallet balance (دينار)
 
 type Screen =
-  | "splash" | "onboarding" | "phone" | "otp" | "permissions"
+  | "splash" | "onboarding" | "language" | "phone" | "otp" | "permissions"
   | "home" | "service" | "time" | "location" | "payment" | "review" | "searching"
   | "assigned" | "tracking" | "reviews" | "report" | "cancel" | "arrived"
   | "in-progress" | "approve-work" | "completed" | "rate"
   | "bookings" | "booking-detail" | "guarantee" | "guarantee-new" | "guarantee-ticket"
   | "profile" | "edit-profile" | "addresses" | "payment-methods" | "notifications" | "support" | "settings"
   | "settings-language" | "settings-notifications-pref" | "settings-appearance"
-  | "protection" | "wallet" | "video-quotes" | "video-new" | "referral"
+  | "protection" | "wallet" | "video-quotes" | "video-new" | "quote-request" | "quote-offer" | "bom" | "variance" | "invoice" | "referral"
   | "no-techs" | "payment-failed" | "offline" | "location-denied";
 
 const TABS = [
@@ -44,6 +44,8 @@ export default function CustomerMobile() {
   const [resendTimer, setResendTimer] = useState(45);
   const [member, setMember] = useState(false); // Protection Plan membership
   const [renewDate] = useState("08/07/2026");
+  const [language, setLanguage] = useState<"ar" | "en">("ar");
+  const [nightSurcharge, setNightSurcharge] = useState(false);
 
   useEffect(() => {
     if (screen === "otp" && resendTimer > 0) {
@@ -59,17 +61,18 @@ export default function CustomerMobile() {
     <PhoneFrame>
       <div className="h-full overflow-hidden" style={{ background: "#F6F8FB" }}>
         {screen === "splash" && <Splash onContinue={() => go("onboarding")} />}
-        {screen === "onboarding" && <Onboarding onDone={() => go("phone")} />}
+        {screen === "onboarding" && <Onboarding onDone={() => go("language")} />}
+        {screen === "language" && <LanguagePick language={language} onSelect={(next) => { setLanguage(next); go("phone"); }} />}
         {screen === "phone" && <PhoneEntry onSubmit={() => { setResendTimer(45); go("otp"); }} onBack={() => go("onboarding")} />}
         {screen === "otp" && <OtpVerify otp={otp} setOtp={setOtp} resendTimer={resendTimer} onDone={() => go("permissions")} onBack={() => go("phone")} onResend={() => { setResendTimer(45); notify("تم إرسال رمز جديد عبر واتساب", "success"); }} />}
         {screen === "permissions" && <Permissions onDone={() => go("home")} />}
 
         {screen === "home" && <HomeScreen member={member} onPickService={(s) => { setSelectedService(s); go("service"); }} onTracking={() => go("tracking")} onNotifications={() => go("notifications")} onSupport={() => go("support")} onProtection={() => go("protection")} onWallet={() => go("wallet")} onVideo={() => go("video-quotes")} onOffline={() => go("offline")} />}
-        {screen === "service" && <ServiceDetail svc={selectedService} onBack={() => go("home")} onBook={() => { setBookingStep(0); go("time"); }} onVideo={() => go("video-quotes")} />}
-        {screen === "time" && <TimeStep onBack={() => go("service")} onNext={() => { setBookingStep(1); go("location"); }} />}
+        {screen === "service" && <ServiceDetail svc={selectedService} onBack={() => go("home")} onBook={() => { setBookingStep(0); go("time"); }} onVideo={() => go("video-quotes")} onQuote={() => go("quote-request")} />}
+        {screen === "time" && <TimeStep onBack={() => go("service")} onNext={(night) => { setNightSurcharge(night); setBookingStep(1); go("location"); }} />}
         {screen === "location" && <LocationStep onBack={() => go("time")} onNext={() => { setBookingStep(2); go("payment"); }} onDenied={() => go("location-denied")} />}
         {screen === "payment" && <PaymentStep onBack={() => go("location")} onNext={() => { setBookingStep(3); go("review"); }} />}
-        {screen === "review" && <ReviewStep svc={selectedService} member={member} onBack={() => go("payment")} onConfirm={() => go("searching")} onFail={() => go("payment-failed")} />}
+        {screen === "review" && <ReviewStep svc={selectedService} member={member} nightSurcharge={nightSurcharge} onBack={() => go("payment")} onConfirm={() => go("searching")} onFail={() => go("payment-failed")} />}
         {screen === "searching" && <Searching onAssign={() => go("assigned")} onCancel={() => go("home")} onNoTechs={() => go("no-techs")} />}
         {screen === "assigned" && <TechnicianAssigned svc={selectedService} onTrack={() => go("tracking")} onReviews={() => go("reviews")} onCancel={() => go("cancel")} />}
         {screen === "tracking" && <LiveTracking svc={selectedService} onCancel={() => go("cancel")} onArrived={() => go("arrived")} onInProgress={() => go("in-progress")} onBack={() => go("home")} onReport={() => go("report")} onReviews={() => go("reviews")} />}
@@ -77,9 +80,9 @@ export default function CustomerMobile() {
         {screen === "report" && <ReportTechnician onBack={() => go("tracking")} onDone={() => go("tracking")} />}
         {screen === "arrived" && <Arrived onInProgress={() => go("in-progress")} onWallet={() => go("wallet")} onBack={() => go("tracking")} />}
         {screen === "cancel" && <CancelFlow onBack={() => go("tracking")} onDone={() => go("home")} />}
-        {screen === "in-progress" && <InProgress onApprove={() => go("approve-work")} onDone={() => go("completed")} />}
+        {screen === "in-progress" && <InProgress onApprove={() => go("bom")} onDone={() => go("completed")} />}
         {screen === "approve-work" && <ApproveWork onBack={() => go("in-progress")} onApproved={() => go("in-progress")} />}
-        {screen === "completed" && <Completed onRate={() => go("rate")} />}
+        {screen === "completed" && <Completed onRate={() => go("rate")} onInvoice={() => go("invoice")} />}
         {screen === "rate" && <RateTechnician onSubmit={() => go("home")} />}
 
         {screen === "bookings" && <Bookings onOpen={() => go("booking-detail")} />}
@@ -103,6 +106,11 @@ export default function CustomerMobile() {
         {screen === "wallet" && <WalletScreen onBack={() => go("profile")} />}
         {screen === "video-quotes" && <VideoQuotes onBack={() => go("home")} onNew={() => go("video-new")} onAccept={() => { setSelectedService(SERVICES[2]); setBookingStep(0); go("time"); }} />}
         {screen === "video-new" && <VideoNewRequest onBack={() => go("video-quotes")} onDone={() => go("video-quotes")} />}
+        {screen === "quote-request" && <QuoteRequest onBack={() => go("service")} onDone={() => go("quote-offer")} />}
+        {screen === "quote-offer" && <QuoteOffer onBack={() => go("quote-request")} onAccept={() => { notify("تم إنشاء الحجز بالسعر المتفق عليه", "success"); go("searching"); }} />}
+        {screen === "bom" && <BomApproval onBack={() => go("in-progress")} onApprove={() => go("variance")} />}
+        {screen === "variance" && <VarianceConsent onBack={() => go("bom")} onApprove={() => { notify("تم اعتماد قائمة المواد", "success"); go("in-progress"); }} />}
+        {screen === "invoice" && <InvoiceTransparency onBack={() => go("completed")} />}
         {screen === "referral" && <Referral onBack={() => go("profile")} />}
 
         {screen === "no-techs" && <NoTechs onRetry={() => go("home")} onLater={() => { setBookingStep(0); go("time"); }} />}
@@ -177,6 +185,25 @@ function Onboarding({ onDone }: { onDone: () => void }) {
       </div>
       <div className="px-5 pb-8">
         <PrimaryButton onClick={() => i < 2 ? setI(i + 1) : onDone()}>{i < 2 ? "متابعة" : "ابدأ الآن"}</PrimaryButton>
+      </div>
+    </div>
+  );
+}
+
+function LanguagePick({ language, onSelect }: { language: "ar" | "en"; onSelect: (language: "ar" | "en") => void }) {
+  return (
+    <div className="h-full bg-white flex flex-col px-5 pt-12">
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#E8F1FE" }}><span style={{ fontSize: 30 }}>ع / A</span></div>
+      <h1 className="mt-7" style={{ fontWeight: 700, fontSize: 25 }}>اختر اللغة</h1>
+      <p className="mt-2" style={{ color: "#475569", fontSize: 14 }}>يمكنك تغييرها لاحقاً من الإعدادات.</p>
+      <div className="mt-8 space-y-3">
+        {[{ id: "ar" as const, title: "العربية", note: "اللغة الأساسية", dir: "RTL" }, { id: "en" as const, title: "English", note: "English interface", dir: "LTR" }].map(item => (
+          <button key={item.id} onClick={() => onSelect(item.id)} className="w-full p-4 rounded-2xl border-2 flex items-center gap-3 text-start" style={{ borderColor: language === item.id ? "#1366D6" : "#E2E8F0", background: language === item.id ? "#E8F1FE" : "#FFF" }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: language === item.id ? "#1366D6" : "#F1F5F9", color: language === item.id ? "#FFF" : "#475569", fontWeight: 700 }}>{item.dir}</div>
+            <div className="flex-1"><div style={{ fontWeight: 700 }}>{item.title}</div><div style={{ color: "#64748B", fontSize: 12 }}>{item.note}</div></div>
+            {language === item.id && <CheckCircle2 size={20} color="#1366D6" />}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -346,7 +373,7 @@ function HomeScreen({ member, onPickService, onTracking, onNotifications, onSupp
           {ordered.map(s => {
             const soonSvc = !isLaunch(s.id);
             return (
-              <button key={s.id} onClick={() => soonSvc ? notify("هذه الخدمة ستتوفر قريباً") : onPickService(s)} className="text-start relative">
+              <button key={s.id} onClick={() => s.id === "paint" ? onPickService(s) : soonSvc ? notify("هذه الخدمة ستتوفر قريباً") : onPickService(s)} className="text-start relative">
                 <Card className="p-4" style={{ opacity: soonSvc ? 0.7 : 1 }}>
                   {soonSvc && (
                     <span className="absolute top-2 end-2 px-2 py-0.5 rounded-full" style={{ background: "#E2E8F0", color: "#475569", fontSize: 10, fontWeight: 700 }}>قريباً</span>
@@ -354,7 +381,11 @@ function HomeScreen({ member, onPickService, onTracking, onNotifications, onSupp
                   <ServiceIcon id={s.id} size={24} />
                   <div className="mt-3" style={{ fontWeight: 700, fontSize: 15 }}>{s.ar}</div>
                   <div className="mt-1 flex items-center justify-between">
-                    <PriceBadge amount={s.price} />
+                    {s.id === "paint" ? (
+                      <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1" style={{ background: "#FCE7F3", color: "#9D174D", fontSize: 11, fontWeight: 700 }}>حسب المعاينة</span>
+                    ) : (
+                      <PriceBadge amount={s.price} />
+                    )}
                     <span style={{ color: "#94A3B8", fontSize: 11 }}><span style={{ fontFamily: "Inter" }}>{s.dur}</span> د</span>
                   </div>
                 </Card>
@@ -406,6 +437,26 @@ function HomeScreen({ member, onPickService, onTracking, onNotifications, onSupp
           </Card>
         </button>
       </Section>
+
+      {/* §17.12 + §0.1 — Why Fixly / competitive positioning */}
+      <Section title="لماذا Fixly؟">
+        <div className="space-y-2">
+          {[
+            { emoji: "💰", title: "سعر ثابت قبل الحجز", body: "لا مفاجآت — تعرف المبلغ الكامل قبل أن يصل الفني.", key: "price" },
+            { emoji: "🛡️", title: "فني معتمد بالاختبار", body: "كل فني اجتاز تحقق الهوية واختباراً عملياً وفترة تجربة مراقبة.", key: "cert" },
+            { emoji: "🔄", title: "ضمان حقيقي 30 يوماً", body: "إذا تكررت المشكلة نُرسل فنياً آخر مجاناً — بدون جدال.", key: "warranty" },
+            { emoji: "⚡", title: "24/7 بما فيها الجمعة", body: "الطوارئ لا تنتظر — نحن متاحون دائماً بخلاف المنافسين.", key: "247" },
+          ].map(p => (
+            <div key={p.key} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#F8FAFC" }}>
+              <span style={{ fontSize: 22 }}>{p.emoji}</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{p.title}</div>
+                <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{p.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
     </div>
   );
 }
@@ -428,7 +479,7 @@ function HomeSkeleton() {
 
 /* ---------- Service detail ---------- */
 
-function ServiceDetail({ svc, onBack, onBook, onVideo }: { svc: typeof SERVICES[number]; onBack: () => void; onBook: () => void; onVideo: () => void }) {
+function ServiceDetail({ svc, onBack, onBook, onVideo, onQuote }: { svc: typeof SERVICES[number]; onBack: () => void; onBook: () => void; onVideo: () => void; onQuote: () => void }) {
   const [pkg, setPkg] = useState(0);
   const packages = [
     { name: "إصلاح", note: "إصلاح عطل قائم" },
@@ -446,11 +497,42 @@ function ServiceDetail({ svc, onBack, onBook, onVideo }: { svc: typeof SERVICES[
           </div>
         </div>
 
-        <div className="mx-5 mt-5 p-5 rounded-2xl" style={{ background: "#E8F1FE" }}>
-          <div style={{ color: "#0E4FA8", fontSize: 13, fontWeight: 600 }}>السعر الثابت</div>
-          <div className="mt-1"><PriceBadge amount={svc.price} big /></div>
-          <div className="mt-2" style={{ color: "#0E4FA8", fontSize: 12 }}>لا مفاجآت — السعر شامل الفحص واليد العاملة</div>
-        </div>
+        {svc.id === "paint" ? (
+          <div className="mx-5 mt-5">
+            <div className="p-5 rounded-2xl" style={{ background: "#FDF2F8" }}>
+              <div style={{ color: "#9D174D", fontSize: 20, fontWeight: 700 }}>حسب المعاينة</div>
+              <p className="mt-2" style={{ color: "#9D174D", fontSize: 13 }}>رسوم معاينة <b style={{ fontFamily: "Inter" }}>10</b> دنانير — تُخصم من قيمة المشروع عند قبول العرض.</p>
+              <p className="mt-2" style={{ color: "#475569", fontSize: 12 }}>سترى أجور العمل والمواد والتجهيز كبنود منفصلة قبل البدء.</p>
+            </div>
+            {/* §17.5.17 — quote_first category promise */}
+            <div className="mt-3 p-3 rounded-xl flex items-start gap-2" style={{ background: "#F5F3FF" }}>
+              <ShieldCheck size={14} color="#7C3AED" style={{ marginTop: 2, flexShrink: 0 }} />
+              <p style={{ fontSize: 11, color: "#4C1D95", lineHeight: 1.7 }}>
+                معاينة واضحة وسعر نهائي مفصّل قبل البدء — المواد مبيّنة بشفافية، ولا أي زيادة بدون موافقتك، والضمان يغطي الشغل ضمن النطاق المتفق عليه.
+              </p>
+            </div>
+            <button className="mt-3 w-full text-start p-3 rounded-xl border border-slate-200 flex items-center justify-between" onClick={() => {}}>
+              <span style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>لماذا لا يوجد سعر فوري؟</span>
+              <ChevronLeft size={16} color="#94A3B8" />
+            </button>
+            <div className="mt-2 p-3 rounded-xl" style={{ background: "#F8FAFF", fontSize: 12, color: "#475569", lineHeight: 1.7 }}>
+              سعر الدهان يعتمد على المساحة والتجهيز ونوع الدهان. نعطيك عرضاً مفصّلاً وثابتاً قبل البدء — لا أي مفاجأة.
+            </div>
+          </div>
+        ) : (
+          <div className="mx-5 mt-5 p-5 rounded-2xl" style={{ background: "#E8F1FE" }}>
+            <div style={{ color: "#0E4FA8", fontSize: 13, fontWeight: 600 }}>السعر الثابت</div>
+            <div className="mt-1"><PriceBadge amount={svc.price} big /></div>
+            <div className="mt-2" style={{ color: "#0E4FA8", fontSize: 12 }}>لا مفاجآت — السعر شامل الفحص واليد العاملة</div>
+            {/* §17.5.17 — fixed_scope category promise */}
+            <div className="mt-3 p-2.5 rounded-xl flex items-start gap-2" style={{ background: "#DBEAFE" }}>
+              <ShieldCheck size={13} color="#1366D6" style={{ marginTop: 2, flexShrink: 0 }} />
+              <p style={{ fontSize: 11, color: "#1E40AF", lineHeight: 1.7 }}>
+                السعر ثابت ومعروف قبل الحجز — ولا زيادة إلا بموافقتك داخل التطبيق.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Package options */}
         <Section title="نوع الخدمة">
@@ -517,7 +599,255 @@ function ServiceDetail({ svc, onBack, onBook, onVideo }: { svc: typeof SERVICES[
           </Card>
         </Section>
       </div>
-      <FullCTA onClick={onBook}>اطلب الآن</FullCTA>
+      <FullCTA onClick={svc.id === "paint" ? onQuote : onBook}>{svc.id === "paint" ? "اطلب عرض سعر" : "اطلب الآن"}</FullCTA>
+    </div>
+  );
+}
+
+function QuoteRequest({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
+  const [tier, setTier] = useState("متوسط");
+  const TIERS = [
+    { id: "اقتصادي", price: "~2 دينار/م²", note: "طبقة واحدة · دهان محلي" },
+    { id: "متوسط",   price: "~3.2 دينار/م²", note: "طبقتان · ماركة متوسطة" },
+    { id: "ممتاز",   price: "~5.5 دينار/م²", note: "3 طبقات + برايمر · ماركة عالمية" },
+  ];
+  return (
+    <div className="h-full bg-white relative flex flex-col">
+      <TopBar title="طلب عرض سعر" onBack={onBack} />
+      <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto pb-28">
+        <Card className="p-4" style={{ background: "#FDF2F8" }}>
+          <b style={{ color: "#9D174D" }}>دهان — طلب تسعير</b>
+          <p className="mt-1" style={{ color: "#9D174D", fontSize: 12 }}>معاينة واضحة وسعر نهائي مفصّل قبل البدء.<br />رسوم المعاينة <b style={{ fontFamily: "Inter" }}>10</b> دنانير تُخصم عند القبول.</p>
+        </Card>
+        <div>
+          <label style={{ fontWeight: 700, fontSize: 14 }}>وصف المساحة أو المشكلة</label>
+          <textarea defaultValue="غرفة نوم، تحتاج دهاناً جديداً وتجهيز بعض الشقوق" className="mt-2 w-full h-20 rounded-xl border border-slate-200 p-3 text-sm" />
+        </div>
+        <div>
+          <label style={{ fontWeight: 700, fontSize: 14 }}>المساحة التقريبية أو عدد الغرف</label>
+          <input defaultValue="غرفة نوم — حوالي 15 م²" className="mt-2 w-full h-12 rounded-xl border border-slate-200 px-4 outline-none text-sm" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }} className="mb-2">فئة المواد</div>
+          <div className="space-y-2">
+            {TIERS.map(t => (
+              <button key={t.id} onClick={() => setTier(t.id)} className="w-full text-start p-3 rounded-xl border-2 flex items-center justify-between"
+                style={{ borderColor: tier === t.id ? "#1366D6" : "#E2E8F0", background: tier === t.id ? "#E8F1FE" : "#FFF" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: tier === t.id ? "#0E4FA8" : "#0F172A" }}>{t.id}</div>
+                  <div style={{ fontSize: 12, color: "#475569" }}>{t.note}</div>
+                </div>
+                <span style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 13, color: tier === t.id ? "#1366D6" : "#94A3B8" }}>{t.price}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <Card className="p-3 flex items-center gap-2">
+          <Camera size={18} color="#1366D6" />
+          <span style={{ fontSize: 13 }}>أضف صوراً أو فيديو للمكان</span>
+          <button onClick={() => notify("تمت إضافة صور المعاينة", "success")} className="ms-auto text-xs font-bold" style={{ color: "#1366D6" }}>إضافة</button>
+        </Card>
+      </div>
+      <FullCTA onClick={onDone}>إرسال طلب التسعير</FullCTA>
+    </div>
+  );
+}
+
+function QuoteOffer({ onBack, onAccept }: { onBack: () => void; onAccept: () => void }) {
+  const [expired, setExpired] = useState(false);
+  const groups = [
+    { label: "أجور العمل", items: [{ name: "يد عاملة — دهان غرفة نوم", qty: "1", price: "45 دينار" }] },
+    { label: "المواد", items: [
+      { name: "برايمر (1 غالون)", qty: "1", price: "12 دينار" },
+      { name: "دهان متوسط (2 غالون)", qty: "2", price: "36 دينار" },
+      { name: "مواد حماية (نايلون + شريط)", qty: "1", price: "4 دنانير" },
+    ]},
+    { label: "التجهيز", items: [{ name: "معجون وترميم الشقوق", qty: "1", price: "8 دنانير" }] },
+  ];
+  return (
+    <div className="h-full bg-white relative flex flex-col">
+      <TopBar title="عرض السعر" onBack={onBack} />
+      <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto pb-28">
+        {/* Quote validity / expiry state */}
+        {expired ? (
+          <Card className="p-4" style={{ background: "#FEE2E2" }}>
+            <div className="flex items-center gap-2">
+              <AlertCircle size={18} color="#B91C1C" />
+              <b style={{ color: "#B91C1C" }}>انتهت صلاحية العرض</b>
+            </div>
+            <p className="mt-1" style={{ color: "#991B1B", fontSize: 12 }}>العروض المنتهية لا يمكن اعتمادها — يجب إعادة التسعير من الفني. أسعار المواد في عمّان تتغير مع الوقود والاستيراد.</p>
+            <button onClick={() => notify("تم إرسال طلب إعادة التسعير للفني")} className="mt-3 w-full h-10 rounded-xl text-sm font-semibold text-white" style={{ background: "#B91C1C" }}>طلب عرض جديد</button>
+          </Card>
+        ) : (
+          <Card className="p-4" style={{ background: "#DCFCE7" }}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={18} color="#15803D" />
+              <b style={{ color: "#166534" }}>عرض مفصّل وثابت</b>
+            </div>
+            <p className="mt-1" style={{ color: "#166534", fontSize: 12 }}>العرض صالح حتى <span style={{ fontFamily: "Inter" }}>15/07/2026</span> — تم تسعيره بعد الفحص الميداني</p>
+          </Card>
+        )}
+
+        {/* Demo toggle for expired state */}
+        <button onClick={() => setExpired(e => !e)} className="text-xs font-semibold" style={{ color: "#94A3B8" }}>
+          محاكاة: {expired ? "عرض ساري" : "عرض منتهي الصلاحية"}
+        </button>
+
+        {!expired && (
+          <>
+            {groups.map(g => (
+              <Card key={g.label} className="p-4">
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#475569", marginBottom: 8, borderBottom: "1px solid #F1F5F9", paddingBottom: 6 }}>{g.label}</div>
+                <div className="space-y-2">
+                  {g.items.map(item => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div style={{ fontSize: 14 }}>{item.name}</div>
+                        <div style={{ fontSize: 11, color: "#94A3B8" }}>الكمية: {item.qty}</div>
+                      </div>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{item.price}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
+
+            <Card className="p-4 space-y-2">
+              <InlineRow label="رسوم المعاينة (مخصومة)" value={<span style={{ color: "#15803D" }}>−10 دنانير</span>} />
+              <div className="h-px bg-slate-200" />
+              <InlineRow strong label="الإجمالي الثابت" value="95 دينار" />
+            </Card>
+
+            <p style={{ color: "#475569", fontSize: 12 }}>لن يبدأ العمل قبل اعتمادك لقائمة المواد. أي زيادة عن السعر المرجعي تحتاج موافقتك وسترى فاتورة الشراء الأصلية.</p>
+          </>
+        )}
+      </div>
+      {!expired && <FullCTA onClick={onAccept}>اعتماد العرض وحجز الموعد</FullCTA>}
+    </div>
+  );
+}
+
+function BomApproval({ onBack, onApprove }: { onBack: () => void; onApprove: () => void }) {
+  const [source, setSource] = useState("platform");
+  const [acknowledged, setAcknowledged] = useState(false);
+  const canApprove = source === "platform" || acknowledged;
+
+  return (
+    <div className="h-full bg-white relative flex flex-col">
+      <TopBar title="اعتماد قائمة المواد" onBack={onBack} />
+      <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto pb-28">
+        <Card className="p-4" style={{ background: "#FFFBEB" }}>
+          <b style={{ color: "#92400E" }}>لن يبدأ العمل قبل اعتمادك لقائمة المواد</b>
+          <p style={{ color: "#92400E", fontSize: 12 }} className="mt-1">المواد بأسعار معتمدة من Fixly — الفني لا يحدد السعر.</p>
+        </Card>
+
+        {/* BOM line items with price confidence chips */}
+        <Card className="p-4 space-y-3">
+          {[
+            { name: "قاطع ABB 16A", brand: "ABB — اختيار العميل", qty: "×1", price: "6 دنانير", confidence: "confirmed" as const, micro: false },
+            { name: "سلك 2.5مم", brand: "Prysmian", qty: "×3م", price: "1.8 دينار", confidence: "confirmed" as const, micro: false },
+            { name: "علبة كهرباء", brand: "محلي", qty: "×1", price: "—", confidence: "micro" as const, micro: true },
+          ].map((item, i) => {
+            const confChip = {
+              confirmed: { label: "سعر مؤكد", bg: "#DCFCE7", color: "#15803D" },
+              estimate:  { label: "تقدير", bg: "#FEF3C7", color: "#B45309" },
+              under_review: { label: "قيد المراجعة", bg: "#FEE2E2", color: "#B91C1C" },
+              micro:     { label: "مشمول في الأجور", bg: "#F1F5F9", color: "#64748B" },
+            }[item.confidence];
+            return (
+              <div key={i} className="flex items-start justify-between py-2 border-b last:border-0 border-slate-100">
+                <div className="flex-1">
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{item.name} {item.qty}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{item.brand}</div>
+                  {item.micro && <p style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>مادة صغيرة (&lt;2 دينار) — مدمجة في أجور العمل</p>}
+                </div>
+                <div className="text-end space-y-1">
+                  {!item.micro && <div style={{ fontWeight: 700, fontSize: 14 }}>{item.price}</div>}
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: confChip.bg, color: confChip.color }}>{confChip.label}</span>
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex justify-between pt-2">
+            <span style={{ fontWeight: 700, color: "#475569", fontSize: 13 }}>إجمالي المواد</span>
+            <span style={{ fontWeight: 800, fontSize: 15, color: "#0F172A", fontFamily: "Inter" }}>7.8 دينار</span>
+          </div>
+        </Card>
+
+        {/* Surplus policy disclosure */}
+        <Card className="p-3 flex items-start gap-2" style={{ background: "#F8FAFC" }}>
+          <FileText size={14} color="#64748B" />
+          <p style={{ fontSize: 11, color: "#64748B" }}>أي فائض من المواد غير المستخدمة يعود لك كعميل — يوثّقه الفني في الإغلاق.</p>
+        </Card>
+
+        {/* Source picker */}
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }} className="mb-2">مصدر المواد</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => { setSource("platform"); setAcknowledged(false); }} className="p-3 rounded-xl border-2 text-sm font-semibold" style={{ borderColor: source === "platform" ? "#1366D6" : "#E2E8F0", background: source === "platform" ? "#E8F1FE" : "#FFF", color: source === "platform" ? "#0E4FA8" : "#475569" }}>
+              شراء الفني
+            </button>
+            <button onClick={() => setSource("customer")} className="p-3 rounded-xl border-2 text-sm font-semibold" style={{ borderColor: source === "customer" ? "#1366D6" : "#E2E8F0", background: source === "customer" ? "#E8F1FE" : "#FFF", color: source === "customer" ? "#0E4FA8" : "#475569" }}>
+              سأوفر المواد بنفسي
+            </button>
+          </div>
+          {source === "customer" && (
+            <div className="mt-3 p-3 rounded-xl" style={{ background: "#FEF3C7" }}>
+              <p className="text-sm" style={{ color: "#92400E", fontWeight: 600 }}>الضمان يغطي العمل فقط، وليس عيوب المواد.</p>
+              <p className="text-xs mt-1" style={{ color: "#92400E" }}>قد يرفض الفني المواد غير المناسبة.</p>
+              <button onClick={() => setAcknowledged(v => !v)} className="mt-3 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0" style={{ borderColor: acknowledged ? "#1366D6" : "#B45309", background: acknowledged ? "#1366D6" : "#FFF" }}>
+                  {acknowledged && <svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="#FFF" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>}
+                </span>
+                <span style={{ fontSize: 12, color: "#92400E", textAlign: "start" }}>أوافق — الضمان على العمل فقط</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      <FullCTA onClick={() => canApprove ? onApprove() : notify("يجب الموافقة على شرط الضمان أولاً", "error")}>
+        اعتماد قائمة المواد
+      </FullCTA>
+    </div>
+  );
+}
+
+function VarianceConsent({ onBack, onApprove }: { onBack: () => void; onApprove: () => void }) {
+  return <div className="h-full bg-white relative"><TopBar title="موافقة على فرق السعر" onBack={onBack} /><div className="px-5 py-4 space-y-4"><Card className="p-4" style={{ background: "#FFFBEB" }}><div className="flex gap-2"><AlertCircle size={19} color="#B45309"/><div><b style={{ color: "#92400E" }}>زيادة فوق السعر المرجعي</b><p style={{ color: "#92400E", fontSize: 12 }}>سترى الفاتورة الأصلية قبل الدفع النهائي.</p></div></div></Card><Card className="p-4"><InlineRow label="السعر المرجعي — سيفون" value="6 دنانير"/><InlineRow label="السعر المطلوب — ماركة مستوردة" value="8 دنانير"/><div className="h-px bg-slate-200 my-3"/><p style={{ fontSize: 12, color: "#475569" }}>السبب: ماركة مستوردة. يمكنك القبول أو طلب تحقق من السعر.</p></Card><PrimaryButton full onClick={onApprove}>أوافق على 8 دنانير</PrimaryButton><PrimaryButton full variant="outline" onClick={() => notify("بانتظار فاتورة الفني — 24 ساعة")}>طلب تحقق من السعر</PrimaryButton></div></div>;
+}
+
+function InvoiceTransparency({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="h-full bg-white">
+      <TopBar title="الفاتورة والمواد" onBack={onBack} />
+      <div className="px-5 py-4 space-y-4 overflow-y-auto pb-6" style={{ height: "calc(100% - 56px)" }}>
+        {/* Three-line invoice */}
+        <Card className="p-4 space-y-2">
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#475569", marginBottom: 4 }}>تفصيل الفاتورة</div>
+          <InlineRow label="أجور العمل" value="50 دينار" />
+          <InlineRow label="المواد" value="7.8 دينار" />
+          <InlineRow label="الرسوم" value="5 دنانير" />
+          <div className="h-px bg-slate-200" />
+          <InlineRow strong label="الإجمالي" value="62.8 دينار" />
+          <div style={{ color: "#475569", fontSize: 11 }}>رقم الفاتورة الإلكترونية (JoFotara): <span style={{ fontFamily: "Inter", fontWeight: 600, color: "#1366D6" }}>JF-2026-004821</span></div>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "#DCFCE7", color: "#15803D", fontSize: 10, fontWeight: 700 }}>ضمان كامل</span>
+        </Card>
+        {/* Shop invoice photo */}
+        <Card className="p-4 flex items-center gap-3">
+          <FileText size={24} color="#1366D6" />
+          <div className="flex-1">
+            <b>فاتورة المتجر الأصلية</b>
+            <p style={{ color: "#475569", fontSize: 12 }}>مرفوعة من الفني — موجودة قبل الدفع النهائي</p>
+          </div>
+          <button onClick={() => notify("تم فتح صورة الفاتورة")} className="text-sm font-bold" style={{ color: "#1366D6" }}>عرض</button>
+        </Card>
+        {/* Surplus policy */}
+        <Card className="p-3 flex items-start gap-2" style={{ background: "#F8FAFC" }}>
+          <FileText size={14} color="#64748B" />
+          <p style={{ fontSize: 11, color: "#64748B" }}>أي فائض من المواد غير المستخدمة يعود لك — تم توثيقه من الفني عند الإغلاق.</p>
+        </Card>
+        <p style={{ color: "#94A3B8", fontSize: 11 }}>أي زيادة عن السعر المرجعي تحتاج موافقتك المسبقة — لن يُضاف أي مبلغ بعد اعتماد القائمة.</p>
+      </div>
     </div>
   );
 }
@@ -536,12 +866,15 @@ function BookingHeader({ step, onBack, title }: { step: number; onBack: () => vo
   );
 }
 
-function TimeStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+function TimeStep({ onBack, onNext }: { onBack: () => void; onNext: (night: boolean) => void }) {
   const [mode, setMode] = useState<"now" | "later">("now");
+  const [nightSlot, setNightSlot] = useState(false); // simulate user picking a night/emergency slot
+  const NIGHT_FEE = 10;
+
   return (
     <div className="h-full bg-white relative">
       <BookingHeader step={0} onBack={onBack} title="موعد الخدمة" />
-      <div className="px-5 mt-5 space-y-3">
+      <div className="px-5 mt-5 space-y-3 overflow-y-auto pb-28" style={{ maxHeight: "calc(100% - 120px)" }}>
         <button onClick={() => setMode("now")} className="w-full text-start">
           <Card className="p-4 flex items-center gap-3" style={{ borderColor: mode === "now" ? "#1366D6" : "transparent", borderWidth: 2 }}>
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#E8F1FE", color: "#1366D6" }}>⚡</div>
@@ -567,6 +900,28 @@ function TimeStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
           </Card>
         </button>
 
+        {/* Night / emergency surcharge disclosure — surfaces BEFORE continuing */}
+        {mode === "now" && (
+          <div>
+            <button onClick={() => setNightSlot(n => !n)} className="w-full text-start p-3 rounded-xl flex items-center gap-2.5" style={{ background: nightSlot ? "#FFF7ED" : "#FFFBEB", border: `1.5px solid ${nightSlot ? "#F5A623" : "#FDE68A"}` }}>
+              <Moon size={16} color="#B45309" />
+              <span style={{ color: "#92400E", fontSize: 12, fontWeight: 600, flex: 1 }}>طوارئ ليلية؟ محاكاة فتح موعد خارج أوقات العمل</span>
+              <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0" style={{ borderColor: nightSlot ? "#F5A623" : "#CBD5E1" }}>
+                {nightSlot && <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#F5A623" }} />}
+              </div>
+            </button>
+            {nightSlot && (
+              <div className="mt-2 p-3 rounded-xl flex items-start gap-2.5" style={{ background: "#FFF7ED", border: "1.5px solid #F5A623" }}>
+                <Moon size={18} color="#B45309" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#B45309" }}>رسوم طوارئ ليلية +{NIGHT_FEE} دنانير</div>
+                  <p style={{ color: "#92400E", fontSize: 12, marginTop: 4 }}>هذا الرسم بند مستقل في الفاتورة — لا يُدمج في سعر الخدمة. سيظهر في ملخص الطلب قبل الدفع.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {mode === "later" && (
           <Card className="p-4 mt-2">
             <div className="grid grid-cols-3 gap-2">
@@ -578,15 +933,22 @@ function TimeStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
                 </div>
               ))}
             </div>
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {["10:00 ص","11:30 ص","2:00 م","4:30 م","6:00 م","7:30 م"].map((t, i) => (
-                <div key={t} className="text-center py-2 rounded-lg border" style={{ borderColor: i === 2 ? "#1366D6" : "#E2E8F0", background: i === 2 ? "#E8F1FE" : "#FFF", fontSize: 12, fontWeight: 600, color: i === 2 ? "#1366D6" : "#0F172A" }}>{t}</div>
-              ))}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {["10:00 ص","11:30 ص","2:00 م","4:30 م","11:00 م","12:00 ص"].map((t, i) => {
+                const isNight = i >= 4;
+                return (
+                  <div key={t} className="text-center py-2 rounded-lg border relative" style={{ borderColor: i === 2 ? "#1366D6" : isNight ? "#FDE68A" : "#E2E8F0", background: i === 2 ? "#E8F1FE" : isNight ? "#FFF7ED" : "#FFF", fontSize: 11, fontWeight: 600, color: i === 2 ? "#1366D6" : isNight ? "#B45309" : "#0F172A" }}>
+                    {t}
+                    {isNight && <div style={{ fontSize: 9, color: "#B45309" }}>+10 د طوارئ</div>}
+                  </div>
+                );
+              })}
             </div>
+            <p style={{ color: "#94A3B8", fontSize: 11, marginTop: 8 }}>الأوقات الليلية (بعد 10 م) تُضاف رسوم طوارئ +10 دنانير كبند مستقل.</p>
           </Card>
         )}
       </div>
-      <FullCTA onClick={onNext}>متابعة</FullCTA>
+      <FullCTA onClick={() => onNext(nightSlot)}>متابعة</FullCTA>
     </div>
   );
 }
@@ -653,17 +1015,19 @@ function PaymentStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
   );
 }
 
-function ReviewStep({ svc, member, onBack, onConfirm, onFail }: { svc: typeof SERVICES[number]; member: boolean; onBack: () => void; onConfirm: () => void; onFail: () => void }) {
+function ReviewStep({ svc, member, nightSurcharge, onBack, onConfirm, onFail }: { svc: typeof SERVICES[number]; member: boolean; nightSurcharge?: boolean; onBack: () => void; onConfirm: () => void; onFail: () => void }) {
   const [promo, setPromo] = useState("");
   const [applied, setApplied] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [handoff, setHandoff] = useState(false);
 
   const callout = 5;
+  const nightFee = nightSurcharge ? 10 : 0;
   const memberDiscount = member ? Math.round(svc.price * 0.15) : 0;
   const promoDiscount = applied ? 5 : 0;
-  const creditApplied = Math.min(CREDIT_BALANCE, Math.max(0, svc.price + callout - memberDiscount - promoDiscount));
-  const total = Math.max(0, svc.price + callout - memberDiscount - promoDiscount - creditApplied);
+  const subtotal = svc.price + callout + nightFee;
+  const creditApplied = Math.min(CREDIT_BALANCE, Math.max(0, subtotal - memberDiscount - promoDiscount));
+  const total = Math.max(0, subtotal - memberDiscount - promoDiscount - creditApplied);
 
   const doPay = () => {
     setConfirming(false);
@@ -682,7 +1046,9 @@ function ReviewStep({ svc, member, onBack, onConfirm, onFail }: { svc: typeof SE
             <div style={{ fontWeight: 700, fontSize: 15 }}>{svc.ar}</div>
             <div style={{ color: "#475569", fontSize: 12 }}><span style={{ fontFamily: "Inter" }}>{svc.dur}</span> دقيقة</div>
           </div>
-          <PriceBadge amount={svc.price} />
+          {svc.price === 0
+            ? <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "#FCE7F3", color: "#9D174D" }}>حسب الاتفاق</span>
+            : <PriceBadge amount={svc.price} />}
         </Card>
 
         <Card className="p-4 space-y-3">
@@ -720,6 +1086,14 @@ function ReviewStep({ svc, member, onBack, onConfirm, onFail }: { svc: typeof SE
         <Card className="p-4">
           <InlineRow label="سعر الخدمة" value={`${svc.price} دينار`} />
           <InlineRow label="رسوم الكشف" value={`${callout} دينار`} />
+          {nightSurcharge && (
+            <div className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-1.5" style={{ color: "#B45309", fontSize: 14 }}>
+                <Moon size={14} color="#B45309" /> رسوم طوارئ ليلية
+              </span>
+              <span style={{ color: "#B45309", fontWeight: 600, fontSize: 14 }}>+{nightFee} دينار</span>
+            </div>
+          )}
           {member && <InlineRow label="خصم العضوية −15%" value={<span style={{ color: "#1FAA59" }}>−{memberDiscount} دينار</span>} />}
           {applied && <InlineRow label={`خصم ${promo || "FIXLY20"}`} value={<span style={{ color: "#1FAA59" }}>−{promoDiscount} دينار</span>} />}
           {creditApplied > 0 && <InlineRow label="خصم رصيدك (تلقائي)" value={<span style={{ color: "#1FAA59" }}>−{creditApplied} دينار</span>} />}
@@ -939,11 +1313,17 @@ function Arrived({ onInProgress, onWallet, onBack }: { onInProgress: () => void;
           <Card className="p-4 flex items-start gap-3" style={{ background: "#DCFCE7" }}>
             <Gift size={24} color="#15803D" />
             <div>
-              <div style={{ color: "#15803D", fontWeight: 700, fontSize: 14 }}>تأخر الفني</div>
+              <div style={{ color: "#15803D", fontWeight: 700, fontSize: 14 }}>تأخر الفني أكثر من 30 دقيقة</div>
               <p style={{ color: "#166534", fontSize: 13 }} className="mt-0.5">تم إضافة <span style={{ fontFamily: "Inter", fontWeight: 700 }}>20</span> دينار إلى رصيدك تلقائياً كتعويض. اضغط لعرض المحفظة.</p>
             </div>
           </Card>
         </button>
+
+        {/* No-show callout fee policy disclosure */}
+        <Card className="p-3 mt-3 flex items-start gap-2" style={{ background: "#FEF3C7" }}>
+          <AlertCircle size={14} color="#B45309" />
+          <p style={{ color: "#92400E", fontSize: 11 }}>إذا لم تكن متواجداً عند الوصول، تُطبَّق رسوم كشف <span style={{ fontFamily: "Inter", fontWeight: 700 }}>5</span> دنانير على الفني مقابل الرحلة. تأكد من وجودك عند الموعد.</p>
+        </Card>
       </div>
       <FullCTA onClick={onInProgress}>بدء الخدمة</FullCTA>
     </div>
@@ -1027,7 +1407,9 @@ function LiveTracking({ svc, onCancel, onArrived, onInProgress, onBack, onReport
               <div style={{ fontSize: 13, fontWeight: 600 }}>{svc.ar}</div>
               <div style={{ color: "#475569", fontSize: 11 }}>الرقم #FX-20603</div>
             </div>
-            <PriceBadge amount={svc.price} />
+            {svc.price === 0
+              ? <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "#FCE7F3", color: "#9D174D" }}>حسب الاتفاق</span>
+              : <PriceBadge amount={svc.price} />}
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1044,10 +1426,21 @@ function CancelFlow({ onBack, onDone }: { onBack: () => void; onDone: () => void
   const [reason, setReason] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const reasons = ["وصل الفني متأخراً", "غيّرت رأيي", "خطأ في الطلب", "أخرى"];
+  // Post-dispatch policy: 5 JOD callout fee applies once technician is en route
+  const dispatched = true; // always true when accessed from tracking/assigned
+  const CALLOUT_FEE = 5;
+  const total = 50;
+  const refund = dispatched ? total - CALLOUT_FEE : total;
   return (
     <div className="h-full bg-white relative">
       <TopBar title="إلغاء الحجز" onBack={onBack} />
-      <div className="px-5 mt-3 space-y-2">
+      <div className="px-5 mt-3 space-y-2 overflow-y-auto pb-32" style={{ maxHeight: "calc(100% - 56px)" }}>
+        {dispatched && (
+          <Card className="p-3 flex items-start gap-2" style={{ background: "#FEF3C7" }}>
+            <AlertCircle size={16} color="#B45309" />
+            <p style={{ color: "#92400E", fontSize: 12 }}>الفني في الطريق — تُطبَّق رسوم الإلغاء بعد الانطلاق (سياسة §17.8). رسوم الكشف <span style={{ fontFamily: "Inter", fontWeight: 700 }}>{CALLOUT_FEE}</span> دنانير غير قابلة للاسترداد.</p>
+          </Card>
+        )}
         <p style={{ color: "#475569", fontSize: 13 }} className="mb-2">سبب الإلغاء</p>
         {reasons.map((r, i) => (
           <button key={r} onClick={() => setReason(i)} className="w-full text-start">
@@ -1059,21 +1452,20 @@ function CancelFlow({ onBack, onDone }: { onBack: () => void; onDone: () => void
             </Card>
           </button>
         ))}
-      </div>
-      <div className="px-5 mt-4">
         <Card className="p-4" style={{ background: "#FEF3C7" }}>
           <div style={{ color: "#B45309", fontWeight: 700, fontSize: 13 }}>ملخص الاسترداد</div>
-          <InlineRow label="المبلغ المحجوز" value="50 دينار" />
-          <InlineRow label="رسوم الإلغاء" value="0 دينار" />
+          <InlineRow label="المبلغ المحجوز" value={`${total} دينار`} />
+          {dispatched && <InlineRow label="رسوم الإلغاء بعد الانطلاق" value={<span style={{ color: "#B91C1C" }}>{CALLOUT_FEE} دينار</span>} />}
+          {!dispatched && <InlineRow label="رسوم الإلغاء" value="0 دينار" />}
           <div className="h-px bg-amber-200 my-1" />
-          <InlineRow strong label="المبلغ المسترد" value={<span style={{ color: "#15803D" }}>50 دينار</span>} />
+          <InlineRow strong label="المبلغ المسترد" value={<span style={{ color: "#15803D" }}>{refund} دينار</span>} />
         </Card>
       </div>
       <FullCTA variant="destructive" onClick={() => setConfirming(true)}>تأكيد الإلغاء</FullCTA>
       {confirming && (
         <ConfirmDialog
           title="تأكيد الإلغاء"
-          body="هل تريد إلغاء هذا الحجز؟ سيتم استرداد المبلغ كاملاً."
+          body={dispatched ? `سيتم استرداد ${refund} دينار (${CALLOUT_FEE} دينار رسوم كشف غير قابلة للاسترداد).` : "هل تريد إلغاء هذا الحجز؟ سيتم استرداد المبلغ كاملاً."}
           confirmLabel="نعم، إلغاء الحجز"
           variant="destructive"
           onConfirm={onDone}
@@ -1111,9 +1503,9 @@ function InProgress({ onApprove, onDone }: { onApprove: () => void; onDone: () =
         <button onClick={onApprove} className="w-full mt-5 p-4 rounded-2xl text-start border-2 border-dashed" style={{ borderColor: "#F5A623", background: "#FFFBEB" }}>
           <div className="flex items-center gap-2">
             <AlertCircle size={18} color="#B45309" />
-            <span style={{ color: "#B45309", fontWeight: 700, fontSize: 13 }}>طلب اعتماد عمل إضافي</span>
+            <span style={{ color: "#B45309", fontWeight: 700, fontSize: 13 }}>اعتماد قائمة المواد</span>
           </div>
-          <p style={{ color: "#92400E", fontSize: 12 }} className="mt-1">أضاف الفني بنداً جديداً — اضغط للمراجعة</p>
+          <p style={{ color: "#92400E", fontSize: 12 }} className="mt-1">لن يبدأ العمل قبل اعتمادك لقائمة المواد.</p>
         </button>
       </div>
       <FullCTA onClick={onDone}>محاكاة: اكتمال الخدمة</FullCTA>
@@ -1151,7 +1543,7 @@ function ApproveWork({ onBack, onApproved }: { onBack: () => void; onApproved: (
   );
 }
 
-function Completed({ onRate }: { onRate: () => void }) {
+function Completed({ onRate, onInvoice }: { onRate: () => void; onInvoice: () => void }) {
   return (
     <div className="h-full bg-white flex flex-col items-center justify-center px-8 text-center">
       <div className="w-32 h-32 rounded-full flex items-center justify-center" style={{ background: "#DCFCE7" }}>
@@ -1164,8 +1556,9 @@ function Completed({ onRate }: { onRate: () => void }) {
         <InlineRow label="الفني" value="خالد المومني" />
         <InlineRow strong label="المبلغ المدفوع" value="50 دينار" />
       </Card>
-      <div className="absolute bottom-8 inset-x-5">
+      <div className="absolute bottom-8 inset-x-5 space-y-2">
         <PrimaryButton onClick={onRate}>قيّم تجربتك</PrimaryButton>
+        <PrimaryButton variant="outline" onClick={onInvoice}>عرض الفاتورة والمواد</PrimaryButton>
       </div>
     </div>
   );
@@ -1288,13 +1681,25 @@ function BookingDetail({ onBack }: { onBack: () => void }) {
           </div>
         </Card>
 
+        {/* Three-line invoice per spec §6.22 */}
         <Card className="mt-3 p-4 space-y-2">
-          <InlineRow label="سعر الخدمة" value="40 دينار" />
-          <InlineRow label="عمل إضافي" value="0 دينار" />
-          <InlineRow label="الخصم" value="−0 دينار" />
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#475569", marginBottom: 4 }}>تفصيل الفاتورة</div>
+          <InlineRow label="أجور العمل" value="32 دينار" />
+          <InlineRow label="المواد" value="8.7 دينار" />
+          <InlineRow label="الرسوم" value="5 دنانير" />
           <div className="h-px bg-slate-100" />
-          <InlineRow strong label="المدفوع" value="40 دينار" />
-          <div style={{ color: "#475569", fontSize: 12 }}>Apple Pay · ضمان فعّال حتى 05/07/2026</div>
+          <InlineRow strong label="المدفوع" value="45.7 دينار" />
+          <div style={{ color: "#475569", fontSize: 11 }} className="flex items-center gap-1.5 flex-wrap">
+            <span>Apple Pay</span>
+            <span style={{ color: "#CBD5E1" }}>·</span>
+            <span>رقم الفاتورة:</span>
+            <span style={{ fontFamily: "Inter", fontWeight: 600, color: "#1366D6" }}>JF-2026-004821</span>
+          </div>
+          <div style={{ color: "#475569", fontSize: 11 }}>ضمان فعّال حتى <span style={{ fontFamily: "Inter" }}>05/07/2026</span></div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "#DCFCE7", color: "#15803D", fontSize: 10, fontWeight: 700 }}>ضمان كامل</span>
+            <button onClick={() => notify("فتح صورة الفاتورة الأصلية")} style={{ color: "#1366D6", fontSize: 11, fontWeight: 600 }}>فاتورة الشراء ›</button>
+          </div>
         </Card>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1322,6 +1727,21 @@ function GuaranteeHome({ member, onNew, onTicket }: { member: boolean; onNew: ()
         </Card>
       </div>
 
+      {/* §17.8 warranty-by-source breakdown */}
+      <div className="px-5 mt-4">
+        <div style={{ fontWeight: 700, fontSize: 13 }} className="mb-2">نطاق الضمان حسب مصدر المواد</div>
+        {[
+          { label: "مواد الفني (بسعر الكتالوج)", badge: "ضمان كامل", bg: "#DCFCE7", col: "#15803D" },
+          { label: "مواد العميل", badge: "الشغل فقط", bg: "#FEF3C7", col: "#B45309" },
+          { label: "استبدال غير موافق عليه", badge: "الضمان لاغٍ", bg: "#FEE2E2", col: "#B91C1C" },
+        ].map((row, i) => (
+          <div key={i} className="flex items-center justify-between py-2 border-b last:border-0 border-slate-100">
+            <span style={{ fontSize: 12, color: "#475569" }} dir="rtl">{row.label}</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: row.bg, color: row.col }}>{row.badge}</span>
+          </div>
+        ))}
+      </div>
+
       <Section title="تذاكر مفتوحة">
         <button onClick={onTicket} className="w-full text-start">
           <Card className="p-4">
@@ -1337,14 +1757,17 @@ function GuaranteeHome({ member, onNew, onTicket }: { member: boolean; onNew: ()
       <Section title="حجوزات مشمولة بالضمان">
         <Card className="p-4">
           {[
-            { svc: SERVICES[1], date: "05/06/2026", until: "05/07/2026" },
-            { svc: SERVICES[0], date: "28/05/2026", until: "27/06/2026" },
+            { svc: SERVICES[1], date: "05/06/2026", until: "05/07/2026", warranty: "full" as const },
+            { svc: SERVICES[0], date: "28/05/2026", until: "27/06/2026", warranty: "labour" as const },
           ].map((it, i) => (
-            <button key={i} onClick={onNew} className="w-full text-start flex items-center gap-3 py-2.5 border-b last:border-0 border-slate-100">
+            <button key={i} onClick={onNew} className="w-full text-start flex items-start gap-3 py-2.5 border-b last:border-0 border-slate-100">
               <ServiceIcon id={it.svc.id} size={20} />
               <div className="flex-1">
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{it.svc.ar}</div>
                 <div style={{ color: "#94A3B8", fontSize: 11 }}>الضمان حتى <span style={{ fontFamily: "Inter" }}>{it.until}</span></div>
+                <span className="mt-1 inline-block px-2 py-0.5 rounded-full" style={{ fontSize: 10, fontWeight: 700, background: it.warranty === "full" ? "#DCFCE7" : "#FEF3C7", color: it.warranty === "full" ? "#15803D" : "#B45309" }}>
+                  {it.warranty === "full" ? "ضمان كامل" : "الضمان على العمل فقط — مواد العميل"}
+                </span>
               </div>
               <ChevronLeft size={18} color="#94A3B8" />
             </button>

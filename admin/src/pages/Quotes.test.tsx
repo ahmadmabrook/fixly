@@ -38,7 +38,9 @@ function mockFetchWith(payloads: Array<{ status?: number; payload: unknown }>) {
 const listPayload = {
   data: [
     {
-      id: 'q1', status: 'PENDING', videoUrl: 'https://cdn.example.com/v.mp4',
+      id: 'q1', status: 'PENDING', videoUrl: 'https://cdn.example.com/v.mp4', siteMediaUrls: [],
+      dimensionsNote: null, requestedTier: null, labourFils: null, materialsFils: null,
+      opsReviewedById: null, opsReviewedAt: null, lines: [],
       description: 'تسريب بالمغسلة', quotedJod: null, createdAt: new Date().toISOString(),
       service: { nameAr: 'سباكة' }, customer: { name: 'سارة', phone: '0790000000' },
     },
@@ -57,7 +59,7 @@ describe('Quotes page (list + error state)', () => {
   it('shows an error message when the list request fails', async () => {
     mockFetchWith([{ status: 500, payload: { error: { message: 'fail' } } }]);
     renderWithProviders(<Quotes />);
-    await waitFor(() => expect(screen.getByText('تعذّر تحميل طلبات الفحص المرئي')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('تعذّر تحميل طلبات التسعير')).toBeInTheDocument());
   });
 });
 
@@ -103,6 +105,55 @@ describe('Quotes page (pricing is confirm-gated)', () => {
       const init = quoteCall?.[1] as RequestInit | undefined;
       expect(init?.method).toBe('POST');
       expect(JSON.parse(String(init?.body))).toEqual({ quotedJod: '45' });
+    });
+  });
+});
+
+const itemizedListPayload = {
+  data: [
+    {
+      id: 'q2', status: 'PENDING', videoUrl: null, siteMediaUrls: ['https://cdn.example.com/wall1.jpg'],
+      dimensionsNote: 'غرفة 4×5م', requestedTier: 'STANDARD', labourFils: 45_000, materialsFils: 60_000,
+      opsReviewedById: null, opsReviewedAt: null,
+      lines: [{ id: 'l1', kind: 'LABOUR', materialId: null, description: 'دهان غرفتين', qty: '1', unit: null, unitPriceFils: 45_000, totalFils: 45_000, source: 'TECHNICIAN_PROCURED' }],
+      description: null, quotedJod: null, createdAt: new Date().toISOString(),
+      service: { nameAr: 'دهان' }, customer: { name: 'خالد', phone: '0790000001' },
+    },
+  ],
+  meta: { total: 1, limit: 50, offset: 0 },
+};
+
+describe('Quotes page (itemized quote-first path)', () => {
+  it('renders the itemized badge, lines, and running total for a quote-first request', async () => {
+    mockFetchWith([{ payload: itemizedListPayload }]);
+    renderWithProviders(<Quotes />);
+    await waitFor(() => expect(screen.getByText('خالد')).toBeInTheDocument());
+
+    expect(screen.getByText('عرض مفصّل')).toBeInTheDocument();
+    expect(screen.getByText(/دهان غرفتين/)).toBeInTheDocument();
+    // Labour 45.00 + materials 60.00 = 105.00 JOD total row.
+    expect(screen.getByText('105.00 د.أ')).toBeInTheDocument();
+  });
+
+  it('posts a new line with the entered fields', async () => {
+    const seq = mockFetchWith([
+      { payload: itemizedListPayload },
+      { payload: { data: { id: 'q2' } } },
+      { payload: itemizedListPayload },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<Quotes />);
+    await waitFor(() => expect(screen.getByText('خالد')).toBeInTheDocument());
+
+    await user.type(screen.getByPlaceholderText('الوصف'), 'دهان أساس');
+    await user.type(screen.getByPlaceholderText('سعر الوحدة (د.أ)'), '12');
+    await user.click(screen.getByRole('button', { name: /إضافة بند/ }));
+
+    await waitFor(() => {
+      const lineCall = seq.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/quotes/q2/lines'));
+      expect(lineCall).toBeTruthy();
+      const body = JSON.parse(String((lineCall?.[1] as RequestInit | undefined)?.body));
+      expect(body).toEqual(expect.objectContaining({ kind: 'LABOUR', description: 'دهان أساس', unitPriceFils: 12_000 }));
     });
   });
 });

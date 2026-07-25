@@ -442,3 +442,125 @@ export interface CustomerBookingItem {
   createdAt: string;
   service?: { nameAr: string } | null;
 }
+
+// ── Materials & pricing engine (§17.5) ──────────────────────────────────────
+
+export type QuoteLineKind = 'LABOUR' | 'MATERIAL' | 'PREP' | 'FEE';
+export type MaterialSource = 'TECHNICIAN_PROCURED' | 'CUSTOMER_SUPPLIED' | 'PLATFORM_ARRANGED';
+export type MaterialTier = 'ECONOMY' | 'STANDARD' | 'PREMIUM';
+
+export interface QuoteLineItem {
+  id: string;
+  kind: QuoteLineKind;
+  materialId: string | null;
+  description: string;
+  qty: string | number;
+  unit: string | null;
+  unitPriceFils: number;
+  totalFils: number;
+  source: MaterialSource;
+}
+
+/** Admin quote-queue item — video pre-check (siteMediaUrls empty) or itemized
+ *  quote-first (siteMediaUrls populated at creation, lines drafted by ops). */
+export interface AdminQuoteItem {
+  id: string;
+  status: 'PENDING' | 'QUOTED' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+  videoUrl: string | null;
+  siteMediaUrls: string[];
+  dimensionsNote: string | null;
+  requestedTier: MaterialTier | null;
+  description: string | null;
+  quotedJod: string | number | null;
+  labourFils: number | null;
+  materialsFils: number | null;
+  opsReviewedById: string | null;
+  opsReviewedAt: string | null;
+  lines: QuoteLineItem[];
+  createdAt: string;
+  service?: { nameAr?: string | null } | null;
+  customer?: { name?: string | null; phone?: string | null } | null;
+}
+
+export interface MaterialCatalogItem {
+  id: string;
+  serviceId: string | null;
+  supplierId: string | null;
+  slug: string;
+  nameAr: string;
+  nameEn: string;
+  brand: string | null;
+  tier: MaterialTier;
+  unit: string;
+  unitPriceFils: number;
+  priceMinFils: number;
+  priceMaxFils: number;
+  varianceAlertBps: number;
+  coverageNote: string | null;
+  priceConfidence: 'CONFIRMED' | 'ESTIMATED' | 'UNDER_REVIEW';
+  isActive: boolean;
+}
+
+export interface SupplierItem {
+  id: string;
+  name: string;
+  contactPhone: string | null;
+  categories: string[];
+  isPilot: boolean;
+  referralCommissionBps: number | null;
+  agreementKind: string;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
+  commissionPaidOk: boolean | null;
+  priceManipulationObserved: boolean | null;
+  isActive: boolean;
+}
+
+export interface PriceIndexReadingItem {
+  id: number;
+  kind: 'dos_cpi' | 'dos_cpi_maintenance' | 'memr_fuel' | 'chamber_of_industry';
+  periodMonth: string;
+  valueNumeric: string | number;
+  unit: string | null;
+  sourceUrl: string | null;
+  recordedAt: string;
+}
+
+export interface CategoryReadinessItem {
+  serviceId: string;
+  state: 'COLLECTING' | 'READY' | 'BLOCKED';
+  quotesRequired: number;
+  quotesClosed: number;
+  maxDisputeBps: number;
+  disputeBps: number;
+  maxPriceDeviationBps: number;
+  priceDeviationBps: number;
+  service?: { nameAr?: string | null } | null;
+}
+
+export interface BookingMaterialAdminItem {
+  id: string;
+  bookingId: string;
+  materialId: string | null;
+  status: 'PENDING' | 'PENDING_REVIEW' | 'APPROVED' | 'DECLINED' | 'REPLACED' | 'UNUSED' | 'LOCKED';
+  description: string;
+  qty: string | number;
+  unitPriceFils: number;
+  totalFils: number;
+  referencePriceFils: number | null;
+  varianceBps: number | null;
+  supplierInvoiceUrl: string | null;
+  booking?: { id: string; customerId: string; addressLine: string } | null;
+}
+
+export interface MaterialVerificationAdminItem {
+  id: string;
+  bookingId: string;
+  technicianId: string;
+  status: 'OPEN' | 'INVOICE_PROVIDED' | 'UPHELD' | 'DEDUCTED' | 'WITHDRAWN';
+  referencePriceFils: number;
+  chargedPriceFils: number;
+  deltaFils: number;
+  invoiceUrl: string | null;
+  deadlineAt: string;
+}

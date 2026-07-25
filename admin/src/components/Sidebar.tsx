@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut, ShieldCheck, LifeBuoy, BarChart3, Megaphone, Banknote, UserCog, Award, Flag, CreditCard, Video } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Wrench, Wallet, Users, LogOut, ShieldCheck, LifeBuoy, BarChart3, Megaphone, Banknote, UserCog, Award, Flag, CreditCard, Video, Package, ClipboardCheck, ShieldAlert, Truck, TrendingUp, Gauge } from 'lucide-react';
 import { useAuth } from '../lib/store';
 import { logout as apiLogout } from '../lib/api';
 import { ADMIN_ROUTES, canAccessRoles } from '../lib/permissions';
@@ -25,6 +25,12 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   '/quality': Award,
   '/conduct': Flag,
   '/quotes': Video,
+  '/materials': Package,
+  '/materials-review': ClipboardCheck,
+  '/verifications': ShieldAlert,
+  '/suppliers': Truck,
+  '/price-index': TrendingUp,
+  '/category-readiness': Gauge,
   '/guarantee': ShieldCheck,
   '/subscriptions': CreditCard,
   '/support': LifeBuoy,

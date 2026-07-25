@@ -256,7 +256,7 @@ This is a real **Ops Console** for running the city day-to-day, not a cosmetic a
 2. **Technicians**: table (status filters pending/approved/rejected/suspended), detail drawer (profile, **documents viewer**, **intro video**, ratings, **scorecard**), **approve / reject (with reason) / block**.
 3. **Quality & Trust** (new): **trust-tier board** (probation/verified/pro/elite) with per-technician **background-check status**, **skills-test** action, **set/override tier**, insured flag, **off-platform flag count**; flags/complaints highlighted. Per-technician **daily performance / scorecard** view.
 4. **Conduct reports** (new): queue of reports (off-platform / no-show / quality / safety / other) with filters (open/upheld/dismissed); **resolve → «تأكيد» (upheld, raises the tech's flags → possible demotion/suspension) / «رفض» (dismissed)**; confirmation dialog on upheld.
-5. **Bookings**: **live map of active bookings** + table, filters by status (awaiting_payment/pending/confirmed/en_route/arrived/in_progress/completed/cancelled/disputed) **and by zone (شمال/وسط عمّان)**, detail (customer, technician, **event timeline (created → accepted → arrived → started → completed / complained / warranty-returned)**, payment, additional-work items).
+5. **Bookings**: **live map of active bookings** + table, filters by status (pending/searching/accepted/technician_arriving/in_progress/completed/cancelled/expired) **and by zone (شمال/وسط عمّان)**, detail (customer, technician, **event timeline (created → accepted → arrived → started → completed / complained / warranty-returned)**, payment, additional-work items).
 6. **Guarantee tickets**: queue with SLA timer (2h), **review photos/video**, approve/reject + notes, schedule free visit.
 7. **Quotes (video pre-check + quote-first, v1.7-upgraded):** queue (pending/quoted/accepted/expired), **watch the problem media + read dimensions/tier**, then **build the itemized offer** — add lines (أجور عمل / مادة / تجهيز), material lines picked **from the catalogue at its fixed prices** (an off-catalogue or over-band line flags for review), totals compute automatically, set validity → **«إرسال العرض»**. An **ops-review interstitial** appears for offers over the threshold. Shows which offers became bookings and their price-deviation vs final (feeds the readiness gate, screen 17).
 8. **Subscriptions** (new): active/past-due counts + **MRR**, list of Protection members with status + renewal date.
@@ -265,13 +265,13 @@ This is a real **Ops Console** for running the city day-to-day, not a cosmetic a
 11. **Financial reports**: revenue (daily/monthly), platform fees (20%), technician payouts, filters + date range, **export CSV**, charts.
 12. **Broadcast notifications**: compose (title + body, Arabic), segment (all / customers / technicians), preview, send.
 13. **Materials catalogue (v1.9–v1.12):** table per category — item (AR/EN), **subcategory, tier, brand, unit, price band (min–ref–max), quality floor, confidence (مؤكد/تقديري/قيد المراجعة), last-priced date with a staleness warning** («متأخر عن التحديث الشهري»); add/edit item; **allowed-services** tags. A **price-observations drawer** per item (shop, area, price, date).
-14. **BOM & variance review (v1.10):** queue of material lines `pending_review` (over-band or off-catalogue) — each row shows line details, **reference vs requested**, the technician's reason, the invoice photo if any, **approve/reject**, and the **2-hour auto-resolve countdown** ("سيُعتمد تلقائياً بالحد الأقصى للسعر بعد 01:12"). 
+14. **BOM & variance review (v1.10):** queue of material lines flagged **قيد المراجعة** (over-band or off-catalogue) — each row shows line details, **reference vs requested**, the technician's reason, the invoice photo if any, **approve/reject**, and the **2-hour auto-resolve countdown** ("سيُعتمد تلقائياً بالحد الأقصى للسعر بعد 01:12"). 
 15. **Price verifications (v1.10):** open disputes with the **24-hour deadline countdown**; states فاتورة مرفوعة / مقبول / **خُصم تلقائياً** (with the ledger deduction shown); overdue rows resolve themselves.
 16. **Price index (v1.13):** the monthly-ritual entry page — CPI (عام + خدمات صيانة المسكن), fuel price, Chamber-of-Industry readings; each with period, value, source link; a **"re-based N catalogue items"** confirmation after saving; history table.
 17. **Category readiness (v1.10):** per quote-first category, the gate readout — **"الدهان: 32/50 عرض مغلق · نزاعات 5% · انحراف سعري 11% — غير جاهز بعد"** with the three thresholds and a ready/blocked verdict; the category switch is disabled until state = ready.
 18. **Suppliers (v1.11):** pilot-shop cards — name, area, categories, **agreement kind (شفهي/رسالة)**, referral commission %, **30-day trial countdown**, and the two verdict fields (**العمولة دُفعت؟ / لوحظ تلاعب بالسعر؟**) + trial notes; active/dropped states.
 19. **Founder mobile approvals (v1.9 — REQUIRED, design as its own mini-surface):** every review queue above (BOM lines, verifications, quotes, technician docs, guarantee) must also exist as a **phone-width (390) one-tap deep-link view** — a push notification opens a single-item card with the key facts + **Approve / Reject** buttons and the auto-resolve countdown. The operator is one person on a phone; the desktop console is the *secondary* surface for these decisions.
-20. Admin auth (email + password), roles (super_admin / ops / finance / support) — role-gate the nav (e.g. Quality/Conduct/Quotes/Materials/BOM/Verifications/Suppliers = OPS; Subscriptions = OPS/FINANCE; Financial + Price-index = FINANCE/OPS).
+20. Admin auth (email + password), roles (Super Admin / Ops / Finance / Support) — role-gate the nav (e.g. Quality/Conduct/Quotes/Materials/BOM/Verifications/Suppliers = OPS; Subscriptions = OPS/FINANCE; Financial + Price-index = FINANCE/OPS).
 
 Design dense but legible: sortable tables, status chips, filters, pagination, empty/loading states, confirmation dialogs for destructive actions and for upheld conduct reports / manual refunds / tier overrides.
 
@@ -287,16 +287,15 @@ Design dense but legible: sortable tables, status chips, filters, pagination, em
 **Material source → label:** technician_procured → شراء الفني · customer_supplied → مواد العميل (الضمان على العمل فقط) · platform_arranged → توريد المنصة.
 **Verification status → label:** open → بانتظار الفاتورة (amber, 24h countdown) · invoice_provided → فاتورة مرفوعة (blue) · upheld → مقبول (green) · deducted → خُصم الفرق (red) · withdrawn → أُلغي (gray).
 
-**Booking status → label (AR) → badge color** (matches the real system enum — there is no separate "searching" status; **pending** is the dispatchable/searching state):
-- awaiting_payment → بانتظار الدفع → gray
-- pending (being dispatched / searching) → جارٍ البحث عن فني → blue
-- confirmed → تم القبول → blue
-- en_route → الفني في الطريق → teal
-- arrived → الفني وصل → teal
+**Booking status → label (AR) → badge color** (8 values, use exactly):
+- pending → بانتظار الدفع → gray (created; payment authorizing)
+- searching → جارٍ البحث عن فني → blue (broadcasting to nearby technicians)
+- accepted → تم قبول الفني → blue
+- technician_arriving → الفني في الطريق → teal (covers both "en route" and "arrived" as one badge — once the technician marks arrival, flip the copy to «الفني وصل» — screen §6.16a — without changing the badge color)
 - in_progress → الخدمة جارية → amber
 - completed → مكتملة → green
 - cancelled → ملغاة → red
-- disputed → نزاع → red
+- expired → انتهت المهلة (لم يُقبل الطلب) → gray (dispatch timeout — no technician accepted in time)
 
 Dispatch is **broadcast-and-accept**: a job is offered to several nearby eligible technicians with a **5-minute accept countdown**, and the search **radius expands** each round until one accepts (probation technicians are limited to a tighter radius).
 
@@ -308,7 +307,7 @@ Dispatch is **broadcast-and-accept**: a job is offered to several nearby eligibl
 
 **Conduct-report kind:** off_platform_solicit → محاولة خارج المنصة · no_show → عدم حضور · quality → جودة · safety → سلامة · other → أخرى.
 
-**Service-credit reason:** late_compensation → تعويض تأخير · referral → إحالة · goodwill → هدية · promo → عرض · redemption → استخدام (شراء). **Late-compensation amount:** 20 دينار (auto, if technician >30 min late).
+**Service-credit reason** (why a credit was granted): late_compensation → تعويض تأخير · referral → إحالة · goodwill → هدية · promo → عرض · adjustment → تعديل يدوي (إداري). Redemption/spend isn't its own reason — it's a **negative-amount line** against whichever reason funded it, shown as «−X استخدام على حجز…» in the wallet history (§6.33). **Late-compensation amount:** 20 دينار (auto, if technician >30 min late).
 
 **Payment methods:** Apple Pay, Google Pay, بطاقة (Visa/Mastercard). No cash. "دفع آمن 100%".
 **OTP delivery:** "تم إرسال الرمز عبر واتساب" (SMS fallback).

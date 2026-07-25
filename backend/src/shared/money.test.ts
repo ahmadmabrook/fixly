@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { toDecimal, toMinorUnits, isPositive, splitCommission } from './money';
+import { toDecimal, toMinorUnits, fromMinorUnits, isPositive, splitCommission } from './money';
 
 describe('money.toMinorUnits', () => {
   it('converts JOD to integer fils', () => {
@@ -10,6 +10,25 @@ describe('money.toMinorUnits', () => {
 
   it('throws on sub-fils precision (never silently rounds money)', () => {
     expect(() => toMinorUnits('1.2345')).toThrow(/sub-fils/);
+  });
+});
+
+describe('money.fromMinorUnits', () => {
+  it('converts integer fils to JOD, exactly inverting toMinorUnits', () => {
+    expect(fromMinorUnits(1234).toString()).toBe('1.234');
+    expect(fromMinorUnits(25000).toString()).toBe('25');
+    expect(fromMinorUnits(1).toString()).toBe('0.001');
+    expect(fromMinorUnits(0).toString()).toBe('0');
+  });
+
+  it('round-trips through toMinorUnits for exact fils amounts', () => {
+    for (const jod of ['1.234', '25', '0.001', '105.5']) {
+      expect(fromMinorUnits(toMinorUnits(jod)).equals(toDecimal(jod))).toBe(true);
+    }
+  });
+
+  it('throws on a non-integer fils amount', () => {
+    expect(() => fromMinorUnits(1.5)).toThrow(/not an integer/);
   });
 });
 

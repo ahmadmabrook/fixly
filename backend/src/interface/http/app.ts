@@ -34,6 +34,7 @@ import { subscriptionsRouter } from './routes/subscriptions';
 import { creditsRouter } from './routes/credits';
 import { referralsRouter } from './routes/referrals';
 import { quotesRouter } from './routes/quotes';
+import { verificationsRouter } from './routes/verifications';
 import { conductRouter } from './routes/conduct';
 import { createWebhookRouter } from './routes/webhooks';
 import { PaymentService } from '../../application/payment/PaymentService';
@@ -166,6 +167,7 @@ export function createApp(): { app: Express; httpServer: http.Server } {
   app.use('/api/v1/credits', creditsRouter);
   app.use('/api/v1/referrals', referralsRouter);
   app.use('/api/v1/quotes', quotesRouter);
+  app.use('/api/v1/verifications', verificationsRouter);
   app.use('/api/v1/conduct-reports', conductRouter);
   app.use('/api/v1/admin', adminRouter);
 

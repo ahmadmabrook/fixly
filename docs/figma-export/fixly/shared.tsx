@@ -15,8 +15,8 @@ export const soon = () => notify("قريباً — هذه الميزة في ال
 export const SERVICES = [
   { id: "elec",   ar: "كهرباء",       en: "Electricity", price: 50, dur: 45, Icon: Zap,         tint: "#FEF3C7", color: "#D97706" },
   { id: "plumb",  ar: "سباكة",        en: "Plumbing",    price: 40, dur: 60, Icon: Droplets,    tint: "#DBEAFE", color: "#1366D6" },
-  { id: "ac",     ar: "تنظيف تكييف",  en: "AC Cleaning", price: 30, dur: 45, Icon: Snowflake,   tint: "#CFFAFE", color: "#0E7490" },
-  { id: "paint",  ar: "دهان",         en: "Painting",    price: 70, dur: 180, Icon: PaintRoller,tint: "#FCE7F3", color: "#BE185D" },
+  { id: "ac",     ar: "تكييف",         en: "Air Conditioning", price: 30, dur: 45, Icon: Snowflake,   tint: "#CFFAFE", color: "#0E7490" },
+  { id: "paint",  ar: "دهان",         en: "Painting",    price: 0, dur: 180, Icon: PaintRoller,tint: "#FCE7F3", color: "#BE185D" },
   { id: "furn",   ar: "تركيب أثاث",   en: "Furniture",   price: 35, dur: 60, Icon: Sofa,        tint: "#DCFCE7", color: "#15803D" },
 ] as const;
 
@@ -24,7 +24,7 @@ export type ServiceId = typeof SERVICES[number]["id"];
 
 export const STATUS = {
   awaiting_payment:     { ar: "بانتظار الدفع",       bg: "#E2E8F0", fg: "#475569" },
-  pending:              { ar: "بانتظار الدفع",       bg: "#E2E8F0", fg: "#475569" },
+  pending:              { ar: "جارٍ البحث عن فني",  bg: "#DBEAFE", fg: "#1366D6" },
   searching:            { ar: "جارٍ البحث عن فني",   bg: "#DBEAFE", fg: "#1366D6" },
   en_route:             { ar: "الفني في الطريق",     bg: "#CCFBF1", fg: "#0F766E" },
   confirmed:            { ar: "تم القبول",           bg: "#DBEAFE", fg: "#1366D6" },

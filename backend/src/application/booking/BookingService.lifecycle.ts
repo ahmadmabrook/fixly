@@ -1,4 +1,4 @@
-import { BookingStatus, DispatchOfferStatus, PaymentStatus, CreditReason, Prisma } from '@prisma/client';
+import { BookingStatus, DispatchOfferStatus, PaymentStatus, CreditReason, PricingModel, Prisma } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../shared/errors';
@@ -8,6 +8,9 @@ import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/
 import { getBookingById } from './BookingService.reads';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
 import { OutboxEventType } from '../../shared/outboxEvents';
+import { lockBookingMaterials } from '../materials/BookingMaterialService';
+import { CategoryReadinessService } from '../materials/CategoryReadinessService';
+import { logger } from '../../shared/logger';
 
 /** Immediate-booking arrival promise (§0.3): technician within 30 minutes. */
 const SLA_ARRIVE_MINUTES = 30;
@@ -50,6 +53,7 @@ export class BookingLifecycleFlow {
   constructor(
     private readonly creditService: ServiceCreditService,
     private readonly referralService: ReferralService,
+    private readonly readinessService: CategoryReadinessService = new CategoryReadinessService(),
   ) {}
 
   async accept(bookingId: string, technicianUserId: string) {
@@ -170,6 +174,15 @@ export class BookingLifecycleFlow {
       });
       await recordBookingStatusHistory(tx, bookingId, fresh.status, to, technicianUserId);
 
+      // BOM lock (§17.5.9): execution-ready material lines become immutable the
+      // instant work starts, in the same transaction as the status change.
+      // Post-lock material needs route through the existing extra-work gate,
+      // never a silent BOM edit. Kept in its own materials-domain module
+      // rather than folded into this file.
+      if (to === BookingStatus.IN_PROGRESS) {
+        await lockBookingMaterials(tx, bookingId);
+      }
+
       // Late-arrival compensation (§0.3): if the technician arrives more than the
       // grace past the promised SLA window, grant the customer a one-time credit.
       if (to === BookingStatus.ARRIVED && fresh.slaArriveBy) {
@@ -218,7 +231,7 @@ export class BookingLifecycleFlow {
 
     // Re-check status + write atomically with an optimistic version guard so a
     // concurrent complete/cancel can't both win (TOCTOU / lost update).
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       const fresh = await tx.booking.findUnique({ where: { id: bookingId } });
       if (!fresh) throw new NotFoundError('Booking');
       if (!COMPLETABLE_STATUSES.includes(fresh.status)) {
@@ -267,6 +280,22 @@ export class BookingLifecycleFlow {
 
       return updated;
     });
+
+    // Category-readiness gate recompute (§17.5.15) — a quote_first category
+    // (e.g. Painting) can only unlock once its closed-quote/dispute/deviation
+    // thresholds are met, recomputed after every completed booking. Best-effort
+    // and outside the transaction above: it's a read-heavy aggregate over
+    // already-committed rows, not something that must be atomic with
+    // completion, and a fixed_scope booking (no bookingQuote rows for its
+    // service) is a cheap no-op rather than something worth gating on.
+    const service = await prisma.service.findUnique({ where: { id: updated.serviceId }, select: { pricingModel: true } });
+    if (service?.pricingModel === PricingModel.QUOTE_FIRST) {
+      await this.readinessService
+        .recomputeForService(updated.serviceId)
+        .catch((err) => logger.warn({ err, bookingId }, 'Category-readiness recompute failed'));
+    }
+
+    return updated;
   }
 
   /**

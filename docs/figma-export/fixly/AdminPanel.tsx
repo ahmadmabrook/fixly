@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, ClipboardList, ShieldCheck, MessageCircle, UserCircle,
   BarChart3, Bell, Search, Filter, Download, ChevronDown, ChevronUp, MoreHorizontal,
   TrendingUp, DollarSign, Star, AlertCircle, CheckCircle2, X, Eye, Ban, UserCheck,
-  Medal, Flag, Video, Award, FileText, PlayCircle, Gauge, Megaphone, Lock,
+  Medal, Flag, Video, Award, FileText, PlayCircle, Gauge, Megaphone, Lock, PackageSearch, ClipboardCheck, Store, Zap,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -15,7 +15,8 @@ import { SERVICES, Avatar, ServiceIcon, MapMock, Stars, notify } from "./shared"
 type Role = "super_admin" | "ops" | "finance" | "support";
 type Nav =
   | "dash" | "techs" | "quality" | "conduct" | "bookings" | "guarantee"
-  | "quotes" | "subs" | "support" | "customers" | "finance" | "broadcast";
+  | "quotes" | "subs" | "support" | "customers" | "finance" | "broadcast" | "materials" | "approvals" | "readiness"
+  | "verifications" | "price-index" | "suppliers" | "founder-approvals" | "feature-flags" | "ops-phases";
 
 const NAV: { id: Nav; label: string; Icon: React.ComponentType<{ size?: number }>; roles: Role[] }[] = [
   { id: "dash", label: "Dashboard", Icon: LayoutDashboard, roles: ["super_admin", "ops", "finance", "support"] },
@@ -25,11 +26,20 @@ const NAV: { id: Nav; label: string; Icon: React.ComponentType<{ size?: number }
   { id: "bookings", label: "Bookings", Icon: ClipboardList, roles: ["super_admin", "ops", "support"] },
   { id: "guarantee", label: "Guarantees", Icon: ShieldCheck, roles: ["super_admin", "ops", "support"] },
   { id: "quotes", label: "Video quotes", Icon: Video, roles: ["super_admin", "ops"] },
+  { id: "materials", label: "Materials & price index", Icon: PackageSearch, roles: ["super_admin", "ops"] },
+  { id: "approvals", label: "BOM & variance review", Icon: ClipboardCheck, roles: ["super_admin", "ops"] },
+  { id: "readiness", label: "Category readiness", Icon: Gauge, roles: ["super_admin", "ops"] },
+  { id: "verifications", label: "Price verifications", Icon: Eye, roles: ["super_admin", "ops"] },
+  { id: "price-index", label: "Price index (CPI)", Icon: TrendingUp, roles: ["super_admin", "ops", "finance"] },
+  { id: "suppliers", label: "Suppliers", Icon: Store, roles: ["super_admin", "ops"] },
+  { id: "founder-approvals", label: "Founder approvals", Icon: Lock, roles: ["super_admin"] },
   { id: "subs", label: "Subscriptions", Icon: Star, roles: ["super_admin", "ops", "finance"] },
   { id: "support", label: "Support", Icon: MessageCircle, roles: ["super_admin", "support"] },
   { id: "customers", label: "Customers", Icon: UserCircle, roles: ["super_admin", "ops", "support"] },
   { id: "finance", label: "Financials", Icon: BarChart3, roles: ["super_admin", "finance"] },
   { id: "broadcast", label: "Broadcast", Icon: Megaphone, roles: ["super_admin", "ops"] },
+  { id: "feature-flags", label: "Feature flags", Icon: Zap, roles: ["super_admin"] },
+  { id: "ops-phases", label: "Ops phases", Icon: TrendingUp, roles: ["super_admin", "ops"] },
 ];
 
 const ADMINS: Record<string, { pw: string; name: string; role: Role }> = {
@@ -109,11 +119,20 @@ export default function AdminPanel() {
           {activeNav === "bookings" && <Bookings />}
           {activeNav === "guarantee" && <Guarantees />}
           {activeNav === "quotes" && <Quotes />}
+          {activeNav === "materials" && <MaterialsIndex />}
+          {activeNav === "approvals" && <MaterialsApprovals />}
+          {activeNav === "readiness" && <CategoryReadiness />}
+          {activeNav === "verifications" && <PriceVerifications />}
+          {activeNav === "price-index" && <PriceIndex />}
+          {activeNav === "suppliers" && <Suppliers />}
+          {activeNav === "founder-approvals" && <FounderApprovals />}
           {activeNav === "subs" && <Subscriptions />}
           {activeNav === "support" && <SupportInbox />}
           {activeNav === "customers" && <Customers />}
           {activeNav === "finance" && <Finance />}
           {activeNav === "broadcast" && <Broadcast />}
+          {activeNav === "feature-flags" && <FeatureFlags />}
+          {activeNav === "ops-phases" && <OpsPhases />}
         </div>
       </div>
     </div>
@@ -328,6 +347,13 @@ function Dashboard() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
           <OpsStat label="Repeat-booking rate" value="41%" />
+          <OpsStat label="Mat. price deviation" value="4.2%" />
+          <OpsStat label="BOM escalation rate" value="6%" />
+          <OpsStat label="Auto-resolved BOM %" value="78%" />
+          <OpsStat label="NPS" value="62" />
+          <OpsStat label="CSAT" value="4.7 / 5" />
+          <OpsStat label="On-platform repeat rate" value="89%" />
+          <OpsStat label="Orders / active tech" value="3.2/day" />
         </div>
       </div>
 
@@ -358,6 +384,16 @@ function Dashboard() {
               <Tooltip cursor={false} />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Phase gates / MVP scope boundaries (§17.17) */}
+      <div className="mt-4 bg-white rounded-2xl border border-slate-100 p-4">
+        <div className="flex items-center gap-2 mb-3"><Lock size={16} color="#475569" /><h3 className="font-bold text-sm">MVP scope boundaries (§17.17) — DO NOT BUILD FOR LAUNCH</h3></div>
+        <div className="flex flex-wrap gap-2">
+          {["Early VIP subscription push", "Loyalty gamification", "Full AI support chatbot", "More than 3 launch categories", "iOS + Android + Web at equal depth", "Tech Pro subscription (Phase 3)", "B2B ads (Phase 3)", "Full-depth customer web if not needed"].map(i => (
+            <span key={i} className="text-xs px-2.5 py-1.5 rounded-full font-semibold" style={{ background: "#FEE2E2", color: "#B91C1C" }}>✕ {i}</span>
+          ))}
         </div>
       </div>
 
@@ -585,6 +621,17 @@ function Technicians() {
 
           <h4 className="font-bold mt-5 mb-2">Intro video</h4>
           <button onClick={() => notify("Playing intro video…")} className="w-full aspect-video rounded-lg bg-slate-900 flex items-center justify-center"><PlayCircle size={40} color="#FFF" /></button>
+
+          {/* ICA signing status — launch blocker per §17.15 */}
+          <h4 className="font-bold mt-5 mb-2">Independent Contractor Agreement (ICA)</h4>
+          <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: drawer.status === "approved" ? "#DCFCE7" : "#FEF3C7" }}>
+            {drawer.status === "approved"
+              ? <><CheckCircle2 size={16} color="#15803D" /><span className="text-sm font-semibold" style={{ color: "#166534" }}>ICA signed — independent contractor confirmed</span></>
+              : <><AlertCircle size={16} color="#B45309" /><span className="text-sm font-semibold" style={{ color: "#92400E" }}>ICA not yet signed — required before first dispatch</span></>}
+          </div>
+          {drawer.status !== "approved" && (
+            <button onClick={() => notify(`ICA signature link sent to ${drawer.name}`)} className="mt-2 w-full h-9 rounded-lg border border-slate-200 text-xs font-semibold">Send ICA signature link</button>
+          )}
 
           <h4 className="font-bold mt-5 mb-2">Scorecard</h4>
           <div className="space-y-1.5 text-sm">
@@ -1011,6 +1058,36 @@ function Guarantees() {
         ))}
       </div>
 
+      {/* §17.8 warranty-by-material-source adjudication guide */}
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <ShieldCheck size={18} color="#15803D" />
+          <h3 className="font-bold">Warranty coverage by material source (§17.8)</h3>
+          <span className="ml-auto text-xs text-slate-500">Reference for claim adjudication</span>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-slate-100">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <tr>{["Material source", "Coverage", "Decision"].map(h => <th key={h} className="px-4 py-2.5 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {[
+                { source: "Platform-priced / catalogue material", coverage: "Fully covered", decision: "Approve — free revisit + refund if needed", bg: "#DCFCE7", col: "#15803D" },
+                { source: "Technician-procured within policy at catalogue price", coverage: "Covered", decision: "Approve — tech liable if workmanship defect", bg: "#DCFCE7", col: "#15803D" },
+                { source: "Customer-supplied material", coverage: "Workmanship only — material defects excluded", decision: "Partial: approve labour, reject material defect", bg: "#FEF3C7", col: "#B45309" },
+                { source: "Unapproved brand substitution by tech", coverage: "Void + technician penalty", decision: "Reject claim on material, flag tech conduct_reports", bg: "#FEE2E2", col: "#B91C1C" },
+              ].map((row, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-semibold text-xs">{row.source}</td>
+                  <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: row.bg, color: row.col }}>{row.coverage}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{row.decision}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {confirm && (
         <AdminConfirm
           title={confirm.action === "approve" ? "Approve guarantee claim?" : "Reject guarantee claim?"}
@@ -1137,12 +1214,19 @@ function Subscriptions() {
 }
 
 /* ─────────────────────────── Support & complaints ─────────────────────────── */
+// §17.9 — canned macros for the common cases (Arabic support)
 const MACROS = [
   "مرحباً، شكراً لتواصلك. كيف يمكنني مساعدتك؟",
-  "الفني خالد على بُعد 5 دقائق ويمكنك تتبّعه على الخريطة.",
-  "تم إصدار المبلغ المسترد، وسيصل خلال 3–5 أيام عمل.",
-  "نعتذر عن الإزعاج، سنعالج الأمر فوراً.",
+  "الفني على بُعد 5 دقائق ويمكنك تتبّعه على الخريطة مباشرةً.",
+  "تم إصدار المبلغ المسترد بالكامل، وسيصل خلال 3–5 أيام عمل.",
+  "نعتذر عن الإزعاج، سنعالج الأمر فوراً وسأعود إليك خلال دقائق.",
+  "تم تفعيل الضمان لطلبك — سنرسل فنياً آخر بدون أي تكلفة إضافية.",
+  "سعر الخدمة ثابت ومعتمد قبل الحجز — لا يمكن تغييره إلا بموافقتك.",
+  "شكراً لإبلاغنا. سنراجع البلاغ وسنعود إليك خلال ساعتين كحد أقصى.",
+  "تم إرسال فني بديل — ستصلك رسالة بالتأكيد وبيانات الفني الجديد.",
+  "لا يحق للفني الدفع أو التواصل خارج التطبيق — تم تسجيل البلاغ وسيُراجع.",
 ];
+// §17.7 — complaint taxonomy: quality / lateness / pricing / conduct / safety / other
 const COMPLAINT_CATS = ["جودة", "تأخير", "تسعير", "سلوك", "سلامة", "أخرى"];
 
 function SupportInbox() {
@@ -1229,6 +1313,40 @@ function SupportInbox() {
           onCancel={() => setRefund(false)}
         />
       )}
+
+      {/* §17.9 — Escalation matrix: who handles what, when */}
+      <div className="mt-6 bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <AlertCircle size={18} color="#B45309" />
+          <h3 className="font-bold">Escalation matrix (§17.9)</h3>
+          <span className="ml-auto text-xs text-slate-500">SLA: first response ≤ 5 min · guarantee decision ≤ 2h</span>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-slate-100">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <tr>{["Complaint type", "Handler", "SLA", "Mechanism"].map(h => <th key={h} className="px-4 py-2.5 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {[
+                { type: "جودة / ضمان (quality, redo)", handler: "Founder → guarantee ticket", sla: "≤ 2h decision", mech: "GuaranteeService + instant refund/re-visit" },
+                { type: "تأخير > 30 دقيقة (lateness)", handler: "Auto-system", sla: "Immediate", mech: "Auto 20 JOD credit (service_credits LATE_COMPENSATION)" },
+                { type: "تسعير / مواد (pricing, BOM)", handler: "Founder (mobile deep link)", sla: "≤ 2h, then auto-resolve", mech: "Price-variance review queue (§17.5.9)" },
+                { type: "سلوك / خارج المنصة (conduct, off-platform)", handler: "Founder → conduct_reports", sla: "≤ 24h", mech: "conduct_reports → trust tier demotion → suspension" },
+                { type: "سلامة (safety)", handler: "Founder (priority escalation)", sla: "Immediate", mech: "Flag + suspend tech pending review" },
+                { type: "عدم حضور عميل (customer no-show)", handler: "Tech marks no-show → auto", sla: "At arrival", mech: "5 JOD callout fee applied" },
+                { type: "إساءة عميل / احتيال (customer abuse)", handler: "Founder", sla: "≤ 24h", mech: "users.isActive=false block" },
+              ].map((row, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-semibold" dir="rtl">{row.type}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.handler}</td>
+                  <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#DBEAFE", color: "#1366D6" }}>{row.sla}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{row.mech}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1334,9 +1452,41 @@ function Finance() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mt-5">
+      {/* Revenue model — all 4 streams with phases */}
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 p-5">
+        <h3 className="font-bold mb-3">Revenue model (§0.4b)</h3>
+        <div className="space-y-2">
+          {[
+            { stream: "Job commission", rate: "20% of labour", phase: "Phase 1 · Live", note: "Materials are governed pass-through (not a revenue stream)", bg: "#DCFCE7", fg: "#15803D" },
+            { stream: "Customer Protection plan", rate: "5 JOD/mo", phase: "Phase 2 · Feature-flagged", note: "Priority dispatch · 90-day guarantee · VIP support", bg: "#DBEAFE", fg: "#1366D6" },
+            { stream: "Tech Pro subscription", rate: "15 JOD/mo", phase: "Phase 3 · Not built", note: "Ranking boost within same trust tier only — paid visibility never outranks trust tier", bg: "#F3E8FF", fg: "#7C3AED" },
+            { stream: "B2B advertising", rate: "500–1,000 JOD/mo", phase: "Phase 3 · Not built", note: "Explicitly NOT MVP — do not build for launch", bg: "#FEF3C7", fg: "#B45309" },
+          ].map(s => (
+            <div key={s.stream} className="p-3 rounded-xl" style={{ background: s.bg + "40" }}>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm">{s.stream}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-sm">{s.rate}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: s.bg, color: s.fg }}>{s.phase}</span>
+                </div>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "#64748B" }}>{s.note}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* GST compliance note */}
+      <div className="mt-4 p-3 rounded-xl flex items-start gap-2" style={{ background: "#E8F1FE" }}>
+        <AlertCircle size={16} color="#1366D6" />
+        <p className="text-xs" style={{ color: "#0E4FA8" }}>Commission revenue is subject to <strong>16% GST</strong> (ISTD). Model net of GST: 20% × (1 – 0.16) = <strong>16.8% effective</strong>. Every commission requires a <strong>JoFotara e-invoice</strong> (free, mandatory from day one).</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mt-4">
         <KPI label="Total revenue (6mo)" value="JOD 176k" delta="+18%" icon={<DollarSign size={18} />} color="#1366D6" />
-        <KPI label="Platform fees (20%)" value="JOD 35.2k" delta="+18%" icon={<TrendingUp size={18} />} color="#0FB5A6" />
+        <KPI label="Platform fees (20% gross)" value="JOD 35.2k" delta="+18%" icon={<TrendingUp size={18} />} color="#0FB5A6" />
+        <KPI label="GST collected (16%)" value="JOD 5.6k" icon={<FileText size={18} />} color="#7C3AED" />
+        <KPI label="Net commission (after GST)" value="JOD 29.6k" icon={<TrendingUp size={18} />} color="#1FAA59" />
         <KPI label="Technician payouts" value="JOD 140.8k" icon={<Users size={18} />} color="#F5A623" />
       </div>
 
@@ -1358,17 +1508,23 @@ function Finance() {
         <div className="px-4 py-3 border-b border-slate-100 font-bold">Monthly breakdown</div>
         <table className="w-full text-sm">
           <thead style={{ background: "#F8FAFC", color: "#475569" }}>
-            <tr className="text-left">{["Month", "Revenue", "Platform fee (20%)", "Technician payouts"].map(h => <th key={h} className="px-4 py-3 font-semibold text-xs uppercase">{h}</th>)}</tr>
+            <tr className="text-left">{["Month", "Revenue", "Fee (20% gross)", "GST 16%", "Net fee", "Tech payouts"].map(h => <th key={h} className="px-4 py-3 font-semibold text-xs uppercase">{h}</th>)}</tr>
           </thead>
           <tbody>
-            {monthly.map(m => (
-              <tr key={m.m} className="border-t border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3 font-semibold">{m.m}</td>
-                <td className="px-4 py-3">JOD {m.rev}k</td>
-                <td className="px-4 py-3">JOD {m.fee}k</td>
-                <td className="px-4 py-3 font-bold">JOD {(m.rev - m.fee).toFixed(1)}k</td>
-              </tr>
-            ))}
+            {monthly.map(m => {
+              const gst = +(m.fee * 0.16).toFixed(1);
+              const net = +(m.fee - gst).toFixed(1);
+              return (
+                <tr key={m.m} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-semibold">{m.m}</td>
+                  <td className="px-4 py-3">JOD {m.rev}k</td>
+                  <td className="px-4 py-3">JOD {m.fee}k</td>
+                  <td className="px-4 py-3 text-purple-600">JOD {gst}k</td>
+                  <td className="px-4 py-3 font-bold text-green-700">JOD {net}k</td>
+                  <td className="px-4 py-3 font-bold">JOD {(m.rev - m.fee).toFixed(1)}k</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1434,6 +1590,585 @@ function Broadcast() {
           onCancel={() => setConfirmSend(false)}
         />
       )}
+    </div>
+  );
+}
+
+
+/* ───────────────────── v1.13 materials operating layer ───────────────────── */
+function MaterialsIndex() {
+  const [query, setQuery] = useState("");
+  const rows = [
+    ["دهان داخلي متوسط", "دلو", "15–21", "18", "مؤكد", "01/07/2026"],
+    ["قاطع ABB 16A", "قطعة", "3–7", "6", "تقديري", "06/07/2026"],
+    ["سيفون بلاستيك", "قطعة", "5–8", "6", "مؤكد", "03/07/2026"],
+  ].filter(r => r.join(" ").includes(query));
+  return <div><div className="flex items-end justify-between"><div><h1 className="text-2xl font-bold">Materials & price index</h1><p className="text-sm text-slate-500 mt-1">Reference bands protect customers before approval.</p></div><button onClick={() => notify("New catalogue entry opened")} className="h-10 px-4 rounded-lg text-sm font-semibold text-white" style={{ background: "#1366D6" }}>Add material</button></div><div className="mt-5 bg-white rounded-2xl border border-slate-100 overflow-hidden"><div className="p-4 border-b border-slate-100"><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search material…" className="h-10 w-full max-w-sm rounded-lg border border-slate-200 px-3 text-sm outline-none" /></div><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr>{["Material","Unit","Reference band (JOD)","Anchor","Confidence","Last verified"].map(x => <th key={x} className="px-4 py-3 font-semibold">{x}</th>)}</tr></thead><tbody>{rows.map(r => <tr key={r[0]} className="border-t border-slate-100"><td className="px-4 py-3 font-semibold" dir="rtl">{r[0]}</td><td className="px-4 py-3">{r[1]}</td><td className="px-4 py-3">{r[2]}</td><td className="px-4 py-3 font-semibold">{r[3]}</td><td className="px-4 py-3"><span className="rounded-full px-2 py-1 text-xs" style={{ background: r[4] === "مؤكد" ? "#DCFCE7" : "#FEF3C7", color: r[4] === "مؤكد" ? "#15803D" : "#B45309" }}>{r[4]}</span></td><td className="px-4 py-3 text-slate-500">{r[5]}</td></tr>)}</tbody></table></div></div>;
+}
+
+function MaterialsApprovals() {
+  const [done, setDone] = useState<string[]>([]);
+  const approve = (id: string, label: string) => { setDone(d => [...d, id]); notify(label, "success"); };
+  const pending = [{ id: "bom", title: "BOM · FX-20603", body: "قاطع ABB 16A + سلك 2.5مم + علبة كهرباء · 8.7 JOD", time: "Customer approval required before work starts", action: "Approve BOM" }, { id: "var", title: "Variance · FX-20591", body: "سيفون: reference 6 JOD → requested 8 JOD · imported brand", time: "24h price-verification window", action: "Request verification" }];
+  return <div><h1 className="text-2xl font-bold">BOM & variance review</h1><p className="text-sm text-slate-500 mt-1">One-tap approvals for mobile operations. Auto-fallback after 2 hours.</p><div className="mt-5 grid gap-4 md:grid-cols-2">{pending.map(item => <div key={item.id} className="bg-white rounded-2xl border border-slate-100 p-5"><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#FFFBEB" }}><FileText size={19} color="#B45309" /></div><div className="flex-1"><h3 className="font-bold">{item.title}</h3><p className="mt-2 text-sm text-slate-600" dir="rtl">{item.body}</p><p className="mt-3 text-xs text-amber-700">{item.time}</p></div></div>{done.includes(item.id) ? <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-green-700"><CheckCircle2 size={17} /> Reviewed</div> : <div className="mt-4 flex gap-2"><button onClick={() => approve(item.id, item.id === "bom" ? "BOM approved" : "Verification requested")} className="h-10 px-3 rounded-lg text-sm font-semibold text-white" style={{ background: "#1366D6" }}>{item.action}</button><button onClick={() => approve(item.id, "Flag sent to founder")} className="h-10 px-3 rounded-lg border border-slate-200 text-sm font-semibold">Escalate</button></div>}</div>)}</div></div>;
+}
+
+function CategoryReadiness() {
+  const [trial, setTrial] = useState(false);
+  const cards = [{ name: "الكهرباء", closed: "46/50", disputes: "2%", drift: "4%", ready: true }, { name: "السباكة", closed: "39/50", disputes: "3%", drift: "7%", ready: false }, { name: "الدهان", closed: "32/50", disputes: "5%", drift: "11%", ready: false }];
+  return <div><h1 className="text-2xl font-bold">Category readiness</h1><p className="text-sm text-slate-500 mt-1">Pricing confidence, dispute rate, and supplier readiness before expansion.</p><div className="mt-5 grid gap-4 md:grid-cols-3">{cards.map(c => <div key={c.name} className="bg-white rounded-2xl border border-slate-100 p-5" dir="rtl"><div className="flex justify-between"><h3 className="font-bold">{c.name}</h3><span className="text-xs px-2 py-1 rounded-full" style={{ background: c.ready ? "#DCFCE7" : "#FEE2E2", color: c.ready ? "#15803D" : "#B91C1C" }}>{c.ready ? "جاهز" : "غير جاهز بعد"}</span></div><div className="mt-5 space-y-2 text-sm"><div className="flex justify-between"><span className="text-slate-500">عروض مغلقة</span><b>{c.closed}</b></div><div className="flex justify-between"><span className="text-slate-500">نزاعات</span><b>{c.disputes}</b></div><div className="flex justify-between"><span className="text-slate-500">انحراف سعري</span><b>{c.drift}</b></div></div></div>)}</div><div className="mt-5 bg-white rounded-2xl border border-slate-100 p-5 flex items-center justify-between"><div className="flex items-center gap-3"><Store size={20} color="#1366D6" /><div><h3 className="font-bold">Supplier trial · محل النور للكهربائيات</h3><p className="text-sm text-slate-500">تلاع العلي · عمولة 6% · اليوم 18/30</p></div></div><button onClick={() => { setTrial(!trial); notify(trial ? "Supplier trial flagged" : "Supplier trial marked paid", "success"); }} className="h-10 px-4 rounded-lg text-sm font-semibold" style={{ background: trial ? "#FEE2E2" : "#E8F1FE", color: trial ? "#B91C1C" : "#1366D6" }}>{trial ? "Flag price issue" : "Commission paid ✓"}</button></div></div>;
+}
+
+/* ───────────────────── §15 — Price verifications ───────────────────── */
+function PriceVerifications() {
+  const [rows, setRows] = useState([
+    { id: "v1", booking: "FX-20591", material: "سيفون — ماركة مستوردة", ref: 6, requested: 8, tech: "خالد المومني", deadline: "بانتظار الفاتورة", status: "open", hours: "21:12" },
+    { id: "v2", booking: "FX-20544", material: "مضخة مياه ABB", ref: 35, requested: 42, tech: "عمر الشريف", deadline: "فاتورة مرفوعة", status: "invoice_provided", hours: "" },
+    { id: "v3", booking: "FX-20501", material: "قاطع 32A", ref: 12, requested: 15, tech: "سامي النسور", deadline: "مقبول", status: "upheld", hours: "" },
+  ]);
+
+  const resolve = (id: string, action: "upheld" | "deducted") => {
+    setRows(r => r.map(row => row.id === id ? { ...row, status: action, deadline: action === "upheld" ? "مقبول" : "خُصم الفرق" } : row));
+    notify(action === "upheld" ? "Verification upheld — invoice accepted" : "Difference deducted from technician payout", action === "upheld" ? "success" : "error");
+  };
+
+  const statusBadge = (s: string) => {
+    const map: Record<string, { label: string; bg: string; color: string }> = {
+      open: { label: "بانتظار الفاتورة", bg: "#FEF3C7", color: "#B45309" },
+      invoice_provided: { label: "فاتورة مرفوعة", bg: "#DBEAFE", color: "#1366D6" },
+      upheld: { label: "مقبول", bg: "#DCFCE7", color: "#15803D" },
+      deducted: { label: "خُصم الفرق", bg: "#FEE2E2", color: "#B91C1C" },
+    };
+    const m = map[s] || map.open;
+    return <span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ background: m.bg, color: m.color }}>{m.label}</span>;
+  };
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold">Price verifications</h1>
+      <p className="text-sm text-slate-500 mt-1">24-hour window for disputed material prices. Auto-deduct if overdue.</p>
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs text-slate-500">
+            <tr>{["Booking", "Material", "Reference", "Requested", "Technician", "Countdown", "Status", "Actions"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-t border-slate-100">
+                <td className="px-4 py-3 font-mono font-semibold text-xs text-slate-500">{r.booking}</td>
+                <td className="px-4 py-3 font-semibold" dir="rtl">{r.material}</td>
+                <td className="px-4 py-3">{r.ref} JOD</td>
+                <td className="px-4 py-3 font-semibold" style={{ color: "#B91C1C" }}>{r.requested} JOD</td>
+                <td className="px-4 py-3" dir="rtl">{r.tech}</td>
+                <td className="px-4 py-3">
+                  {r.status === "open" && <span className="font-mono font-bold text-amber-700">{r.hours}</span>}
+                </td>
+                <td className="px-4 py-3">{statusBadge(r.status)}</td>
+                <td className="px-4 py-3">
+                  {r.status === "invoice_provided" && (
+                    <div className="flex gap-2">
+                      <button onClick={() => resolve(r.id, "upheld")} className="h-8 px-3 rounded-lg text-xs font-semibold text-white" style={{ background: "#1FAA59" }}>Accept</button>
+                      <button onClick={() => resolve(r.id, "deducted")} className="h-8 px-3 rounded-lg border border-slate-200 text-xs font-semibold" style={{ color: "#B91C1C" }}>Deduct</button>
+                    </div>
+                  )}
+                  {r.status === "open" && <span className="text-xs text-slate-400">Awaiting invoice</span>}
+                  {(r.status === "upheld" || r.status === "deducted") && <span className="text-xs text-slate-400">Resolved</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 p-4 rounded-xl flex items-center gap-3" style={{ background: "#FEF3C7" }}>
+        <AlertCircle size={18} color="#B45309" />
+        <p className="text-sm" style={{ color: "#92400E" }}>
+          Open disputes auto-resolve after <strong>24 hours</strong> — difference deducted from technician payout if no invoice is provided.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────── §16 — Price index (CPI) ───────────────────── */
+function PriceIndex() {
+  const [rows, setRows] = useState([
+    { id: "pi1", indicator: "CPI — General", period: "Jun 2026", value: "3.2%", source: "dos.gov.jo", date: "01/07/2026" },
+    { id: "pi2", indicator: "CPI — Home maintenance services", period: "Jun 2026", value: "4.1%", source: "dos.gov.jo", date: "01/07/2026" },
+    { id: "pi3", indicator: "Fuel price (unleaded 95)", period: "Jun 2026", value: "0.85 JOD/L", source: "mme.gov.jo", date: "01/07/2026" },
+    { id: "pi4", indicator: "Chamber of Industry — materials index", period: "Q2 2026", value: "112.3", source: "joi.org.jo", date: "15/06/2026" },
+  ]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ indicator: "", period: "", value: "", source: "" });
+  const [emergencyTriggered, setEmergencyTriggered] = useState(false);
+
+  // Stale-price items: catalogue rows past their refresh cadence or flagged estimated/under_review
+  const stalePrices = [
+    { item: "سلك نحاس 4مم — كهرباء", lastUpdate: "15/01/2026", cadence: "شهري", confidence: "under_review", age: "173 يوم" },
+    { item: "حديد تسليح 12مم — عام", lastUpdate: "01/04/2026", cadence: "ربع سنوي", confidence: "estimated", age: "98 يوم" },
+    { item: "ألمنيوم — ملحقات نوافذ", lastUpdate: "20/02/2026", cadence: "ربع سنوي", confidence: "estimated", age: "138 يوم" },
+  ];
+
+  const save = () => {
+    if (!form.indicator || !form.value) { notify("Fill in indicator and value", "error"); return; }
+    setRows(r => [...r, { id: `pi${r.length + 1}`, ...form, date: "08/07/2026" }]);
+    setForm({ indicator: "", period: "", value: "", source: "" });
+    setShowAdd(false);
+    notify("Price index entry saved — re-basing 3 catalogue items…", "success");
+  };
+
+  return (
+    <div>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Price index (monthly ritual)</h1>
+          <p className="text-sm text-slate-500 mt-1">Enter CPI, fuel price, and Chamber readings — triggers a catalogue re-base.</p>
+        </div>
+        <button onClick={() => setShowAdd(v => !v)} className="h-10 px-4 rounded-lg text-sm font-semibold text-white" style={{ background: "#1366D6" }}>+ Add entry</button>
+      </div>
+
+      {showAdd && (
+        <div className="mt-4 bg-white rounded-2xl border border-slate-100 p-5">
+          <h3 className="font-bold mb-4">New price-index entry</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Indicator", key: "indicator", placeholder: "e.g. CPI — General" },
+              { label: "Period", key: "period", placeholder: "e.g. Jun 2026" },
+              { label: "Value", key: "value", placeholder: "e.g. 3.2% or 0.85 JOD/L" },
+              { label: "Source URL", key: "source", placeholder: "e.g. dos.gov.jo" },
+            ].map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">{f.label}</label>
+                <input value={form[f.key as keyof typeof form]} onChange={e => setForm(v => ({ ...v, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={save} className="h-10 px-5 rounded-lg text-sm font-semibold text-white" style={{ background: "#1366D6" }}>Save & re-base catalogue</button>
+            <button onClick={() => setShowAdd(false)} className="h-10 px-4 rounded-lg border border-slate-200 text-sm font-semibold">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs text-slate-500">
+            <tr>{["Indicator", "Period", "Value", "Source", "Recorded"].map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-t border-slate-100">
+                <td className="px-4 py-3 font-semibold">{r.indicator}</td>
+                <td className="px-4 py-3 text-slate-500">{r.period}</td>
+                <td className="px-4 py-3 font-bold" style={{ color: "#1366D6" }}>{r.value}</td>
+                <td className="px-4 py-3"><a href="#" className="text-blue-600 hover:underline text-xs">{r.source}</a></td>
+                <td className="px-4 py-3 text-slate-500">{r.date}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Stale-price warning (§17.6 + §17.5.13) — catalogue rows past refresh cadence or flagged estimated/under_review */}
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <AlertCircle size={18} color="#B45309" />
+          <h3 className="font-bold">Stale-price warnings (§17.5.13)</h3>
+          <span className="ml-auto text-xs text-slate-500">Items past refresh cadence or confidence flagged — cannot be quoted as firm until updated</span>
+        </div>
+        <div className="space-y-2">
+          {stalePrices.map((sp, i) => (
+            <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: sp.confidence === "under_review" ? "#FEE2E2" : "#FEF3C7" }}>
+              <div className="flex-1">
+                <div className="font-semibold text-sm" dir="rtl">{sp.item}</div>
+                <div className="text-xs mt-0.5 text-slate-500">آخر تحديث: {sp.lastUpdate} · دورة التحديث: {sp.cadence} · منذ {sp.age}</div>
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: sp.confidence === "under_review" ? "#FEE2E2" : "#FEF3C7", color: sp.confidence === "under_review" ? "#B91C1C" : "#B45309", border: `1px solid ${sp.confidence === "under_review" ? "#FECACA" : "#FDE68A"}` }}>
+                {sp.confidence === "under_review" ? "قيد المراجعة" : "سعر تقديري"}
+              </span>
+              <button onClick={() => notify(`Price refresh triggered for ${sp.item}`, "success")} className="h-8 px-3 rounded-lg border border-slate-200 text-xs font-semibold">Refresh now</button>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-400 mt-3">لا يمكن تضمين هذه البنود في عرض سعر ثابت حتى يُحدَّث المصدر — تُعرض للعميل كـ "سعر تقديري" فقط.</p>
+      </div>
+
+      {/* Emergency out-of-cycle repricing trigger (§17.19 A.1) */}
+      <div className="mt-4 bg-white rounded-2xl border border-slate-100 p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <Zap size={18} color="#B91C1C" />
+          <h3 className="font-bold">Emergency repricing trigger (§17.19 A.1)</h3>
+        </div>
+        <p className="text-sm text-slate-500 mb-3">Use when a market shock (FX move, import restriction, fuel spike) moves a price input beyond the normal monthly cadence. Marks affected catalogue items as <strong>under_review</strong> and blocks them from new quotes until repriced.</p>
+        {emergencyTriggered ? (
+          <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: "#FEE2E2" }}>
+            <AlertCircle size={16} color="#B91C1C" />
+            <div>
+              <p className="text-sm font-bold" style={{ color: "#B91C1C" }}>Emergency repricing active — 3 items locked for review</p>
+              <p className="text-xs mt-0.5 text-slate-500">Affected items cannot be quoted until you update their reference price and clear the flag.</p>
+            </div>
+            <button onClick={() => { setEmergencyTriggered(false); notify("Emergency repricing cleared — all items back to normal cadence", "success"); }} className="ml-auto h-8 px-3 rounded-lg text-xs font-semibold border border-slate-200">Clear trigger</button>
+          </div>
+        ) : (
+          <button onClick={() => { setEmergencyTriggered(true); notify("Emergency repricing triggered — affected items flagged under_review", "error"); }} className="h-10 px-5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#B91C1C" }}>
+            <Zap size={14} /> Trigger emergency repricing
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────── §18 — Suppliers ───────────────────── */
+function Suppliers() {
+  const [suppliers, setSuppliers] = useState([
+    { id: "s1", name: "محل النور للكهربائيات", area: "تلاع العلي", cats: ["كهرباء"], agreement: "شفهي", commission: 6, trialDay: 18, paid: true, manipulated: false, active: true },
+    { id: "s2", name: "مؤسسة المياه للسباكة", area: "الصويفية", cats: ["سباكة"], agreement: "رسالة", commission: 5, trialDay: 4, paid: false, manipulated: false, active: true },
+    { id: "s3", name: "مستودع الدهانات المتحدة", area: "خلدا", cats: ["دهان"], agreement: "شفهي", commission: 7, trialDay: 30, paid: true, manipulated: true, active: false },
+  ]);
+
+  const toggle = (id: string, field: "paid" | "manipulated") => {
+    setSuppliers(s => s.map(x => x.id === id ? { ...x, [field]: !x[field] } : x));
+    notify(`Supplier verdict updated`, "success");
+  };
+
+  return (
+    <div>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Suppliers</h1>
+          <p className="text-sm text-slate-500 mt-1">Pilot shops — 30-day trial, two verdict fields, commission tracking.</p>
+        </div>
+        <button onClick={() => notify("Add supplier form opened")} className="h-10 px-4 rounded-lg text-sm font-semibold text-white" style={{ background: "#1366D6" }}>+ Add supplier</button>
+      </div>
+
+      {/* §17.5.6 Referral commission model */}
+      <div className="mt-4 p-4 rounded-xl flex items-start gap-3" style={{ background: "#F0F9FF" }}>
+        <Store size={18} color="#0369A1" />
+        <div>
+          <p className="text-sm font-bold" style={{ color: "#0369A1" }}>Referral commission model (§17.5.6)</p>
+          <p className="text-xs mt-1" style={{ color: "#0369A1" }}>Supplier earns 5-8% referral commission on every verified sale to a Fixly technician. Zero risk, no obligation — trial first, contract only after a passed 30-day test.</p>
+          <div className="mt-2 flex gap-3 text-xs">
+            <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "#E0F2FE", color: "#0369A1" }}>No stock held by Fixly</span>
+            <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "#E0F2FE", color: "#0369A1" }}>Commission on actual sale only</span>
+          </div>
+        </div>
+      </div>
+
+      {/* §17.5.5 Five mandatory materials policy questions (answered before any quote_first category ships) */}
+      <div className="mt-4 bg-white rounded-2xl border border-slate-100 p-5">
+        <h3 className="font-bold mb-3">5 mandatory policy questions — must be answered per category before quote_first ships (§17.5.5)</h3>
+        <div className="space-y-3">
+          {[
+            { q: "1. Customer-supplied materials allowed?", a: "Yes — with in-app acknowledgement that guarantee covers workmanship only, not material defects.", status: "answered" },
+            { q: "2. Off-catalogue materials path?", a: "Permitted with uploaded shop invoice + ops review. Auto-reject if variance > 15% without justification.", status: "answered" },
+            { q: "3. Micro-materials threshold (per category)?", a: "~2-3 JOD folded into labour. Above threshold = itemized BOM line requiring approval.", status: "answered" },
+            { q: "4. Surplus policy?", a: "Usable surplus belongs to customer by default. Documented at job close.", status: "answered" },
+            { q: "5. Quote validity window?", a: "Expired quotes cannot be captured — must be repriced and re-notified. Per-category window configured in service_material_policies.", status: "answered" },
+          ].map(item => (
+            <div key={item.q} className="p-3 rounded-xl" style={{ background: item.status === "answered" ? "#F0FDF4" : "#FEF2F2" }}>
+              <p className="text-sm font-semibold">{item.q}</p>
+              <p className="text-xs mt-1 text-slate-600">{item.a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        {suppliers.map(s => (
+          <div key={s.id} className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Store size={18} color="#1366D6" />
+                  <h3 className="font-bold text-lg" dir="rtl">{s.name}</h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: s.active ? "#DCFCE7" : "#F1F5F9", color: s.active ? "#15803D" : "#475569" }}>{s.active ? "Active" : "Dropped"}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-3 text-sm text-slate-500" dir="rtl">
+                  <span>{s.area}</span>
+                  <span>·</span>
+                  <span>{s.cats.join(", ")}</span>
+                  <span>·</span>
+                  <span>اتفاق {s.agreement}</span>
+                  <span>·</span>
+                  <span>عمولة {s.commission}%</span>
+                </div>
+              </div>
+              <div className="text-end shrink-0">
+                <div className="text-xs text-slate-500">Trial progress</div>
+                <div className="mt-1 font-bold" style={{ color: s.trialDay >= 30 ? "#15803D" : "#1366D6" }}>Day {s.trialDay}/30</div>
+                <div className="mt-1 w-28 h-1.5 rounded-full bg-slate-100">
+                  <div className="h-full rounded-full" style={{ width: `${(s.trialDay / 30) * 100}%`, background: s.trialDay >= 30 ? "#1FAA59" : "#1366D6" }} />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-4 border-t border-slate-100 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  onClick={() => toggle(s.id, "paid")}
+                  className="w-9 h-5 rounded-full relative transition"
+                  style={{ background: s.paid ? "#1FAA59" : "#CBD5E1" }}
+                >
+                  <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ [s.paid ? "right" : "left"]: 2 }} />
+                </button>
+                <span className="text-sm font-semibold" style={{ color: s.paid ? "#15803D" : "#475569" }}>العمولة تُدفع؟</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  onClick={() => toggle(s.id, "manipulated")}
+                  className="w-9 h-5 rounded-full relative transition"
+                  style={{ background: s.manipulated ? "#E5484D" : "#CBD5E1" }}
+                >
+                  <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ [s.manipulated ? "right" : "left"]: 2 }} />
+                </button>
+                <span className="text-sm font-semibold" style={{ color: s.manipulated ? "#B91C1C" : "#475569" }}>تلاعب بالسعر؟</span>
+              </label>
+              <div className="flex-1" />
+              <button onClick={() => notify("Supplier notes opened")} className="h-8 px-3 rounded-lg border border-slate-200 text-xs font-semibold">Trial notes</button>
+              {s.trialDay >= 30 && <button onClick={() => notify("Supplier verdict finalized")} className="h-8 px-3 rounded-lg text-xs font-semibold text-white" style={{ background: s.manipulated ? "#E5484D" : "#1FAA59" }}>{s.manipulated ? "Drop supplier" : "Approve supplier"}</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────── §19 — Founder mobile approvals ───────────────────── */
+function FounderApprovals() {
+  type ApprovalItem = {
+    id: string; type: string; title: string; body: string; amount?: string;
+    countdown?: string; status: "pending" | "approved" | "rejected";
+  };
+
+  const [items, setItems] = useState<ApprovalItem[]>([
+    { id: "fa1", type: "BOM", title: "BOM Approval · FX-20603", body: "قاطع ABB 16A ×1 (6 JOD) · سلك 2.5مم ×3م (1.8 JOD) · علبة كهرباء ×1 (0.9 JOD)\nإجمالي: 8.7 JOD · العميل: أحمد العلي · الفني: خالد المومني", amount: "8.7 JOD", countdown: "01:48", status: "pending" },
+    { id: "fa2", type: "Variance", title: "Price variance · FX-20591", body: "السيفون: المرجعي 6 JOD → المطلوب 8 JOD (+33%)\nسبب الفني: ماركة مستوردة · الفاتورة لم تُرفع بعد", amount: "+2 JOD", countdown: "21:12", status: "pending" },
+    { id: "fa3", type: "Quote", title: "Quote pricing · FX-20615", body: "دهان غرفة نوم — خالد المومني\nأجور: 45 JOD · مواد: 60 JOD · تجهيز: 8 JOD\nإجمالي مقترح: 113 JOD (فوق عتبة المراجعة 100 JOD)", amount: "113 JOD", countdown: "", status: "pending" },
+    { id: "fa4", type: "Tech docs", title: "Tech approval · عمر الشريف", body: "هوية ✓ · شهادة مهنية ✓ · صورة شخصية ✓ · فيديو تعريفي ✓\nالمرحلة: KYC → مراجعة المستندات", amount: "", countdown: "", status: "pending" },
+    { id: "fa5", type: "Guarantee", title: "Guarantee ticket · FX-20499", body: "شكوى: تسريب عاد بعد الإصلاح · الخدمة: سباكة · الفني: سامي النسور\nالصور: 2 مرفقة · تاريخ الخدمة: 05/07/2026", amount: "40 JOD refund?", countdown: "0:38", status: "pending" },
+  ]);
+
+  const decide = (id: string, action: "approved" | "rejected") => {
+    setItems(prev => prev.map(it => it.id === id ? { ...it, status: action } : it));
+    notify(action === "approved" ? "Approved — action dispatched" : "Rejected — team notified", action === "approved" ? "success" : "error");
+  };
+
+  const typeColors: Record<string, { bg: string; color: string }> = {
+    BOM: { bg: "#E8F1FE", color: "#1366D6" },
+    Variance: { bg: "#FEF3C7", color: "#B45309" },
+    Quote: { bg: "#EDE9FE", color: "#7C3AED" },
+    "Tech docs": { bg: "#DCFCE7", color: "#15803D" },
+    Guarantee: { bg: "#FEE2E2", color: "#B91C1C" },
+  };
+
+  return (
+    <div>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Founder mobile approvals</h1>
+          <p className="text-sm text-slate-500 mt-1">One-tap deep-link cards — designed for a phone screen. Auto-resolve countdowns shown.</p>
+        </div>
+        <span className="text-sm font-semibold px-3 py-1.5 rounded-full" style={{ background: "#FEF3C7", color: "#B45309" }}>{items.filter(i => i.status === "pending").length} pending</span>
+      </div>
+
+      {/* Mobile-width card layout (390px) simulating a phone deep-link */}
+      <div className="mt-5 flex flex-wrap gap-4">
+        {items.map(item => {
+          const tc = typeColors[item.type] || { bg: "#F1F5F9", color: "#475569" };
+          const done = item.status !== "pending";
+          return (
+            <div key={item.id} className="bg-white rounded-2xl border shadow-md overflow-hidden" style={{ width: 340, opacity: done ? 0.65 : 1 }}>
+              {/* "Phone" header */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+                <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ background: tc.bg, color: tc.color }}>{item.type}</span>
+                <span className="flex-1 font-semibold text-sm truncate">{item.title}</span>
+                {item.countdown && (
+                  <span className="font-mono text-xs font-bold" style={{ color: "#B45309" }}>{item.countdown}</span>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-sm text-slate-600 whitespace-pre-line" dir="rtl">{item.body}</p>
+                {item.amount && (
+                  <div className="mt-2 inline-flex items-center gap-1 rounded-lg px-2 py-1" style={{ background: "#E8F1FE", color: "#0E4FA8", fontWeight: 700, fontSize: 13 }}>
+                    {item.amount}
+                  </div>
+                )}
+              </div>
+              <div className="px-4 pb-4 flex gap-2">
+                {done ? (
+                  <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: item.status === "approved" ? "#15803D" : "#B91C1C" }}>
+                    <CheckCircle2 size={16} /> {item.status === "approved" ? "Approved" : "Rejected"}
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => decide(item.id, "approved")} className="flex-1 h-12 rounded-xl text-sm font-bold text-white" style={{ background: "#1366D6" }}>Approve ✓</button>
+                    <button onClick={() => decide(item.id, "rejected")} className="flex-1 h-12 rounded-xl border-2 text-sm font-bold" style={{ borderColor: "#E5484D", color: "#E5484D" }}>Reject ✗</button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 p-4 rounded-xl flex items-start gap-3" style={{ background: "#E8F1FE" }}>
+        <AlertCircle size={18} color="#1366D6" />
+        <p className="text-sm" style={{ color: "#0E4FA8" }}>
+          Push notifications open these cards directly on your phone. BOM lines auto-approve at max-band after <strong>2 hours</strong>. Price verifications auto-deduct after <strong>24 hours</strong>.
+        </p>
+      </div>
+
+      {/* VA hire trigger (§17.11 / §0.6.2) */}
+      {items.filter(i => i.status === "pending").length >= 3 && (
+        <div className="mt-4 p-4 rounded-xl flex items-start gap-3" style={{ background: "#FEF3C7" }}>
+          <AlertCircle size={18} color="#B45309" />
+          <div>
+            <p className="text-sm font-bold" style={{ color: "#92400E" }}>VA Hire Trigger (§17.11)</p>
+            <p className="text-sm mt-1" style={{ color: "#92400E" }}>
+              {items.filter(i => i.status === "pending").length} pending items — nearing the 15–20/day threshold. Consider hiring a part-time VA (200–300 JOD/mo) to handle review queues before they delay customers.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ───────── §0.6.1 Feature flags — super-admin only ───────── */
+function FeatureFlags() {
+  const [flags, setFlags] = useState<Record<string, boolean>>({
+    FEATURE_QUOTE_FIRST: false,
+    FEATURE_SUBSCRIPTIONS: false,
+    FEATURE_VIDEO_PRECHECK: false,
+    FEATURE_SCHEDULED_BOOKING: false,
+    FEATURE_IN_APP_CHAT: false,
+    FEATURE_TECH_PRO_SUB: false,
+    FEATURE_B2B_ADS: false,
+    FEATURE_MULTI_CITY: false,
+  });
+  const phases: Record<string, { phase: string; note: string; bg: string; fg: string }> = {
+    FEATURE_QUOTE_FIRST: { phase: "Phase 2", note: "quote_first categories (Painting). Hard gate: ≥50 closed quotes, dispute <8%, deviation <15% + L2 price book live (§17.5.15, §17.13)", bg: "#DBEAFE", fg: "#1366D6" },
+    FEATURE_SUBSCRIPTIONS: { phase: "Phase 2", note: "5 JOD/mo Protection plan — priority dispatch, 90-day guarantee, quarterly inspection", bg: "#DBEAFE", fg: "#1366D6" },
+    FEATURE_VIDEO_PRECHECK: { phase: "Phase 2", note: "Video pre-check for fixed_scope convenience only. For quote_first it is the prerequisite, not a phase gate.", bg: "#DBEAFE", fg: "#1366D6" },
+    FEATURE_SCHEDULED_BOOKING: { phase: "Phase 2", note: "Scheduled (non-immediate) bookings require availability_slots data model", bg: "#DBEAFE", fg: "#1366D6" },
+    FEATURE_IN_APP_CHAT: { phase: "Phase 2", note: "Full in-app chat. MVP uses masked call + WhatsApp deep-link.", bg: "#DBEAFE", fg: "#1366D6" },
+    FEATURE_TECH_PRO_SUB: { phase: "Phase 3", note: "15 JOD/mo tech visibility boost — within same trust tier only; paid visibility NEVER outranks trust tier (§0.4b)", bg: "#F3E8FF", fg: "#7C3AED" },
+    FEATURE_B2B_ADS: { phase: "Phase 3", note: "500-1,000 JOD/mo supplier ad slots. Explicitly NOT MVP (§17.17).", bg: "#FEF3C7", fg: "#B45309" },
+    FEATURE_MULTI_CITY: { phase: "Phase 3+", note: "No market entered until Amman model proven (§17.14). KSA is priority candidate.", bg: "#FEE2E2", fg: "#B91C1C" },
+  };
+  return (
+    <div>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Feature flags</h1>
+          <p className="text-sm text-slate-500 mt-1">Only expose features the operation can support. Flags default OFF at launch (§0.6.1).</p>
+        </div>
+        <span className="text-xs px-3 py-1 rounded-full font-semibold" style={{ background: "#FEE2E2", color: "#B91C1C" }}>super_admin only</span>
+      </div>
+      <div className="mt-5 space-y-3">
+        {Object.entries(flags).map(([key, on]) => {
+          const meta = phases[key];
+          return (
+            <div key={key} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-bold">{key}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: meta.bg, color: meta.fg }}>{meta.phase}</span>
+                </div>
+                <p className="text-xs mt-1 text-slate-500">{meta.note}</p>
+              </div>
+              <button
+                onClick={() => { setFlags(f => ({ ...f, [key]: !f[key] })); notify(key + " " + (!on ? "enabled" : "disabled"), !on ? "success" : "info"); }}
+                className="relative w-12 h-6 rounded-full transition-colors shrink-0"
+                style={{ background: on ? "#1366D6" : "#E2E8F0" }}
+              >
+                <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ left: on ? "calc(100% - 22px)" : "2px" }} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-5 p-4 rounded-2xl" style={{ background: "#FEF3C7" }}>
+        <p className="text-sm font-semibold" style={{ color: "#92400E" }}>Solo-operation readiness requirement (§17.16)</p>
+        <p className="text-xs mt-1" style={{ color: "#92400E" }}>All flags above must default OFF until: review queues are reachable via mobile deep-link, 2h auto-fallback is live, 6-hourly off-box backups verified by a restore drill, health-check alerting live.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── §17.13 12-month Amman operational phases ───────── */
+function OpsPhases() {
+  const phases = [
+    {
+      id: "0", label: "Phase 0 — Pilot", window: "Month 4 of build timeline (~2 months)", scope: "One Amman district · 3 categories · ~20-30 certified technicians · 100-200 customers",
+      gates: ["Complaint rate < 5%", "Completion rate >= 95%", "Guarantee cost contained"],
+      status: "active", bg: "#DBEAFE", fg: "#1366D6",
+    },
+    {
+      id: "1", label: "Phase 1 — Amman rollout", window: "Months 3-6", scope: "All North + Central Amman",
+      gates: ["Repeat-booking >= 30% @ 60 days", "Acceptance rate >= 70%", "NPS >= 50"],
+      status: "pending", bg: "#DCFCE7", fg: "#15803D",
+    },
+    {
+      id: "2", label: "Phase 2 — Category expansion", window: "Months 6-9", scope: "Add Furniture (fixed_scope) + Painting (quote_first)",
+      gates: ["Per-category complaint/redo within target", "Painting hard gate: quote engine + BOM + L2 price book live (§17.13)", "FEATURE_QUOTE_FIRST flag enabled"],
+      status: "pending", bg: "#F3E8FF", fg: "#7C3AED",
+    },
+    {
+      id: "3", label: "Phase 3 — Depth + loyalty", window: "Months 9-12", scope: "Protection subscription + video pre-check + iOS depth",
+      gates: ["MRR from subscription trending", "Unit economics positive per service"],
+      status: "pending", bg: "#FEF3C7", fg: "#B45309",
+    },
+  ];
+  return (
+    <div>
+      <h1 className="text-2xl font-bold">Ops phases (§17.13)</h1>
+      <p className="text-sm text-slate-500 mt-1">Expansion gated on quality, never on calendar alone.</p>
+      <div className="mt-5 space-y-4">
+        {phases.map(p => (
+          <div key={p.id} className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base">{p.label}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{p.window}</p>
+              </div>
+              <span className="text-xs px-3 py-1 rounded-full font-semibold" style={{ background: p.bg, color: p.fg }}>{p.status === "active" ? "Active" : "Pending gate"}</span>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">{p.scope}</p>
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-slate-500 mb-2">KPI gates to advance:</p>
+              <ul className="space-y-1">
+                {p.gates.map(g => (
+                  <li key={g} className="flex items-center gap-2 text-xs text-slate-600">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.fg }} />
+                    {g}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* §17.14 Regional expansion */}
+      <div className="mt-5 bg-white rounded-2xl border border-slate-100 p-5">
+        <h3 className="font-bold">Regional expansion (§17.14) — Phase 3+</h3>
+        <p className="text-sm text-slate-500 mt-1">No market entered until Amman model is proven. Designed geographically-neutral (money as integer minor units, no Amman-hardcoding in domain).</p>
+        <div className="mt-3 space-y-2 text-sm">
+          {[
+            { market: "KSA", priority: "Priority 1", note: "Largest adjacent market · HyperPay/mada supported" },
+            { market: "UAE", priority: "Priority 2", note: "HyperPay supported · dialect/UX tuning required" },
+            { market: "Egypt", priority: "Priority 3", note: "Pricing recalibration · PSP TBD" },
+          ].map(r => (
+            <div key={r.market} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "#F8FAFC" }}>
+              <span className="font-bold w-10">{r.market}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "#FEF3C7", color: "#B45309" }}>{r.priority}</span>
+              <span className="text-slate-500 text-xs flex-1">{r.note}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs mt-3 text-slate-400">Per-country checklist: local PSP · labor-law/contractor rules · pricing recalibration · Arabic dialect/UX tuning · technician supply seeding · payments/tax setup.</p>
+      </div>
     </div>
   );
 }

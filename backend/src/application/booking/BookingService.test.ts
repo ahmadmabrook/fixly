@@ -310,12 +310,32 @@ describe('BookingService', () => {
           booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }) },
           outboxEvent: { create },
           bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+          bookingMaterial: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         }),
       );
 
       await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');
 
       expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'booking.in_progress' }) }));
+    });
+
+    it('locks execution-ready BOM lines in the same transaction as the ARRIVED → IN_PROGRESS transition', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const updateManyMaterials = jest.fn().mockResolvedValue({ count: 3 });
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }) },
+          outboxEvent: { create: jest.fn() },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+          bookingMaterial: { updateMany: updateManyMaterials },
+        }),
+      );
+
+      await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');
+
+      expect(updateManyMaterials).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ bookingId: 'b1' }) }),
+      );
     });
 
     it('refuses ARRIVED → IN_PROGRESS when the pre-start SOP checklist has not been submitted', async () => {
@@ -339,6 +359,7 @@ describe('BookingService', () => {
           booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 1, customerId: 'c1', preStartChecklistAt: new Date() }), update },
           outboxEvent: { create: jest.fn() },
           bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+          bookingMaterial: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         }),
       );
       await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');

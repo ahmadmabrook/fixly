@@ -11,6 +11,8 @@ import { PaymentService } from '../../../application/payment/PaymentService';
 import { PaymentProviderFactory } from '../../../infrastructure/providers/PaymentProviderFactory';
 import { MaskedCallService } from '../../../application/booking/MaskedCallService';
 import { getDispatchService } from '../../../application/dispatch/DispatchService';
+import { BookingMaterialService } from '../../../application/materials/BookingMaterialService';
+import { VarianceReason } from '@prisma/client';
 import { ForbiddenError } from '../../../shared/errors';
 import { env } from '../../../shared/env';
 import { logger } from '../../../shared/logger';
@@ -22,6 +24,7 @@ const bookingService = new BookingService();
 const reviewService = new ReviewService();
 const paymentService = new PaymentService(PaymentProviderFactory.create(), env().PAYMENT_PROVIDER);
 const maskedCallService = new MaskedCallService();
+const bookingMaterialService = new BookingMaterialService();
 
 bookingsRouter.use(authenticate, requireActiveUser);
 
@@ -318,5 +321,116 @@ bookingsRouter.post(
       photos: req.body.photos ?? undefined,
     });
     res.status(201).json({ data: review });
+  }),
+);
+
+// ── Bill of Materials (§17.5.9) ─────────────────────────────────────────────
+// Created and approved BEFORE execution; locked at ARRIVED->IN_PROGRESS (see
+// BookingLifecycleFlow). Post-lock needs route through additional-work above.
+
+const VARIANCE_REASONS = Object.values(VarianceReason);
+
+bookingsRouter.get(
+  '/:id/materials',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await bookingMaterialService.listForBooking(req.params.id, req.user!.userId) });
+  }),
+);
+
+bookingsRouter.post(
+  '/:id/materials',
+  requireRole('TECHNICIAN'),
+  validate([
+    param('id').isUUID(),
+    body('materialId').optional({ nullable: true }).isUUID(),
+    body('description').isString().trim().isLength({ min: 1, max: 300 }),
+    body('brand').optional({ nullable: true }).isString().trim().isLength({ max: 60 }),
+    body('qty').optional().isFloat({ gt: 0 }),
+    body('unit').optional({ nullable: true }).isString().trim().isLength({ max: 20 }),
+    body('unitPriceFils').isInt({ min: 0 }).toInt(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const line = await bookingMaterialService.createLine(req.params.id, req.user!.userId, {
+      materialId: req.body.materialId ?? undefined,
+      description: req.body.description,
+      brand: req.body.brand ?? undefined,
+      qty: req.body.qty ?? undefined,
+      unit: req.body.unit ?? undefined,
+      unitPriceFils: req.body.unitPriceFils,
+    });
+    res.status(201).json({ data: line });
+  }),
+);
+
+bookingsRouter.patch(
+  '/:id/materials/:lineId',
+  requireRole('TECHNICIAN'),
+  validate([
+    param('id').isUUID(),
+    param('lineId').isUUID(),
+    body('materialId').optional({ nullable: true }).isUUID(),
+    body('description').optional().isString().trim().isLength({ min: 1, max: 300 }),
+    body('brand').optional({ nullable: true }).isString().trim().isLength({ max: 60 }),
+    body('qty').optional().isFloat({ gt: 0 }),
+    body('unit').optional({ nullable: true }).isString().trim().isLength({ max: 20 }),
+    body('unitPriceFils').optional().isInt({ min: 0 }).toInt(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const line = await bookingMaterialService.updateLine(req.params.id, req.params.lineId, req.user!.userId, {
+      materialId: req.body.materialId,
+      description: req.body.description,
+      brand: req.body.brand,
+      qty: req.body.qty,
+      unit: req.body.unit,
+      unitPriceFils: req.body.unitPriceFils,
+    });
+    res.json({ data: line });
+  }),
+);
+
+// Technician uploads the required purchase-invoice photo for a BOM line
+// (§17.5.9). Above VARIANCE_JUSTIFY_BPS this must include a variance reason.
+bookingsRouter.post(
+  '/:id/materials/:lineId/invoice',
+  requireRole('TECHNICIAN'),
+  validate([
+    param('id').isUUID(),
+    param('lineId').isUUID(),
+    body('invoiceUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('varianceReasonKind').optional({ nullable: true }).isIn(VARIANCE_REASONS),
+    body('varianceReasonNote').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+  ]),
+  asyncHandler(async (req, res) => {
+    const line = await bookingMaterialService.uploadInvoice(
+      req.params.id,
+      req.params.lineId,
+      req.user!.userId,
+      req.body.invoiceUrl,
+      req.body.varianceReasonKind ? { reason: req.body.varianceReasonKind, note: req.body.varianceReasonNote } : undefined,
+    );
+    res.json({ data: line });
+  }),
+);
+
+// Customer digitally acknowledges a justified over-reference line before
+// execution (§17.5.14 step 2) — "silence is not consent."
+bookingsRouter.post(
+  '/:id/materials/:lineId/ack',
+  requireRole('CUSTOMER'),
+  validate([param('id').isUUID(), param('lineId').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await bookingMaterialService.ackByCustomer(req.params.id, req.params.lineId, req.user!.userId) });
+  }),
+);
+
+// Customer declines a justified over-reference line -> opens a
+// MaterialVerificationRequest (§17.5.14 step 3).
+bookingsRouter.post(
+  '/:id/materials/:lineId/decline',
+  requireRole('CUSTOMER'),
+  validate([param('id').isUUID(), param('lineId').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await bookingMaterialService.declineByCustomer(req.params.id, req.params.lineId, req.user!.userId) });
   }),
 );

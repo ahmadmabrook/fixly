@@ -13,12 +13,20 @@ const quoteService = new BookingQuoteService();
 
 quotesRouter.use(authenticate, requireActiveUser);
 
-// POST /quotes — upload a problem video for a firm price.
+// POST /quotes — request a firm quote: video pre-check (fixed_scope
+// convenience) OR quote-first assessment (mandatory for quote_first
+// services). Which fields are required depends on the target service's
+// pricingModel — enforced in BookingQuoteService.create, not here, so the
+// same rule applies regardless of caller.
 quotesRouter.post(
   '/',
   validate([
     body('serviceId').isUUID(),
-    body('videoUrl').isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('videoUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('siteMediaUrls').optional({ nullable: true }).isArray({ min: 1, max: 20 }),
+    body('siteMediaUrls.*').optional().isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
+    body('dimensionsNote').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
+    body('requestedTier').optional({ nullable: true }).isIn(['ECONOMY', 'STANDARD', 'PREMIUM']),
     body('description').optional({ nullable: true }).isString().trim().isLength({ max: 1000 }),
     body('addressLine').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
     body('addressLat').optional({ nullable: true }).isFloat({ min: MIN_LATITUDE, max: MAX_LATITUDE }).toFloat(),
@@ -27,7 +35,10 @@ quotesRouter.post(
   asyncHandler(async (req, res) => {
     const quote = await quoteService.create(req.user!.userId, {
       serviceId: req.body.serviceId,
-      videoUrl: req.body.videoUrl,
+      videoUrl: req.body.videoUrl ?? undefined,
+      siteMediaUrls: req.body.siteMediaUrls ?? undefined,
+      dimensionsNote: req.body.dimensionsNote ?? undefined,
+      requestedTier: req.body.requestedTier ?? undefined,
       description: req.body.description ?? undefined,
       addressLine: req.body.addressLine ?? undefined,
       addressLat: req.body.addressLat ?? undefined,

@@ -51,6 +51,11 @@ interface Env {
    *  (see PLATFORM_COMMISSION_PCT in loadEnv — keep this doc and that default
    *  in step; they are the contract every payout split is computed from). */
   PLATFORM_COMMISSION_PCT: number;
+  /** Materials/pricing engine (§17.5.12 control #5): a quote_first BookingQuote
+   *  whose labourFils+materialsFils totals at or above this threshold requires
+   *  opsReviewedById/opsReviewedAt before it can move to QUOTED. Any off-catalogue
+   *  material line (materialId null) requires review regardless of amount. */
+  OPS_REVIEW_THRESHOLD_FILS: number;
   /** Days a pre-authorization hold is assumed valid before capture needs a re-auth. */
   AUTH_HOLD_EXPIRY_DAYS: number;
   /** ISO-4217 currency for all money. Single-currency today; column-backed for later. */
@@ -265,6 +270,10 @@ export function loadEnv(): Env {
     throw new Error('PLATFORM_COMMISSION_PCT must be a number between 0 and 100');
   }
 
+  // Default 30 JOD (30_000 fils). §17.5.12 control #5 — deliberately a round,
+  // conservative MVP default; tune per real quote-value distribution once live.
+  const OPS_REVIEW_THRESHOLD_FILS = positiveIntEnv('OPS_REVIEW_THRESHOLD_FILS', 30_000);
+
   // Mock provider's HMAC webhook secret. No prod requirement: the mock is already
   // rejected in production above, and each real provider validates its own secret
   // (HyperPay → HYPERPAY_WEBHOOK_DECRYPT_KEY below).
@@ -332,6 +341,7 @@ export function loadEnv(): Env {
     OUTBOX_MAX_BATCHES_PER_TICK: positiveIntEnv('OUTBOX_MAX_BATCHES_PER_TICK', 50),
     METRICS_TOKEN: process.env.METRICS_TOKEN ?? '',
     PLATFORM_COMMISSION_PCT,
+    OPS_REVIEW_THRESHOLD_FILS,
     // Feeds the capture path's expired-hold check. A NaN here would make
     // `holdAgeMs > expiryMs` always false → expired holds silently captured
     // without re-authorization → declines at the PSP. Validated, not bare-parsed.
