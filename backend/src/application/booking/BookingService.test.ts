@@ -98,6 +98,38 @@ describe('BookingService', () => {
       expect(result).toEqual({ id: 'b1' });
     });
 
+    it('defaults labourFils to the charged price and materialsFils to 0 for a fixed_scope booking', async () => {
+      mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });
+      const tx = {
+        booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
+        outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+        bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
+
+      await service.createBooking(input);
+
+      expect(tx.booking.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ labourFils: 20_000, materialsFils: 0 }) }),
+      );
+    });
+
+    it('persists an explicit labourFils/materialsFils split from an accepted quote_first quote', async () => {
+      mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });
+      const tx = {
+        booking: { create: jest.fn().mockResolvedValue({ id: 'b1' }) },
+        outboxEvent: { create: jest.fn().mockResolvedValue({}) },
+        bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+      };
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => fn(tx));
+
+      await service.createBooking({ ...input, priceOverrideJod: 105, labourFils: 45_000, materialsFils: 60_000 });
+
+      expect(tx.booking.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ labourFils: 45_000, materialsFils: 60_000 }) }),
+      );
+    });
+
     it('hosted checkout: starts AWAITING_PAYMENT and does NOT emit booking.created yet', async () => {
       mockedHosted.mockReturnValue(true);
       mockedPrisma.service.findUnique.mockResolvedValue({ id: 's1', priceJod: 20, isActive: true });

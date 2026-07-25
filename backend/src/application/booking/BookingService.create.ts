@@ -113,6 +113,12 @@ export class BookingCreateFlow {
             totalJod: postPromo,
             isPriority,
             status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
+            // v1.7 labour/materials split (§17.5): an accepted quote_first quote
+            // passes its own line-derived split; a fixed_scope/video-quote
+            // booking has no materials concept, so its full charged price is
+            // labour and materials is 0 — matches the three-line invoice rule.
+            labourFils: input.labourFils ?? toMinorUnits(postPromo),
+            materialsFils: input.materialsFils ?? 0,
           },
         });
         await recordBookingStatusHistory(tx, booking.id, null, booking.status, input.customerId);

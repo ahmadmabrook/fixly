@@ -1,4 +1,4 @@
-import { Prisma, BookingStatus, MaterialLineStatus, VerificationStatus, VarianceReason } from '@prisma/client';
+import { Prisma, BookingStatus, MaterialLineStatus, VarianceReason } from '@prisma/client';
 import { BookingMaterialService, lockBookingMaterials } from './BookingMaterialService';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
