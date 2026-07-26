@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Video, ChevronLeft, Camera, Plus, X } from 'lucide-react';
 import { api } from '../lib/api';
+import { formatDateAr } from '../lib/format';
 import { Card, notify, SkeletonList } from '../components/shared';
 import { COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WARNING_BG, COLOR_WARNING_TEXT, COLOR_WHITE } from '../lib/theme';
 
@@ -31,14 +32,16 @@ interface QuoteDto {
   quotedJod: string | number | null;
   labourFils: number | null;
   materialsFils: number | null;
+  feesFils: number | null;
   lines: QuoteLineDto[];
   service?: { nameAr?: string | null };
   createdAt: string;
+  expiresAt: string;
 }
 /** Public catalogue entry — pricingModel decides which intake form this page shows. */
 interface Svc { id: string; nameAr: string; pricingModel?: 'FIXED_SCOPE' | 'QUOTE_FIRST'; inspectionFeeFils?: number | null }
 
-const STATUS_LABEL: Record<QuoteStatus, string> = { PENDING: 'بانتظار التسعير', QUOTED: 'جاهز — راجع العرض', ACCEPTED: 'مقبول', DECLINED: 'مرفوض', EXPIRED: 'منتهٍ' };
+const STATUS_LABEL: Record<QuoteStatus, string> = { PENDING: 'بانتظار التسعير', QUOTED: 'مُسعّر', ACCEPTED: 'مقبول', DECLINED: 'مرفوض', EXPIRED: 'منتهٍ' };
 const STATUS_COLOR: Record<QuoteStatus, { bg: string; fg: string }> = {
   PENDING: { bg: COLOR_WARNING_BG, fg: COLOR_WARNING_TEXT },
   QUOTED: { bg: COLOR_SUCCESS_BG, fg: COLOR_SUCCESS_TEXT },
@@ -46,7 +49,9 @@ const STATUS_COLOR: Record<QuoteStatus, { bg: string; fg: string }> = {
   DECLINED: { bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
   EXPIRED: { bg: COLOR_BG_SUBTLE, fg: COLOR_TEXT_MUTED },
 };
-const TIER_LABEL: Record<MaterialTier, string> = { ECONOMY: 'اقتصادي', STANDARD: 'قياسي', PREMIUM: 'ممتاز' };
+/** §6.34/§10 — the middle tier is «متوسط» everywhere else in the app; this page
+ *  previously showed «قياسي» for the same enum value. */
+const TIER_LABEL: Record<MaterialTier, string> = { ECONOMY: 'اقتصادي', STANDARD: 'متوسط', PREMIUM: 'ممتاز' };
 const KIND_LABEL: Record<QuoteLineKind, string> = { LABOUR: 'أجور عمل', MATERIAL: 'مادة', PREP: 'تجهيز', FEE: 'رسوم' };
 /** 1 JOD = 1000 fils (§17.5) — display-only conversion for the itemized quote-first path. */
 const fmtFils = (fils: number) => (fils / 1000).toFixed(2);
@@ -186,12 +191,18 @@ export default function QuotesPage() {
         {!isLoading && (quotes ?? []).length === 0 && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 14 }}>لا توجد طلبات بعد.</p>}
         {(quotes ?? []).map((q) => {
           const itemized = (q.siteMediaUrls ?? []).length > 0;
-          const totalFils = (q.labourFils ?? 0) + (q.materialsFils ?? 0);
+          const totalFils = (q.labourFils ?? 0) + (q.materialsFils ?? 0) + (q.feesFils ?? 0);
+          const svc = (services ?? []).find((s) => s.nameAr === q.service?.nameAr);
+          const inspectionFeeFils = svc?.inspectionFeeFils ?? null;
+          const isExpired = q.status === 'QUOTED' && new Date(q.expiresAt).getTime() < Date.now();
+          const daysLeft = Math.max(0, Math.ceil((new Date(q.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
           return (
             <Card key={q.id} className="p-4">
               <div className="flex items-center justify-between">
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{q.service?.nameAr ?? '—'}</div>
-                <span className="px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[q.status].bg, color: STATUS_COLOR[q.status].fg, fontSize: 12, fontWeight: 700 }}>{STATUS_LABEL[q.status]}</span>
+                <span className="px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[q.status].bg, color: STATUS_COLOR[q.status].fg, fontSize: 12, fontWeight: 700 }}>
+                  {isExpired ? STATUS_LABEL.EXPIRED : STATUS_LABEL[q.status]}
+                </span>
               </div>
               {q.description && <p style={{ color: COLOR_TEXT_SUBTLE, fontSize: 13, marginTop: 4 }}>{q.description}</p>}
 
@@ -200,22 +211,41 @@ export default function QuotesPage() {
                   {q.lines.map((line) => (
                     <div key={line.id} className="flex items-center justify-between px-3 py-2 border-b border-slate-100" style={{ fontSize: 13 }}>
                       <span>{KIND_LABEL[line.kind]} — {line.description}</span>
-                      <span style={{ fontWeight: 700 }}>{fmtFils(line.totalFils)} د.أ</span>
+                      <span style={{ fontWeight: 700 }}>{fmtFils(line.totalFils)} دينار</span>
                     </div>
                   ))}
                   <div className="flex items-center justify-between px-3 py-2" style={{ fontSize: 12, color: COLOR_TEXT_MUTED }}>
-                    <span>أجور {fmtFils(q.labourFils ?? 0)} + مواد {fmtFils(q.materialsFils ?? 0)}</span>
+                    <span>أجور {fmtFils(q.labourFils ?? 0)} + مواد {fmtFils(q.materialsFils ?? 0)}{(q.feesFils ?? 0) > 0 ? ` + رسوم ${fmtFils(q.feesFils ?? 0)}` : ''}</span>
                   </div>
+                  {!!inspectionFeeFils && (
+                    <div className="px-3 py-2 border-t border-slate-100" style={{ fontSize: 12, color: COLOR_TEXT_MUTED }}>
+                      يشمل خصم رسوم المعاينة ({fmtFils(inspectionFeeFils)} دينار) من قيمة المشروع
+                    </div>
+                  )}
                 </div>
               )}
 
-              {q.status === 'QUOTED' && q.quotedJod != null && (
-                <div className="mt-3 flex items-center justify-between p-3 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT }}>
-                  <span style={{ fontWeight: 800, fontSize: 18, color: COLOR_BRAND_PRIMARY_DARK, fontFamily: 'Inter' }}>
-                    {itemized ? fmtFils(totalFils) : Number(q.quotedJod)} دينار
-                  </span>
-                  <button onClick={() => accept.mutate(q.id)} disabled={accept.isPending} className="h-10 px-5 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 14 }}>
-                    اقبل واحجز
+              {q.status === 'QUOTED' && q.quotedJod != null && !isExpired && (
+                <>
+                  <div className="mt-2 text-right" style={{ fontSize: 12, color: daysLeft <= 1 ? COLOR_ERROR_TEXT : COLOR_TEXT_MUTED }}>
+                    العرض صالح حتى {formatDateAr(q.expiresAt)} ({daysLeft} يوم متبقٍ)
+                  </div>
+                  <div className="mt-1 flex items-center justify-between p-3 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT }}>
+                    <span style={{ fontWeight: 800, fontSize: 18, color: COLOR_BRAND_PRIMARY_DARK, fontFamily: 'Inter' }}>
+                      {itemized ? fmtFils(totalFils) : Number(q.quotedJod)} دينار
+                    </span>
+                    <button onClick={() => accept.mutate(q.id)} disabled={accept.isPending} className="h-10 px-5 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 14 }}>
+                      اقبل واحجز
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {isExpired && (
+                <div className="mt-3 flex items-center justify-between p-3 rounded-xl" style={{ background: COLOR_ERROR_BG }}>
+                  <span style={{ color: COLOR_ERROR_TEXT, fontSize: 13, fontWeight: 600 }}>انتهت صلاحية العرض — لا يمكن الحجز به بعد الآن</span>
+                  <button onClick={() => q.service?.nameAr && setServiceId(svc?.id ?? '')} className="h-9 px-4 rounded-xl" style={{ background: COLOR_WHITE, color: COLOR_ERROR_TEXT, fontWeight: 700, fontSize: 13, border: `1px solid ${COLOR_ERROR_TEXT}` }}>
+                    اطلب إعادة تسعير
                   </button>
                 </div>
               )}

@@ -8,7 +8,7 @@ import { dispatchAcceptLatencySeconds, dispatchOffersTotal } from '../../shared/
 import { getBookingById } from './BookingService.reads';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
 import { OutboxEventType } from '../../shared/outboxEvents';
-import { lockBookingMaterials } from '../materials/BookingMaterialService';
+import { lockBookingMaterials, requireBomApprovedForWorkStart, requireMaterialInvoicesComplete } from '../materials/BookingMaterialService';
 import { CategoryReadinessService } from '../materials/CategoryReadinessService';
 import { logger } from '../../shared/logger';
 
@@ -163,6 +163,14 @@ export class BookingLifecycleFlow {
         throw new ValidationError('Pre-start checklist must be submitted before starting the job');
       }
 
+      // BOM approval gate (§8.12): the customer must have approved every plain
+      // BOM line before work starts. Checked here, alongside the other
+      // pre-conditions above, and BEFORE the status write below — a rejected
+      // transition should never attempt the write it's about to reject.
+      if (to === BookingStatus.IN_PROGRESS) {
+        await requireBomApprovedForWorkStart(tx, bookingId);
+      }
+
       const updated = await tx.booking.update({
         where: { id: bookingId, version: fresh.version },
         data: {
@@ -174,11 +182,11 @@ export class BookingLifecycleFlow {
       });
       await recordBookingStatusHistory(tx, bookingId, fresh.status, to, technicianUserId);
 
-      // BOM lock (§17.5.9): execution-ready material lines become immutable the
-      // instant work starts, in the same transaction as the status change.
-      // Post-lock material needs route through the existing extra-work gate,
-      // never a silent BOM edit. Kept in its own materials-domain module
-      // rather than folded into this file.
+      // BOM lock (§17.5.9): execution-ready material lines become immutable
+      // the instant work starts, in the same transaction as the status
+      // change. Post-lock material needs route through the existing
+      // extra-work gate, never a silent BOM edit. Kept in its own
+      // materials-domain module rather than folded into this file.
       if (to === BookingStatus.IN_PROGRESS) {
         await lockBookingMaterials(tx, bookingId);
       }
@@ -243,6 +251,10 @@ export class BookingLifecycleFlow {
       if (!fresh.preCloseChecklistAt) {
         throw new ValidationError('Pre-close checklist must be submitted before completing the job');
       }
+
+      // §17.5.9 v1.11: every purchased material needs an uploaded shop invoice
+      // before the job — and its payment capture — can finalize.
+      await requireMaterialInvoicesComplete(tx, bookingId);
 
       // Money guard: never let a booking complete (→ capture) unless its funds
       // were actually authorized — otherwise a pre-auth failure means delivering

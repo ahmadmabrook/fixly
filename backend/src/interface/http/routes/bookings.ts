@@ -12,7 +12,7 @@ import { PaymentProviderFactory } from '../../../infrastructure/providers/Paymen
 import { MaskedCallService } from '../../../application/booking/MaskedCallService';
 import { getDispatchService } from '../../../application/dispatch/DispatchService';
 import { BookingMaterialService } from '../../../application/materials/BookingMaterialService';
-import { VarianceReason } from '@prisma/client';
+import { VarianceReason, MaterialSource } from '@prisma/client';
 import { ForbiddenError } from '../../../shared/errors';
 import { env } from '../../../shared/env';
 import { logger } from '../../../shared/logger';
@@ -329,6 +329,7 @@ bookingsRouter.post(
 // BookingLifecycleFlow). Post-lock needs route through additional-work above.
 
 const VARIANCE_REASONS = Object.values(VarianceReason);
+const MATERIAL_SOURCES = Object.values(MaterialSource);
 
 bookingsRouter.get(
   '/:id/materials',
@@ -349,6 +350,7 @@ bookingsRouter.post(
     body('qty').optional().isFloat({ gt: 0 }),
     body('unit').optional({ nullable: true }).isString().trim().isLength({ max: 20 }),
     body('unitPriceFils').isInt({ min: 0 }).toInt(),
+    body('source').optional().isIn(MATERIAL_SOURCES),
   ]),
   asyncHandler(async (req, res) => {
     const line = await bookingMaterialService.createLine(req.params.id, req.user!.userId, {
@@ -358,6 +360,7 @@ bookingsRouter.post(
       qty: req.body.qty ?? undefined,
       unit: req.body.unit ?? undefined,
       unitPriceFils: req.body.unitPriceFils,
+      source: req.body.source ?? undefined,
     });
     res.status(201).json({ data: line });
   }),
@@ -410,6 +413,47 @@ bookingsRouter.post(
       req.body.varianceReasonKind ? { reason: req.body.varianceReasonKind, note: req.body.varianceReasonNote } : undefined,
     );
     res.json({ data: line });
+  }),
+);
+
+// Technician substitutes an already-recorded BOM line for a different
+// material (§17.5.10 case 1) — creates a new linked line, never edits in place.
+bookingsRouter.post(
+  '/:id/materials/:lineId/substitute',
+  requireRole('TECHNICIAN'),
+  validate([
+    param('id').isUUID(),
+    param('lineId').isUUID(),
+    body('materialId').optional({ nullable: true }).isUUID(),
+    body('description').isString().trim().isLength({ min: 1, max: 300 }),
+    body('brand').optional({ nullable: true }).isString().trim().isLength({ max: 60 }),
+    body('qty').optional().isFloat({ gt: 0 }),
+    body('unit').optional({ nullable: true }).isString().trim().isLength({ max: 20 }),
+    body('unitPriceFils').isInt({ min: 0 }).toInt(),
+    body('source').optional().isIn(MATERIAL_SOURCES),
+  ]),
+  asyncHandler(async (req, res) => {
+    const line = await bookingMaterialService.substituteLine(req.params.id, req.params.lineId, req.user!.userId, {
+      materialId: req.body.materialId ?? undefined,
+      description: req.body.description,
+      brand: req.body.brand ?? undefined,
+      qty: req.body.qty ?? undefined,
+      unit: req.body.unit ?? undefined,
+      unitPriceFils: req.body.unitPriceFils,
+      source: req.body.source ?? undefined,
+    });
+    res.status(201).json({ data: line });
+  }),
+);
+
+// Customer digitally approves a normal BOM line (no open price dispute)
+// before execution (§8.12) — gates the ARRIVED->IN_PROGRESS transition.
+bookingsRouter.post(
+  '/:id/materials/:lineId/approve',
+  requireRole('CUSTOMER'),
+  validate([param('id').isUUID(), param('lineId').isUUID()]),
+  asyncHandler(async (req, res) => {
+    res.json({ data: await bookingMaterialService.approveByCustomer(req.params.id, req.params.lineId, req.user!.userId) });
   }),
 );
 

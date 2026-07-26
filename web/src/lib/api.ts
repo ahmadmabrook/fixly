@@ -129,6 +129,11 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
+/** §0.2 #4 / §17.5.1 — FIXED_SCOPE shows priceJod and instant-books;
+ *  QUOTE_FIRST never shows an instant price (backend rejects instant-book
+ *  attempts) — the customer must go through the itemized-quote flow instead. */
+export type PricingModel = 'FIXED_SCOPE' | 'QUOTE_FIRST';
+
 export interface Service {
   id: string;
   nameAr: string;
@@ -144,6 +149,10 @@ export interface Service {
   sopExcludes?: string[];
   /** Charged if a technician dispatches out but the job doesn't proceed (no-show, refusal, etc). */
   calloutFeeJod?: string | number;
+  pricingModel?: PricingModel;
+  /** QUOTE_FIRST only — disclosed inspection/assessment fee, credited against
+   *  the accepted quote total (§17.5.3). */
+  inspectionFeeFils?: number | null;
 }
 
 /** Mirrors the backend `BookingStatus` enum (backend/prisma/schema.prisma). */
@@ -165,6 +174,23 @@ export interface Booking {
   scheduledAt: string | null;
   totalJod: string | number;
   service: Service;
+  /** §17.5.4 three-line invoice split: labour · materials · fees (fils, 1000/JOD). */
+  labourFils?: number;
+  materialsFils?: number;
+  feesFils?: number;
+  /** §17.5.2 disclosed night/emergency surcharge, its own invoice line. */
+  isEmergency?: boolean;
+  surchargeFils?: number;
+  discountJod?: string | number;
+  lateCompJod?: string | number;
+  slaArriveBy?: string | null;
+  arrivedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  isPriority?: boolean;
+  /** Set once the customer approves a CUSTOMER_SUPPLIED materials line — the
+   *  guarantee then covers workmanship only, not the materials (§17.8). */
+  customerSuppliedMaterialsAckAt?: string | null;
 }
 
 /** Booking row as returned by GET /bookings (service included). */
@@ -286,13 +312,18 @@ export interface GuaranteeTicketItem {
   expiresAt: string;
   resolvedAt: string | null;
   createdAt: string;
-  booking?: { id: string; service?: { nameAr: string } | null } | null;
+  booking?: { id: string; service?: { nameAr: string } | null; warrantyScope?: WarrantyScope } | null;
 }
+
+/** §17.8 — FULL covers materials + workmanship; WORKMANSHIP_ONLY applies when
+ *  the customer supplied their own materials for the job. */
+export type WarrantyScope = 'FULL' | 'WORKMANSHIP_ONLY';
 
 export interface EligibleBooking {
   id: string;
   completedAt: string | null;
   service?: { nameAr: string; nameEn: string } | null;
+  warrantyScope?: WarrantyScope;
 }
 
 export interface SupportMessage {

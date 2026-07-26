@@ -33,8 +33,9 @@ function mockFetchWith(payloads: Array<{ status?: number; payload: unknown }>) {
 
 const listPayload = {
   data: [{
-    id: 'bm1', bookingId: 'b1', materialId: null, status: 'PENDING_REVIEW', description: 'أنبوب استيراد خاص',
-    qty: '1', unitPriceFils: 40_000, totalFils: 40_000, referencePriceFils: 30_000, varianceBps: 3333, supplierInvoiceUrl: null,
+    id: 'bm1', bookingId: 'b1', materialId: null, source: 'TECHNICIAN_PROCURED', status: 'PENDING_REVIEW', description: 'أنبوب استيراد خاص',
+    brand: null, qty: '1', unitPriceFils: 40_000, totalFils: 40_000, referencePriceFils: 30_000, varianceBps: 3333,
+    varianceReason: null, varianceReasonNote: null, supplierInvoiceUrl: 'https://example.com/invoice.jpg', createdAt: '2026-07-26T10:00:00.000Z',
   }],
   meta: { total: 1, limit: 100, offset: 0 },
 };
@@ -45,6 +46,19 @@ describe('MaterialsReview page (BOM review queue)', () => {
     renderWithProviders(<MaterialsReview />);
     await waitFor(() => expect(screen.getByText('أنبوب استيراد خاص')).toBeInTheDocument());
     expect(screen.getByText(/انحراف 33.3%/)).toBeInTheDocument();
+  });
+
+  it('disables approval for an off-catalogue line with no uploaded invoice yet (§17.5.9)', async () => {
+    mockFetchWith([{
+      payload: {
+        data: [{ ...listPayload.data[0], supplierInvoiceUrl: null }],
+        meta: { total: 1, limit: 100, offset: 0 },
+      },
+    }]);
+    renderWithProviders(<MaterialsReview />);
+    await waitFor(() => expect(screen.getByText('أنبوب استيراد خاص')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'موافقة' })).toBeDisabled();
+    expect(screen.getByText(/بند خارج الكتالوج/)).toBeInTheDocument();
   });
 
   it('approves a line', async () => {

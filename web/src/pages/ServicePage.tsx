@@ -108,23 +108,47 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
         </div>
 
         <Card className="p-6 h-fit sticky top-20">
-          <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>السعر الثابت</div>
-          <div className="mt-1"><PriceBadge amount={Number(svc.priceJod)} big /></div>
-          {member && (
+          {svc.pricingModel === 'QUOTE_FIRST' ? (
+            <>
+              <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>السعر</div>
+              <div className="mt-1" style={{ fontWeight: 800, fontSize: 22, color: COLOR_BRAND_PRIMARY_DARK }}>حسب المعاينة</div>
+              {svc.inspectionFeeFils != null && (
+                <p className="mt-2" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>
+                  رسوم معاينة <span style={{ fontFamily: 'Inter' }}>{(svc.inspectionFeeFils / 1000).toFixed(2)}</span> دينار — تُخصم من قيمة المشروع عند القبول
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>السعر الثابت</div>
+              <div className="mt-1"><PriceBadge amount={Number(svc.priceJod)} big /></div>
+            </>
+          )}
+          {member && svc.pricingModel !== 'QUOTE_FIRST' && (
             <div className="mt-1" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 13, fontWeight: 700 }}>
               خصم العضوية −<span style={{ fontFamily: 'Inter' }}>{discountPercent}</span>% مُطبّق عند الحجز
             </div>
           )}
           <div className="my-4 h-px bg-slate-100" />
           <ul className="space-y-2" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>
-            <li className="flex items-center gap-2"><Clock size={14} aria-hidden="true" /> فوراً خلال 30 دقيقة</li>
+            {svc.pricingModel !== 'QUOTE_FIRST' && <li className="flex items-center gap-2"><Clock size={14} aria-hidden="true" /> فوراً خلال 30 دقيقة</li>}
             <li className="flex items-center gap-2"><BadgeCheck size={14} color={COLOR_BRAND_PRIMARY} aria-hidden="true" /> فني معتمد Fixly Certified</li>
             <li className="flex items-center gap-2"><ShieldCheck size={14} color={COLOR_SUCCESS_TEXT} aria-hidden="true" /> ضمان <span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوم مشمول</li>
             <li className="flex items-center gap-2"><CreditCard size={14} aria-hidden="true" /> دفع آمن</li>
           </ul>
-          <button onClick={onBook} className="mt-5 w-full h-12 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
-            اطلب الآن
-          </button>
+          {svc.pricingModel === 'QUOTE_FIRST' ? (
+            <Link
+              to="/quotes"
+              className="mt-5 flex items-center justify-center w-full h-12 rounded-xl"
+              style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
+            >
+              اطلب عرض سعر
+            </Link>
+          ) : (
+            <button onClick={onBook} className="mt-5 w-full h-12 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}>
+              اطلب الآن
+            </button>
+          )}
         </Card>
       </div>
     </main>

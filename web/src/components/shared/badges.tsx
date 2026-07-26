@@ -7,7 +7,26 @@ import { COLOR_ACCENT_AMBER, COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIM
  *  any string (e.g. an unrecognized status) and fall back to the default styling below. */
 type StatusStyle = { ar: string; bg: string; fg: string };
 
-export function PriceBadge({ amount, big = false }: { amount: number; big?: boolean }) {
+/** §0.2 #4 / §6.8 — a quote_first service (Painting etc.) NEVER shows an
+ *  instant flat price; every catalogue/landing/service-detail card that
+ *  renders a price must branch on pricingModel through this one component. */
+export function PriceBadge({ amount, big = false, quoteFirst = false }: { amount: number; big?: boolean; quoteFirst?: boolean }) {
+  if (quoteFirst) {
+    return (
+      <span
+        className="inline-flex items-baseline gap-1 rounded-lg"
+        style={{
+          background: big ? 'transparent' : COLOR_BRAND_PRIMARY_TINT,
+          color: COLOR_BRAND_PRIMARY_DARK,
+          padding: big ? 0 : '4px 10px',
+          fontWeight: 700,
+          fontSize: big ? 20 : 13,
+        }}
+      >
+        حسب المعاينة
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-lg"
@@ -27,7 +46,8 @@ export function PriceBadge({ amount, big = false }: { amount: number; big?: bool
 
 export function StatusBadge({ status }: { status: string }) {
   const map = {
-    PENDING:            { ar: 'بانتظار الدفع',     bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY },
+    AWAITING_PAYMENT:   { ar: 'بانتظار الدفع',     bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY },
+    PENDING:            { ar: 'قيد البحث عن فني',  bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY },
     CONFIRMED:          { ar: 'تم القبول',         bg: COLOR_BADGE_INFO_BG, fg: COLOR_BRAND_PRIMARY },
     EN_ROUTE:           { ar: 'الفني في الطريق',   bg: COLOR_ENROUTE_BG, fg: COLOR_ENROUTE_TEXT },
     ARRIVED:            { ar: 'الفني وصل',         bg: COLOR_ENROUTE_BG, fg: COLOR_ENROUTE_TEXT },
@@ -35,6 +55,7 @@ export function StatusBadge({ status }: { status: string }) {
     COMPLETED:          { ar: 'مكتملة',            bg: COLOR_SUCCESS_BG, fg: COLOR_SUCCESS_TEXT },
     CANCELLED:          { ar: 'ملغاة',             bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
     DISPUTED:           { ar: 'نزاع',              bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
+    NO_SHOW:            { ar: 'عدم تواجد العميل',  bg: COLOR_ERROR_BG, fg: COLOR_ERROR_TEXT },
   } satisfies Partial<Record<BookingStatus, StatusStyle>>;
   const s = (map as Record<string, StatusStyle>)[status] ?? { ar: status, bg: COLOR_BORDER, fg: COLOR_TEXT_SECONDARY };
   return (
@@ -57,11 +78,11 @@ export function Stars({ rating, size = 14 }: { rating: number; size?: number }) 
   );
 }
 
-export function GuaranteePill() {
+export function GuaranteePill({ days = 30 }: { days?: number }) {
   return (
     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT, fontSize: 11, fontWeight: 600 }}>
       <ShieldCheck size={12} />
-      ضمان 30 يوم
+      ضمان <span style={{ fontFamily: 'Inter' }}>{days}</span> يوم
     </div>
   );
 }

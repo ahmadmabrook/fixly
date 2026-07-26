@@ -61,14 +61,21 @@ export default function Suppliers() {
       {!isLoading && !isError && items.length > 0 && (
         <Card>
           <TableWrapper>
-            <thead><tr><Th>الاسم</Th><Th>الفئات</Th><Th>العمولة</Th><Th>الاتفاق</Th><Th>نتيجة التجربة (30 يوم)</Th></tr></thead>
+            <thead><tr><Th>الاسم</Th><Th>الفئات</Th><Th>العمولة</Th><Th>الاتفاق</Th><Th>التجربة (30 يوم)</Th><Th>نتيجة التجربة</Th></tr></thead>
             <tbody>
-              {items.map((s) => (
+              {items.map((s) => {
+                const trialDay = s.trialStartedAt ? Math.min(30, Math.max(0, Math.floor((Date.now() - new Date(s.trialStartedAt).getTime()) / 864e5))) : null;
+                return (
                 <tr key={s.id}>
                   <Td>{s.name}</Td>
                   <Td>{s.categories.join('، ') || '—'}</Td>
                   <Td>{s.referralCommissionBps != null ? `${(s.referralCommissionBps / 100).toFixed(1)}%` : '—'}</Td>
                   <Td>{s.agreementKind === 'verbal' ? 'شفهي' : s.agreementKind === 'message' ? 'رسالة' : 'مكتوب'}</Td>
+                  <Td>
+                    {trialDay != null
+                      ? <span style={{ fontFamily: 'Inter', fontWeight: trialDay >= 30 ? 700 : 400, color: trialDay >= 30 ? COLOR_STATUS_DANGER : undefined }}>اليوم {trialDay}/30</span>
+                      : '—'}
+                  </Td>
                   <Td>
                     <div className="flex gap-2">
                       <button onClick={() => setTrialVerdict.mutate({ id: s.id, field: 'commissionPaidOk', value: !s.commissionPaidOk })}>
@@ -80,7 +87,8 @@ export default function Suppliers() {
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </TableWrapper>
           <Pagination page={page} total={data?.total ?? 0} limit={limit} onPage={setPage} />

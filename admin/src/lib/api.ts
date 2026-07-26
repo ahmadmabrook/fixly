@@ -498,6 +498,8 @@ export interface MaterialCatalogItem {
   varianceAlertBps: number;
   coverageNote: string | null;
   priceConfidence: 'CONFIRMED' | 'ESTIMATED' | 'UNDER_REVIEW';
+  lastPricedAt: string | null;
+  refreshCadence: 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL';
   isActive: boolean;
 }
 
@@ -542,14 +544,19 @@ export interface BookingMaterialAdminItem {
   id: string;
   bookingId: string;
   materialId: string | null;
+  source: 'TECHNICIAN_PROCURED' | 'CUSTOMER_SUPPLIED' | 'PLATFORM_ARRANGED';
   status: 'PENDING' | 'PENDING_REVIEW' | 'APPROVED' | 'DECLINED' | 'REPLACED' | 'UNUSED' | 'LOCKED';
   description: string;
+  brand: string | null;
   qty: string | number;
   unitPriceFils: number;
   totalFils: number;
   referencePriceFils: number | null;
   varianceBps: number | null;
+  varianceReason: 'SPECIAL_TYPE' | 'IMPORTED_BRAND' | 'ACCESS_DIFFICULTY' | 'OTHER' | null;
+  varianceReasonNote: string | null;
   supplierInvoiceUrl: string | null;
+  createdAt: string;
   booking?: { id: string; customerId: string; addressLine: string } | null;
 }
 

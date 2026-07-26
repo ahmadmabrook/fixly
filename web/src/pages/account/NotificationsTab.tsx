@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Notification } from '../../lib/api';
+import { formatDateTimeAr } from '../../lib/format';
 import { Card, notify, SkeletonList } from '../../components/shared';
 import { COLOR_BG_UNREAD, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
 
@@ -24,7 +25,7 @@ export function NotificationsTab() {
         <Card key={n.id} className="p-4" style={{ background: n.isRead ? COLOR_WHITE : COLOR_BG_UNREAD }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{n.titleAr}</div>
           <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13, marginTop: 2 }}>{n.bodyAr}</div>
-          <div style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 4 }}>{new Date(n.createdAt).toLocaleString('ar-JO')}</div>
+          <div style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 4 }}>{formatDateTimeAr(n.createdAt)}</div>
         </Card>
       ))}
     </div>

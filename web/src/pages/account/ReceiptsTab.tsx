@@ -4,6 +4,7 @@ import { api, AdditionalWorkItem } from '../../lib/api';
 import { Card, notify, SkeletonList, StatusBadge } from '../../components/shared';
 import { useBookings } from '../../hooks/useBookings';
 import { downloadReceipt, type FullBooking } from '../BookingDetail';
+import { formatDateAr } from '../../lib/format';
 import { COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY } from '../../lib/theme';
 
 export function ReceiptsTab() {
@@ -36,7 +37,7 @@ export function ReceiptsTab() {
           <div className="flex-1">
             <div style={{ fontWeight: 700, fontSize: 14 }}>{b.service?.nameAr}</div>
             <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, marginTop: 2 }}>
-              {b.scheduledAt ? new Date(b.scheduledAt).toLocaleDateString('ar-JO') : '—'}
+              {b.scheduledAt ? formatDateAr(b.scheduledAt) : '—'}
             </div>
             <div className="mt-1 flex items-center gap-2">
               <span style={{ fontFamily: 'Inter', fontWeight: 700, fontSize: 13, color: COLOR_BRAND_PRIMARY_DARK }}>{Number(b.totalJod)} دينار</span>

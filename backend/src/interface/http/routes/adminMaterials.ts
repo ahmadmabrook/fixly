@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { CatalogSource, RefreshCadence, PriceConfidence, MaterialTier, PriceIndexKind, VerificationStatus } from '@prisma/client';
+import { CatalogSource, RefreshCadence, PriceConfidence, MaterialTier, PriceIndexKind, VerificationStatus, MaterialMode, SubstitutionPolicy } from '@prisma/client';
+import { prisma } from '../../../infrastructure/database/prisma';
 import { asyncHandler } from '../asyncHandler';
 import { validate, paginationQuery } from '../validate';
 import { requireAdminRole } from '../middleware/auth';
@@ -18,6 +19,8 @@ const PRICE_CONFIDENCES = Object.values(PriceConfidence);
 const MATERIAL_TIERS = Object.values(MaterialTier);
 const PRICE_INDEX_KINDS = Object.values(PriceIndexKind);
 const VERIFICATION_STATUSES = Object.values(VerificationStatus);
+const MATERIAL_MODES = Object.values(MaterialMode);
+const SUBSTITUTION_POLICIES = Object.values(SubstitutionPolicy);
 
 /**
  * Admin surface for the §17.5 materials/pricing engine — materials catalog,
@@ -105,6 +108,82 @@ adminMaterialsRouter.patch(
   validate([param('id').isUUID(), ...materialCatalogBodyValidators]),
   asyncHandler(async (req, res) => {
     res.json({ data: await catalogService.update(req.params.id, req.body) });
+  }),
+);
+
+// §3.4 GET /admin/catalog/staleness — active rows overdue for their refresh
+// cadence. Registered before /materials/:id so "staleness" isn't swallowed as
+// a UUID param.
+adminMaterialsRouter.get(
+  '/materials-staleness',
+  requireAdminRole('OPS'),
+  asyncHandler(async (_req, res) => {
+    res.json({ data: await catalogService.listStale() });
+  }),
+);
+
+// §17.5.6 stage A item 1 — the retail-observation log behind a catalogue row's price.
+adminMaterialsRouter.get(
+  '/materials/:materialId/observations',
+  requireAdminRole('OPS'),
+  validate([param('materialId').isUUID(), ...paginationQuery()]),
+  asyncHandler(async (req, res) => {
+    const limit = (req.query.limit as unknown as number | undefined) ?? 50;
+    const offset = (req.query.offset as unknown as number | undefined) ?? 0;
+    const { items, total } = await catalogService.listObservations(req.params.materialId, limit, offset);
+    res.json({ data: items, meta: { total, limit, offset } });
+  }),
+);
+
+adminMaterialsRouter.post(
+  '/materials/:materialId/observations',
+  requireAdminRole('OPS'),
+  validate([
+    param('materialId').isUUID(),
+    body('supplierId').optional({ nullable: true }).isUUID(),
+    body('shopName').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
+    body('area').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
+    body('observedFils').isInt({ min: 0 }).toInt(),
+    body('note').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+  ]),
+  asyncHandler(async (req, res) => {
+    const observation = await catalogService.recordObservation({
+      materialId: req.params.materialId,
+      supplierId: req.body.supplierId ?? undefined,
+      shopName: req.body.shopName ?? undefined,
+      area: req.body.area ?? undefined,
+      observedFils: req.body.observedFils,
+      observedById: req.user!.userId,
+      note: req.body.note ?? undefined,
+    });
+    res.status(201).json({ data: observation });
+  }),
+);
+
+// ── Service materials policy (OPS) — §17.5.5 ──────────────────────────────
+adminMaterialsRouter.put(
+  '/services/:id/material-policy',
+  requireAdminRole('OPS'),
+  validate([
+    param('id').isUUID(),
+    body('mode').optional().isIn(MATERIAL_MODES),
+    body('microThresholdFils').optional().isInt({ min: 0 }).toInt(),
+    body('allowCustomerSupply').optional().isBoolean().toBoolean(),
+    body('substitution').optional().isIn(SUBSTITUTION_POLICIES),
+    body('quoteRequiredAboveFils').optional({ nullable: true }).isInt({ min: 0 }).toInt(),
+    body('quoteValidityHours').optional().isInt({ min: 1, max: 24 * 30 }).toInt(),
+    body('qualityFloorGrade').optional().isIn(MATERIAL_TIERS),
+    body('surplusBelongsToCustomer').optional().isBoolean().toBoolean(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const { mode, microThresholdFils, allowCustomerSupply, substitution, quoteRequiredAboveFils, quoteValidityHours, qualityFloorGrade, surplusBelongsToCustomer } = req.body;
+    const data = { mode, microThresholdFils, allowCustomerSupply, substitution, quoteRequiredAboveFils, quoteValidityHours, qualityFloorGrade, surplusBelongsToCustomer };
+    const policy = await prisma.serviceMaterialPolicy.upsert({
+      where: { serviceId: req.params.id },
+      create: { serviceId: req.params.id, ...data },
+      update: data,
+    });
+    res.json({ data: policy });
   }),
 );
 

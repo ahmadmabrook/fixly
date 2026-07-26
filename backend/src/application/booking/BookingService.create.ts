@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, PricingModel } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
 import { ConflictError } from '../../shared/errors';
@@ -11,6 +11,10 @@ import { withDeadlockRetry } from '../../shared/dbRetry';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { recordBookingStatusHistory } from './bookingStatusHistory';
 import { OutboxEventType } from '../../shared/outboxEvents';
+
+/** §17.5.2: flat disclosed night/emergency surcharge, its own invoice line
+ *  (Booking.surchargeFils) — never folded into labourFils. */
+export const EMERGENCY_SURCHARGE_JOD = 10;
 
 export interface CreateBookingInput {
   customerId: string;
@@ -34,6 +38,11 @@ export interface CreateBookingInput {
    */
   labourFils?: number;
   materialsFils?: number;
+  /** §17.5.4 third invoice bucket, from an accepted itemized quote's FEE lines. */
+  feesFils?: number;
+  /** Customer-disclosed emergency/night request (§17.5.2) — adds the flat
+   *  EMERGENCY_SURCHARGE_JOD as its own invoice line, never discounted. */
+  isEmergency?: boolean;
 }
 
 /**
@@ -54,6 +63,15 @@ export class BookingCreateFlow {
     const service = await prisma.service.findUnique({ where: { id: input.serviceId } });
     if (!service) throw new NotFoundError('Service');
     if (!service.isActive) throw new ValidationError('Service is not available');
+
+    // §0.2 #4 / §17.5.1 — a quote_first service (e.g. Painting) is NEVER
+    // instant-bookable at a catalogue price; the only valid path is
+    // BookingQuoteService.accept(), which always supplies priceOverrideJod
+    // from the customer-approved itemized quote. A direct create with no
+    // override is therefore always the disallowed instant-book attempt.
+    if (service.pricingModel === PricingModel.QUOTE_FIRST && input.priceOverrideJod == null) {
+      throw new ValidationError('This service requires a quote — instant booking is not available for quote_first services');
+    }
 
     // List price = service price, unless this booking came from an accepted firm
     // video quote (§0.3), which fixes its own price. Wrap in Decimal so arithmetic
@@ -77,6 +95,12 @@ export class BookingCreateFlow {
     // discountJod records list→charged reductions (subscription + promo). Wallet
     // credit is a separate REDEMPTION row, not a discount.
     const discountJod = listPrice.sub(postPromo);
+
+    // §17.5.2: flat disclosed night/emergency surcharge, applied AFTER discounts
+    // (it is not part of the discounted service price) and included in the
+    // wallet-credit-redeemable amount due.
+    const surchargeJod = input.isEmergency ? new Prisma.Decimal(EMERGENCY_SURCHARGE_JOD) : new Prisma.Decimal(0);
+    const amountDue = postPromo.add(surchargeJod);
 
     // Hosted-checkout (real PSP): the booking starts in AWAITING_PAYMENT and is NOT yet
     // visible to technicians; it is promoted to PENDING (and booking.created is emitted)
@@ -110,7 +134,7 @@ export class BookingCreateFlow {
             scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
             discountJod,
             promoCodeId: quote?.promoCodeId,
-            totalJod: postPromo,
+            totalJod: amountDue,
             isPriority,
             status: hosted ? 'AWAITING_PAYMENT' : 'PENDING',
             // v1.7 labour/materials split (§17.5): an accepted quote_first quote
@@ -119,6 +143,9 @@ export class BookingCreateFlow {
             // labour and materials is 0 — matches the three-line invoice rule.
             labourFils: input.labourFils ?? toMinorUnits(postPromo),
             materialsFils: input.materialsFils ?? 0,
+            feesFils: input.feesFils ?? 0,
+            isEmergency: input.isEmergency ?? false,
+            surchargeFils: toMinorUnits(surchargeJod),
           },
         });
         await recordBookingStatusHistory(tx, booking.id, null, booking.status, input.customerId);
@@ -129,9 +156,9 @@ export class BookingCreateFlow {
 
         // Apply wallet credit against the amount due (capped, race-safe). The
         // authorized hold then covers only the net payable.
-        const redeemed = await this.creditService.redeem(tx, input.customerId, postPromo, booking.id);
+        const redeemed = await this.creditService.redeem(tx, input.customerId, amountDue, booking.id);
         if (redeemed.gt(0)) {
-          await tx.booking.update({ where: { id: booking.id }, data: { totalJod: postPromo.sub(redeemed) } });
+          await tx.booking.update({ where: { id: booking.id }, data: { totalJod: amountDue.sub(redeemed) } });
         }
 
         if (!hosted) {
@@ -144,7 +171,7 @@ export class BookingCreateFlow {
           });
         }
 
-        return redeemed.gt(0) ? { ...booking, totalJod: postPromo.sub(redeemed) } : booking;
+        return redeemed.gt(0) ? { ...booking, totalJod: amountDue.sub(redeemed) } : booking;
       }));
     } finally {
       if (promoLockKey) await redis.del(promoLockKey);

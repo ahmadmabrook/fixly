@@ -292,55 +292,69 @@ enum TechnicianStatus {
 // ─────────────────────────────────────────────
 
 model Booking {
-  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId          String        @db.Uuid
-  technicianId        String?       @db.Uuid
-  serviceId           String        @db.Uuid
-  status              BookingStatus @default(PENDING)
-  addressLine         String
-  addressLat          Float
-  addressLng          Float
+  id                             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId                     String        @db.Uuid
+  technicianId                   String?       @db.Uuid
+  serviceId                      String        @db.Uuid
+  status                         BookingStatus @default(PENDING)
+  addressLine                    String
+  addressLat                     Float
+  addressLng                     Float
   // Customer-provided free-text instructions (e.g. gate code, floor number) —
   // shown to the technician, never used to drive business logic.
-  notes               String?
-  scheduledAt         DateTime?
-  rescheduledAt       DateTime?
-  startedAt           DateTime?
-  completedAt         DateTime?
-  cancelledAt         DateTime?
-  cancelReason        String?
+  notes                          String?
+  scheduledAt                    DateTime?
+  rescheduledAt                  DateTime?
+  startedAt                      DateTime?
+  completedAt                    DateTime?
+  cancelledAt                    DateTime?
+  cancelReason                   String?
   // Pricing: totalJod is the amount charged (service price − discount). discountJod
   // records any promo applied so receipts/reports can show the breakdown.
-  discountJod         Decimal       @default(0) @db.Decimal(10, 3)
-  promoCodeId         String?       @db.Uuid
-  totalJod            Decimal       @db.Decimal(10, 3)
-  version             Int           @default(0)
+  discountJod                    Decimal       @default(0) @db.Decimal(10, 3)
+  promoCodeId                    String?       @db.Uuid
+  totalJod                       Decimal       @db.Decimal(10, 3)
+  version                        Int           @default(0)
   // Dispatch state: round counter, current radius, and when the round expires.
-  dispatchRound       Int           @default(0)
-  dispatchRadiusKm    Int?
-  dispatchExpiresAt   DateTime?
+  dispatchRound                  Int           @default(0)
+  dispatchRadiusKm               Int?
+  dispatchExpiresAt              DateTime?
   // v1.5 SLA + subscriber priority (§0.3). isPriority = subscriber fast-lane;
   // slaArriveBy = arrival promise; arrivedAt set by /arrive; lateCompJod = auto credit.
-  isPriority          Boolean       @default(false)
-  slaArriveBy         DateTime?
-  arrivedAt           DateTime?
-  lateCompJod         Decimal       @default(0) @db.Decimal(10, 3)
+  isPriority                     Boolean       @default(false)
+  slaArriveBy                    DateTime?
+  arrivedAt                      DateTime?
+  lateCompJod                    Decimal       @default(0) @db.Decimal(10, 3)
   // Server-enforced pre-start/pre-close SOP checklist (technician portal). Gating
   // logic lives in BookingService: ARRIVED→IN_PROGRESS requires preStartChecklistAt,
   // complete() requires preCloseChecklistAt.
-  preStartChecklistAt DateTime?
-  preStartPhotoUrls   String[]      @default([])
-  preCloseChecklistAt DateTime?
-  preClosePhotoUrls   String[]      @default([])
+  preStartChecklistAt            DateTime?
+  preStartPhotoUrls              String[]      @default([])
+  preCloseChecklistAt            DateTime?
+  preClosePhotoUrls              String[]      @default([])
   // v1.7 labour/materials split (§17.5), set from the accepted quote's line
   // totals for quote_first bookings. For fixed_scope bookings labourFils =
   // totalJod*1000 and materialsFils = 0. totalJod remains the authoritative
   // charge amount; these two are the customer-facing invoice breakdown
   // (three-line invoice rule, §17.5.4) and must stay in sync with it.
-  labourFils          Int           @default(0)
-  materialsFils       Int           @default(0)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  labourFils                     Int           @default(0)
+  materialsFils                  Int           @default(0)
+  // v1.8 emergency/night surcharge (§17.5.2) — disclosed as its own line, never
+  // folded into labourFils. isEmergency is decided at booking creation (explicit
+  // request or outside-hours slot); surchargeFils is the resulting charge.
+  isEmergency                    Boolean       @default(false)
+  surchargeFils                  Int           @default(0)
+  // Third invoice bucket (§17.5.4 "Labour · Materials · Platform/service fee —
+  // never one opaque total"). Populated from QuoteLineKind.FEE lines for
+  // quote_first bookings; 0 for fixed_scope.
+  feesFils                       Int           @default(0)
+  // v1.11 workmanship-only warranty boundary (§17.8): set when the customer
+  // acknowledges they are supplying their own materials, so GuaranteeService can
+  // derive the coverage label (full vs labour-only) without re-deriving it from
+  // BookingMaterial.source at claim time.
+  customerSuppliedMaterialsAckAt DateTime?
+  createdAt                      DateTime      @default(now())
+  updatedAt                      DateTime      @updatedAt
 
   customer             User                          @relation("CustomerBookings", fields: [customerId], references: [id])
   technician           TechnicianProfile?            @relation("TechnicianBookings", fields: [technicianId], references: [id])
@@ -1083,6 +1097,10 @@ model BookingQuote {
   requestedTier   MaterialTier?
   labourFils      Int?
   materialsFils   Int?
+  // Third invoice bucket (§17.5.4) — sum of this quote's QuoteLineKind.FEE
+  // lines, kept distinct from labourFils so a booking created from this quote
+  // can carry the same three-way split (Booking.feesFils).
+  feesFils        Int?
   // Ops-review gate (§17.5.12): required above OPS_REVIEW_THRESHOLD_FILS or for
   // any off-catalogue line, before the quote may be sent to the customer.
   opsReviewedById String?       @db.Uuid
@@ -1241,6 +1259,10 @@ model Supplier {
   id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                      String
   contactPhone              String?
+  // Free-text area/neighbourhood (e.g. "شمال عمان") — descriptive only, not a
+  // dispatch zone (§3003 marks named dispatch zones a post-launch refinement;
+  // radius-based dispatch remains authoritative).
+  area                      String?
   categories                String[]  @default([])
   contractRef               String?
   isPilot                   Boolean   @default(true)

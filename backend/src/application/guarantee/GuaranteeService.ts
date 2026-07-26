@@ -12,6 +12,17 @@ import { OutboxEventType } from '../../shared/outboxEvents';
 export const GUARANTEE_DAYS = 30;
 const SLA_HOURS = 2;
 
+/** §17.8 workmanship-only warranty boundary: a booking where the customer
+ *  approved supplying their own materials (Booking.customerSuppliedMaterialsAckAt)
+ *  is covered for labour/workmanship only, never the materials themselves —
+ *  derived once here so every reader (customer app, admin) shows the same
+ *  label instead of re-deriving the rule from BookingMaterial.source. */
+function deriveWarrantyScope<T extends { customerSuppliedMaterialsAckAt: Date | null }>(
+  booking: T,
+): T & { warrantyScope: 'FULL' | 'WORKMANSHIP_ONLY' } {
+  return { ...booking, warrantyScope: booking.customerSuppliedMaterialsAckAt ? 'WORKMANSHIP_ONLY' : 'FULL' };
+}
+
 export class GuaranteeService {
   constructor(private readonly subscriptionService: SubscriptionService = new SubscriptionService()) {}
 
@@ -25,7 +36,7 @@ export class GuaranteeService {
   async eligibleBookings(customerId: string) {
     const days = await this.windowDays(customerId);
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    return prisma.booking.findMany({
+    const bookings = await prisma.booking.findMany({
       where: {
         customerId,
         status: BookingStatus.COMPLETED,
@@ -36,6 +47,7 @@ export class GuaranteeService {
       orderBy: { completedAt: 'desc' },
       take: 100,
     });
+    return bookings.map(deriveWarrantyScope);
   }
 
   async openTicket(bookingId: string, customerId: string, description: string, mediaUrls: string[] = []) {
@@ -61,12 +73,13 @@ export class GuaranteeService {
   }
 
   async listForCustomer(customerId: string) {
-    return prisma.guaranteeTicket.findMany({
+    const tickets = await prisma.guaranteeTicket.findMany({
       where: { booking: { customerId } },
       include: { booking: { include: { service: { select: { nameAr: true, nameEn: true } } } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    return tickets.map((t) => ({ ...t, booking: deriveWarrantyScope(t.booking) }));
   }
 
   async getForCustomer(id: string, customerId: string) {
@@ -75,7 +88,7 @@ export class GuaranteeService {
       include: { booking: { include: { service: { select: { nameAr: true, nameEn: true } } } } },
     });
     if (!ticket || ticket.booking.customerId !== customerId) throw new NotFoundError('GuaranteeTicket');
-    return ticket;
+    return { ...ticket, booking: deriveWarrantyScope(ticket.booking) };
   }
 
   // ── Admin ──────────────────────────────────────────────
@@ -92,7 +105,7 @@ export class GuaranteeService {
       }),
       prisma.guaranteeTicket.count({ where }),
     ]);
-    return { items, total };
+    return { items: items.map((t) => ({ ...t, booking: deriveWarrantyScope(t.booking) })), total };
   }
 
   /** Approve or reject a ticket. APPROVED may schedule a free re-visit. Notifies

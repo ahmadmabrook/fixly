@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type MaterialVerificationAdminItem } from '../lib/api';
-import { Card, Spinner, EmptyState, ActionBtn, Pill, notify } from '../components/shared';
+import { Card, Spinner, EmptyState, ActionBtn, Pill, Countdown, notify } from '../components/shared';
 import { fmtFils, safeHttpsUrl } from '../lib/format';
 import { COLOR_STATUS_DANGER, COLOR_STATUS_DANGER_BG, COLOR_STATUS_INFO_BG, COLOR_STATUS_SUCCESS, COLOR_STATUS_SUCCESS_BG, COLOR_STATUS_WARNING_BG, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY } from '../lib/theme';
 
@@ -11,14 +11,6 @@ const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
   DEDUCTED: { ar: 'خُصم تلقائياً', bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
   WITHDRAWN: { ar: 'أُلغي', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_TEXT_MUTED },
 };
-
-function timeLeft(deadlineAt: string): string {
-  const ms = new Date(deadlineAt).getTime() - Date.now();
-  if (ms <= 0) return 'منتهية المهلة';
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  return `${h}:${String(m).padStart(2, '0')} متبقية`;
-}
 
 /**
  * §17.5.14 — price-variance dispute protocol. A customer declined a
@@ -68,7 +60,8 @@ export default function PriceVerifications() {
                   <span>المطلوب: {fmtFils(v.chargedPriceFils)} د.أ</span>
                   <span style={{ color: COLOR_STATUS_DANGER, fontWeight: 700 }}>الفرق: {fmtFils(v.deltaFils)} د.أ</span>
                 </div>
-                {v.status === 'OPEN' && <div style={{ fontSize: 12, color: COLOR_STATUS_DANGER, marginTop: 6 }}>{timeLeft(v.deadlineAt)}</div>}
+                {v.status === 'OPEN' && <div style={{ fontSize: 12, color: COLOR_STATUS_DANGER, marginTop: 6 }}>متبقٍ: <Countdown deadlineAt={v.deadlineAt} /></div>}
+                {v.status === 'DEDUCTED' && <div style={{ fontSize: 12, color: COLOR_STATUS_DANGER, marginTop: 6, fontWeight: 600 }}>خُصم {fmtFils(v.deltaFils)} د.أ من مستحقات الفني</div>}
                 {invoiceUrl && <a href={invoiceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: COLOR_BRAND_PRIMARY, display: 'block', marginTop: 6 }}>عرض الفاتورة</a>}
                 {actionable && (
                   <div className="flex gap-2 justify-end mt-3">

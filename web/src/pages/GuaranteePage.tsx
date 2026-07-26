@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
-import { api, EligibleBooking, GuaranteeTicketItem, GuaranteeTicketStatus } from '../lib/api';
+import { api, EligibleBooking, GuaranteeTicketItem, GuaranteeTicketStatus, Subscription } from '../lib/api';
+import { formatDateAr, formatDateTimeAr } from '../lib/format';
+import { DEFAULT_GUARANTEE_DAYS, PROTECTION_GUARANTEE_DAYS } from '../lib/constants';
 import { Card, ServiceIcon, Modal, notify } from '../components/shared';
 import { COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WARNING_TEXT, COLOR_WHITE } from '../lib/theme';
+
+const WARRANTY_SCOPE_LABEL: Record<'FULL' | 'WORKMANSHIP_ONLY', string> = {
+  FULL: 'ضمان كامل',
+  WORKMANSHIP_ONLY: 'الضمان على العمل فقط — مواد العميل',
+};
 
 const STATUS_LABEL: Record<GuaranteeTicketStatus, { ar: string; color: string }> = {
   OPEN: { ar: 'مفتوح', color: COLOR_BRAND_PRIMARY },
@@ -19,6 +26,8 @@ export default function GuaranteePage() {
 
   const { data: eligible } = useQuery({ queryKey: ['guarantee-eligible'], queryFn: () => api.get<EligibleBooking[]>('/guarantee/eligible') });
   const { data: tickets } = useQuery({ queryKey: ['guarantee-tickets'], queryFn: () => api.get<GuaranteeTicketItem[]>('/guarantee') });
+  const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<Subscription | null>('/subscriptions/me') });
+  const guaranteeDays = sub?.status === 'ACTIVE' ? sub?.guaranteeDays ?? PROTECTION_GUARANTEE_DAYS : DEFAULT_GUARANTEE_DAYS;
 
   async function submit() {
     if (!openFor || !desc.trim()) return;
@@ -38,10 +47,10 @@ export default function GuaranteePage() {
     <main className="max-w-[800px] mx-auto px-6 py-8">
       <div className="flex items-center gap-2">
         <ShieldCheck size={26} color={COLOR_SUCCESS_TEXT} />
-        <h1 style={{ fontWeight: 800, fontSize: 28 }}>الضمان (30 يوم)</h1>
+        <h1 style={{ fontWeight: 800, fontSize: 28 }}>الضمان (<span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوم)</h1>
       </div>
       <p className="mt-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 14 }}>
-        كل خدمة مضمونة لمدة 30 يوماً. إذا واجهت أي مشكلة، افتح تذكرة وسنعيد الفني مجاناً.
+        كل خدمة مضمونة لمدة <span style={{ fontFamily: 'Inter' }}>{guaranteeDays}</span> يوماً. إذا واجهت أي مشكلة، افتح تذكرة وسنعيد الفني مجاناً.
       </p>
 
       <h2 className="mt-8" style={{ fontWeight: 700, fontSize: 18 }}>خدمات مؤهّلة للضمان</h2>
@@ -52,7 +61,12 @@ export default function GuaranteePage() {
             <ServiceIcon nameAr={b.service?.nameAr ?? ''} size={20} />
             <div className="flex-1">
               <div style={{ fontWeight: 700, fontSize: 15 }}>{b.service?.nameAr}</div>
-              <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>{b.completedAt ? new Date(b.completedAt).toLocaleDateString('ar-JO') : ''}</div>
+              <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>{b.completedAt ? formatDateAr(b.completedAt) : ''}</div>
+              {b.warrantyScope && (
+                <div style={{ color: b.warrantyScope === 'FULL' ? COLOR_SUCCESS_TEXT : COLOR_WARNING_TEXT, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                  {WARRANTY_SCOPE_LABEL[b.warrantyScope]}
+                </div>
+              )}
             </div>
             <button onClick={() => setOpenFor(b)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 600, fontSize: 13 }}>
               فتح تذكرة
@@ -74,7 +88,12 @@ export default function GuaranteePage() {
               </div>
               {t.description && <p style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13, marginTop: 6 }}>{t.description}</p>}
               {t.adminNote && <p style={{ color: COLOR_BRAND_PRIMARY_DARK, fontSize: 13, marginTop: 6, background: COLOR_BRAND_PRIMARY_TINT, padding: 8, borderRadius: 8 }}>رد الدعم: {t.adminNote}</p>}
-              {t.scheduledVisitAt && <p style={{ color: COLOR_SUCCESS_TEXT, fontSize: 13, marginTop: 6 }}>زيارة مجانية مجدولة: {new Date(t.scheduledVisitAt).toLocaleString('ar-JO')}</p>}
+              {t.booking?.warrantyScope && (
+                <div style={{ color: t.booking.warrantyScope === 'FULL' ? COLOR_SUCCESS_TEXT : COLOR_WARNING_TEXT, fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                  {WARRANTY_SCOPE_LABEL[t.booking.warrantyScope]}
+                </div>
+              )}
+              {t.scheduledVisitAt && <p style={{ color: COLOR_SUCCESS_TEXT, fontSize: 13, marginTop: 6 }}>زيارة مجانية مجدولة: {formatDateTimeAr(t.scheduledVisitAt)}</p>}
             </Card>
           );
         })}

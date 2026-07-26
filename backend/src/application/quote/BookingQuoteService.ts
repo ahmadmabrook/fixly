@@ -1,4 +1,4 @@
-import { Prisma, QuoteStatus, QuoteLineKind, MaterialSource, PricingModel } from '@prisma/client';
+import { Prisma, QuoteStatus, QuoteLineKind, MaterialSource, MaterialTier, PriceConfidence, PricingModel } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { BookingService } from '../booking/BookingService';
@@ -35,16 +35,14 @@ export interface QuoteLineInput {
 }
 
 /**
- * QuoteLineKind buckets that roll into the BookingQuote/Booking labourFils vs
- * materialsFils split (§17.5.4 three-line invoice rule: Labour · Materials ·
- * Platform fee — the platform-fee split is a computed display value from
- * PLATFORM_COMMISSION_PCT, not a stored column here, matching how Booking has
- * no platformFeeFils field either). LABOUR + FEE are service-side charges;
- * MATERIAL + PREP are physical-material-adjacent, matching the §17.5.3 worked
- * example where the prep line sits with the material lines, distinct from the
- * single labour line.
+ * QuoteLineKind buckets that roll into the BookingQuote/Booking three-way
+ * split (§17.5.4: Labour · Materials · Platform/service fee — never one
+ * opaque total). FEE lines get their own feesFils bucket (mirrors
+ * Booking.feesFils) rather than being folded into labour; MATERIAL + PREP
+ * stay together as materialsFils, matching the §17.5.3 worked example where
+ * the prep line sits with the material lines.
  */
-const LABOUR_BUCKET_KINDS: QuoteLineKind[] = [QuoteLineKind.LABOUR, QuoteLineKind.FEE];
+const MATERIALS_BUCKET_KINDS: QuoteLineKind[] = [QuoteLineKind.MATERIAL, QuoteLineKind.PREP];
 
 /**
  * Two uses of one service (§0.3, §17.5.1): (a) fixed_scope convenience —
@@ -75,6 +73,13 @@ export class BookingQuoteService {
       throw new ValidationError('videoUrl is required for a fixed_scope video pre-check quote');
     }
 
+    // §2.6 materials rule 5 / service_material_policies.quote_validity_hours —
+    // per-service override of the default 7-day window (168h, same default the
+    // policy column itself carries, so a service with no policy row behaves
+    // exactly as before this read was wired in).
+    const policy = await prisma.serviceMaterialPolicy.findUnique({ where: { serviceId: input.serviceId } });
+    const validityHours = policy?.quoteValidityHours ?? QUOTE_TTL_DAYS * 24;
+
     return prisma.bookingQuote.create({
       data: {
         customerId,
@@ -88,7 +93,7 @@ export class BookingQuoteService {
         addressLine: input.addressLine ?? null,
         addressLat: input.addressLat ?? null,
         addressLng: input.addressLng ?? null,
-        expiresAt: new Date(Date.now() + QUOTE_TTL_DAYS * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + validityHours * 60 * 60 * 1000),
       },
     });
   }
@@ -139,8 +144,8 @@ export class BookingQuoteService {
    * sendItemizedQuote's ops-review requirement.
    */
   async addLine(quoteId: string, input: QuoteLineInput) {
-    await this.requireDraftableQuote(quoteId);
-    const totalFils = await this.priceAndValidateLine(input);
+    const quote = await this.requireDraftableQuote(quoteId);
+    const { unitPriceFils, totalFils } = await this.priceAndValidateLine(input, quote.serviceId, quote.requestedTier);
 
     await prisma.quoteLine.create({
       data: {
@@ -150,7 +155,7 @@ export class BookingQuoteService {
         description: input.description,
         qty: new Prisma.Decimal(input.qty ?? 1),
         unit: input.unit ?? null,
-        unitPriceFils: input.unitPriceFils,
+        unitPriceFils,
         totalFils,
         source: input.source ?? MaterialSource.TECHNICIAN_PROCURED,
       },
@@ -159,7 +164,7 @@ export class BookingQuoteService {
   }
 
   async updateLine(quoteId: string, lineId: string, input: Partial<QuoteLineInput>) {
-    await this.requireDraftableQuote(quoteId);
+    const quote = await this.requireDraftableQuote(quoteId);
     const existing = await prisma.quoteLine.findUnique({ where: { id: lineId } });
     if (!existing || existing.quoteId !== quoteId) throw new NotFoundError('QuoteLine');
 
@@ -172,7 +177,7 @@ export class BookingQuoteService {
       unitPriceFils: input.unitPriceFils ?? existing.unitPriceFils,
       source: input.source ?? existing.source,
     };
-    const totalFils = await this.priceAndValidateLine(merged);
+    const { unitPriceFils, totalFils } = await this.priceAndValidateLine(merged, quote.serviceId, quote.requestedTier);
 
     await prisma.quoteLine.update({
       where: { id: lineId },
@@ -182,7 +187,7 @@ export class BookingQuoteService {
         description: merged.description,
         qty: new Prisma.Decimal(merged.qty ?? 1),
         unit: merged.unit ?? null,
-        unitPriceFils: merged.unitPriceFils,
+        unitPriceFils,
         totalFils,
         source: merged.source,
       },
@@ -227,7 +232,7 @@ export class BookingQuoteService {
     if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is not pending');
     if (quote.lines.length === 0) throw new ValidationError('Cannot send a quote with no lines');
 
-    const totalFils = (quote.labourFils ?? 0) + (quote.materialsFils ?? 0);
+    const totalFils = (quote.labourFils ?? 0) + (quote.materialsFils ?? 0) + (quote.feesFils ?? 0);
     const hasOffCatalogueLine = quote.lines.some((l) => l.kind === QuoteLineKind.MATERIAL && l.materialId == null);
     const needsOpsReview = totalFils >= env().OPS_REVIEW_THRESHOLD_FILS || hasOffCatalogueLine;
     if (needsOpsReview && !quote.opsReviewedAt) {
@@ -275,7 +280,7 @@ export class BookingQuoteService {
       addressLat: quote.addressLat ?? 0,
       addressLng: quote.addressLng ?? 0,
       priceOverrideJod: quote.quotedJod,
-      ...(isItemized ? { labourFils: quote.labourFils ?? 0, materialsFils: quote.materialsFils ?? 0 } : {}),
+      ...(isItemized ? { labourFils: quote.labourFils ?? 0, materialsFils: quote.materialsFils ?? 0, feesFils: quote.feesFils ?? 0 } : {}),
     });
 
     await prisma.bookingQuote.update({
@@ -314,28 +319,55 @@ export class BookingQuoteService {
     return quote;
   }
 
-  private async priceAndValidateLine(input: QuoteLineInput): Promise<number> {
-    const qty = new Prisma.Decimal(input.qty ?? 1);
-    const totalFils = new Prisma.Decimal(input.unitPriceFils).times(qty).toDecimalPlaces(0).toNumber();
+  /** Resolves the enforced unit price (overriding a MATERIAL/LABOUR line's
+   *  typed price where a governed source exists) and prices the line.
+   *  serviceId/requestedTier come from the parent quote — a line is never
+   *  priced in isolation from the job it belongs to. */
+  private async priceAndValidateLine(
+    input: QuoteLineInput, serviceId: string, requestedTier?: MaterialTier | null,
+  ): Promise<{ unitPriceFils: number; totalFils: number }> {
+    let unitPriceFils = input.unitPriceFils;
+
+    if (input.kind === QuoteLineKind.LABOUR) {
+      // §17.5.8: area/quantity-driven work (e.g. painting per m²) is COMPUTED
+      // from a tier rate card, not typed by the assessor — removes pricing
+      // discretion from the single highest-leverage line on the quote. A
+      // service with no rate cards (most fixed_scope categories) is unaffected.
+      const rateCard = await prisma.serviceRateCard.findFirst({
+        where: { serviceId, tier: requestedTier ?? MaterialTier.STANDARD, isActive: true, effectiveFrom: { lte: new Date() } },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (rateCard) unitPriceFils = rateCard.rateFils;
+    }
+
     if (input.kind === QuoteLineKind.MATERIAL && input.materialId) {
       const material = await this.catalogService.get(input.materialId);
-      this.catalogService.assertPriceBand(input.unitPriceFils, material.priceMinFils, material.priceMaxFils);
+      this.catalogService.assertPriceBand(unitPriceFils, material.priceMinFils, material.priceMaxFils);
+      // §17.5.13(c): an unconfirmed catalog price cannot silently back a firm,
+      // customer-facing quote line.
+      if (material.priceConfidence !== PriceConfidence.CONFIRMED) {
+        throw new ValidationError(`Material price is ${material.priceConfidence.toLowerCase()}, not confirmed — cannot back a firm quote line yet`);
+      }
     }
-    return totalFils;
+
+    const qty = new Prisma.Decimal(input.qty ?? 1);
+    const totalFils = new Prisma.Decimal(unitPriceFils).times(qty).toDecimalPlaces(0).toNumber();
+    return { unitPriceFils, totalFils };
   }
 
-  /** Sums this quote's lines into the denormalized labourFils/materialsFils
-   *  split, recomputed after every line add/update/remove so reads never see
-   *  a stale total (§17.5.3). */
+  /** Sums this quote's lines into the denormalized labourFils/materialsFils/
+   *  feesFils split, recomputed after every line add/update/remove so reads
+   *  never see a stale total (§17.5.3). */
   private async recomputeTotals(quoteId: string) {
     const lines = await prisma.quoteLine.findMany({ where: { quoteId } });
-    const labourFils = lines.filter((l) => LABOUR_BUCKET_KINDS.includes(l.kind)).reduce((sum, l) => sum + l.totalFils, 0);
+    const labourFils = lines.filter((l) => l.kind === QuoteLineKind.LABOUR).reduce((sum, l) => sum + l.totalFils, 0);
+    const feesFils = lines.filter((l) => l.kind === QuoteLineKind.FEE).reduce((sum, l) => sum + l.totalFils, 0);
     const materialsFils = lines
-      .filter((l) => !LABOUR_BUCKET_KINDS.includes(l.kind))
+      .filter((l) => MATERIALS_BUCKET_KINDS.includes(l.kind))
       .reduce((sum, l) => sum + l.totalFils, 0);
     return prisma.bookingQuote.update({
       where: { id: quoteId },
-      data: { labourFils, materialsFils },
+      data: { labourFils, materialsFils, feesFils },
       include: { lines: true },
     });
   }

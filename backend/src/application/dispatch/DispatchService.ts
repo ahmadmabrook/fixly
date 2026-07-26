@@ -15,6 +15,27 @@ import {
 
 const LOCK_TTL_SECONDS = 10;
 
+// §2.6 trust-tier rule: "elite (top — first in priority ordering)". Offers are
+// still created for every qualified tech in the same round (no exclusive
+// first-look window), but ordering the create+broadcast by tier means an
+// elite tech's push notification and DB row both land first.
+const TRUST_TIER_RANK: Record<TrustTier, number> = {
+  [TrustTier.PROBATION]: 0,
+  [TrustTier.VERIFIED]: 1,
+  [TrustTier.PRO]: 2,
+  [TrustTier.ELITE]: 3,
+};
+
+function byPriorityThenDistance<T extends { trustTier: TrustTier; currentLat: number | null; currentLng: number | null }>(
+  techs: T[], lat: number, lng: number,
+): T[] {
+  return [...techs].sort((a, b) => {
+    const rankDiff = TRUST_TIER_RANK[b.trustTier] - TRUST_TIER_RANK[a.trustTier];
+    if (rankDiff !== 0) return rankDiff;
+    return haversineKm(lat, lng, a.currentLat!, a.currentLng!) - haversineKm(lat, lng, b.currentLat!, b.currentLng!);
+  });
+}
+
 // ── Singleton accessor (route + sweep reach the io-bound instance) ──────────
 
 let instance: DispatchService | null = null;
@@ -64,10 +85,11 @@ export class DispatchService {
     });
     // GEOSEARCH already bounded candidates by radiusKm; PROBATION still needs
     // the tighter cap, which requires the actual distance.
-    return techs.filter((t) => {
+    const inRange = techs.filter((t) => {
       const cap = t.trustTier === TrustTier.PROBATION ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
       return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
     });
+    return byPriorityThenDistance(inRange, lat, lng);
   }
 
   /** Pre-Redis-GEO implementation — full Postgres scan + in-memory haversine
@@ -87,10 +109,11 @@ export class DispatchService {
       },
       select: { id: true, userId: true, currentLat: true, currentLng: true, trustTier: true },
     });
-    return techs.filter((t) => {
+    const inRange = techs.filter((t) => {
       const cap = t.trustTier === TrustTier.PROBATION ? Math.min(radiusKm, PROBATION_MAX_RADIUS_KM) : radiusKm;
       return haversineKm(lat, lng, t.currentLat!, t.currentLng!) <= cap;
     });
+    return byPriorityThenDistance(inRange, lat, lng);
   }
 
   /** GEOSEARCH candidate technician ids within radiusKm of (lat,lng), after
@@ -273,10 +296,13 @@ export class DispatchService {
   async expireRounds(): Promise<void> {
     const now = new Date();
 
-    // (a) Bookings whose current round has expired.
+    // (a) Bookings whose current round has expired. §2.6 subscriber fast-lane
+    // (is_priority=true): within one sweep tick, priority bookings advance
+    // first — createdAt is the tiebreaker so same-priority bookings stay FIFO.
     const expired = await prisma.booking.findMany({
       where: { status: BookingStatus.PENDING, dispatchExpiresAt: { lt: now } },
       select: { id: true },
+      orderBy: [{ isPriority: 'desc' }, { createdAt: 'asc' }],
     });
     for (const b of expired) {
       try { await this.advanceRound(b.id); }
@@ -287,6 +313,7 @@ export class DispatchService {
     const unstarted = await prisma.booking.findMany({
       where: { status: BookingStatus.PENDING, dispatchRound: 0 },
       select: { id: true },
+      orderBy: [{ isPriority: 'desc' }, { createdAt: 'asc' }],
     });
     for (const b of unstarted) {
       try { await this.startDispatch(b.id); }

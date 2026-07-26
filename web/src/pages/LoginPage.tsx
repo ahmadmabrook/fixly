@@ -161,7 +161,9 @@ export default function LoginPage() {
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: COLOR_TEXT_MUTED, textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
+            {import.meta.env.DEV && (
+              <p style={{ fontSize: 12, color: COLOR_TEXT_MUTED, textAlign: 'center' }}>في بيئة التطوير الرمز هو 000000</p>
+            )}
             <button
               onClick={() => void verifyOtp()}
               disabled={loading || otp.length !== 6}

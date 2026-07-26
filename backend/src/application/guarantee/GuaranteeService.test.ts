@@ -22,6 +22,25 @@ const mockedPrisma = prisma as unknown as {
 const daysAgo = (d: number) => new Date(Date.now() - d * 864e5);
 const base = { id: 'bk1', customerId: 'cust1', status: 'COMPLETED', completedAt: daysAgo(2), guarantee: null };
 
+describe('GuaranteeService.eligibleBookings', () => {
+  let service: GuaranteeService;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedPrisma.subscription.findFirst.mockResolvedValue(null);
+    service = new GuaranteeService();
+  });
+
+  it('§17.8 — labels a booking WORKMANSHIP_ONLY once the customer approved a customer-supplied line, else FULL', async () => {
+    mockedPrisma.booking.findMany.mockResolvedValue([
+      { ...base, id: 'full1', customerSuppliedMaterialsAckAt: null },
+      { ...base, id: 'wo1', customerSuppliedMaterialsAckAt: daysAgo(1) },
+    ]);
+    const [full, workmanshipOnly] = await service.eligibleBookings('cust1');
+    expect(full).toMatchObject({ id: 'full1', warrantyScope: 'FULL' });
+    expect(workmanshipOnly).toMatchObject({ id: 'wo1', warrantyScope: 'WORKMANSHIP_ONLY' });
+  });
+});
+
 describe('GuaranteeService.openTicket', () => {
   let service: GuaranteeService;
   beforeEach(() => {

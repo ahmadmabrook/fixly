@@ -2,6 +2,24 @@ import { Prisma, CatalogSource, MaterialTier, RefreshCadence, PriceConfidence } 
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 
+export interface RecordPriceObservationInput {
+  materialId: string;
+  supplierId?: string | null;
+  shopName?: string | null;
+  area?: string | null;
+  observedFils: number;
+  observedById?: string | null;
+  note?: string | null;
+}
+
+/** refreshCadence → days before a catalogue row counts as overdue for its
+ *  §17.5.6 retail-refresh ritual. */
+const CADENCE_DAYS: Record<RefreshCadence, number> = {
+  [RefreshCadence.MONTHLY]: 30,
+  [RefreshCadence.QUARTERLY]: 90,
+  [RefreshCadence.SEMIANNUAL]: 180,
+};
+
 export interface UpsertMaterialCatalogInput {
   serviceId?: string | null;
   supplierId?: string | null;
@@ -126,6 +144,48 @@ export class MaterialCatalogService {
         priceRefreshedAt: input.unitPriceFils != null ? new Date() : undefined,
       },
     });
+  }
+
+  /** §17.5.6 stage A item 1 / §17.5.13(b2) "a price with no traceable source is
+   *  not allowed to back a customer-facing figure" — the retail-observation log
+   *  behind each catalogue row's price. */
+  async listObservations(materialId: string, limit = 50, offset = 0) {
+    const where = { materialId };
+    const [items, total] = await prisma.$transaction([
+      prisma.supplierPriceObservation.findMany({ where, orderBy: { observedAt: 'desc' }, take: limit, skip: offset }),
+      prisma.supplierPriceObservation.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  async recordObservation(input: RecordPriceObservationInput) {
+    await this.get(input.materialId); // 404s if the material doesn't exist
+    return prisma.supplierPriceObservation.create({
+      data: {
+        materialId: input.materialId,
+        supplierId: input.supplierId ?? null,
+        shopName: input.shopName ?? null,
+        area: input.area ?? null,
+        observedFils: input.observedFils,
+        observedById: input.observedById ?? null,
+        note: input.note ?? null,
+      },
+    });
+  }
+
+  /** §3.4 `GET /admin/catalog/staleness` (v1.10) — active rows overdue for
+   *  their refresh cadence, so an operator can see the freshness board without
+   *  hand-computing it from lastPricedAt + refreshCadence on every row. */
+  async listStale() {
+    const items = await prisma.materialCatalog.findMany({ where: { isActive: true } });
+    const now = Date.now();
+    return items
+      .filter((m) => {
+        const lastPriced = m.lastPricedAt ?? m.createdAt;
+        const overdueDays = (now - lastPriced.getTime()) / (24 * 60 * 60 * 1000);
+        return overdueDays > CADENCE_DAYS[m.refreshCadence];
+      })
+      .sort((a, b) => (a.lastPricedAt ?? a.createdAt).getTime() - (b.lastPricedAt ?? b.createdAt).getTime());
   }
 
   /** Shared by `create`/`update` and `PriceIndexService`'s re-basing — the one

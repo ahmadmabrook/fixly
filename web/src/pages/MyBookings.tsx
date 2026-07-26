@@ -5,6 +5,7 @@ import { useBookings } from '../hooks/useBookings';
 import { useAuth } from '../lib/store';
 import { useBookingSocket } from '../lib/socket';
 import { Card, ServiceIcon, PriceBadge, StatusBadge, SkeletonList } from '../components/shared';
+import { formatDateAr } from '../lib/format';
 import { COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'AWAITING_PAYMENT', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']);
@@ -84,7 +85,7 @@ function BookingRow({ item }: { item: { id: string; status: string; scheduledAt:
         <div className="flex-1">
           <div style={{ fontWeight: 700, fontSize: 16 }}>{item.service?.nameAr}</div>
           <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>
-            {item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString('ar-JO') : 'فوراً'}
+            {item.scheduledAt ? formatDateAr(item.scheduledAt) : 'فوراً'}
           </div>
         </div>
         <span data-testid={`booking-status-${item.id}`}><StatusBadge status={status} /></span>

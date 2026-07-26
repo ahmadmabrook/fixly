@@ -186,7 +186,7 @@ export default function Landing() {
                 <div className="mt-1" style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>
                   المدة: <span style={{ fontFamily: 'Inter' }}>{s.durationMin}</span> د
                 </div>
-                <div className="mt-3"><PriceBadge amount={Number(s.priceJod)} /></div>
+                <div className="mt-3"><PriceBadge amount={Number(s.priceJod)} quoteFirst={s.pricingModel === 'QUOTE_FIRST'} /></div>
               </Card>
             </button>
           ))}

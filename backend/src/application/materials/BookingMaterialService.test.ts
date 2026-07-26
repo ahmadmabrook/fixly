@@ -6,7 +6,7 @@ import type { MaterialCatalogService } from './MaterialCatalogService';
 
 jest.mock('../../infrastructure/database/prisma', () => ({
   prisma: {
-    booking: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
+    booking: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), updateMany: jest.fn() },
     technicianProfile: { findUnique: jest.fn() },
     bookingMaterial: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
     serviceMaterialPolicy: { findUnique: jest.fn() },
@@ -17,7 +17,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
 }));
 
 const mocked = prisma as unknown as {
-  booking: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock };
+  booking: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; updateMany: jest.Mock };
   technicianProfile: { findUnique: jest.Mock };
   bookingMaterial: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
   serviceMaterialPolicy: { findUnique: jest.Mock };
@@ -179,7 +179,7 @@ describe('BookingMaterialService.ackByCustomer / declineByCustomer', () => {
     mocked.booking.findUnique.mockResolvedValue({ customerId: 'owner-1' });
     mocked.bookingMaterial.findUnique.mockResolvedValue({
       id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING_REVIEW,
-      varianceReason: VarianceReason.OTHER, referencePriceFils: 5000, unitPriceFils: 6500,
+      varianceReason: VarianceReason.OTHER, referencePriceFils: 5000, unitPriceFils: 6500, qty: 1,
     });
     mocked.booking.findUniqueOrThrow.mockResolvedValue({ technician: { id: TECH_PROFILE_ID, userId: TECH_USER } });
     mocked.bookingMaterial.update.mockResolvedValue({});
@@ -221,7 +221,9 @@ describe('BookingMaterialService.adminReview', () => {
   });
 
   it('approves a pending_review line', async () => {
-    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.PENDING_REVIEW });
+    // Catalogue-linked (materialId set): the off-catalogue "invoice required
+    // before approval" guard is a separate rule, covered by its own test below.
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.PENDING_REVIEW, materialId: 'mat1' });
     mocked.bookingMaterial.update.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.APPROVED });
     const svc = new BookingMaterialService(makeCatalogStub());
     const result = await svc.adminReview('line1', 'APPROVED', 'admin1');
@@ -230,12 +232,156 @@ describe('BookingMaterialService.adminReview', () => {
       expect.objectContaining({ data: expect.objectContaining({ status: MaterialLineStatus.APPROVED, reviewedById: 'admin1' }) }),
     );
   });
+
+  it('rejects approving an off-catalogue line with no uploaded invoice', async () => {
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.PENDING_REVIEW, materialId: null, supplierInvoiceUrl: null });
+    const svc = new BookingMaterialService(makeCatalogStub());
+    await expect(svc.adminReview('line1', 'APPROVED', 'admin1')).rejects.toBeInstanceOf(ValidationError);
+    expect(mocked.bookingMaterial.update).not.toHaveBeenCalled();
+  });
+
+  it('approves an off-catalogue line once it has an uploaded invoice', async () => {
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.PENDING_REVIEW, materialId: null, supplierInvoiceUrl: 'https://x/invoice.jpg' });
+    mocked.bookingMaterial.update.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.APPROVED });
+    const svc = new BookingMaterialService(makeCatalogStub());
+    const result = await svc.adminReview('line1', 'APPROVED', 'admin1');
+    expect(result.status).toBe(MaterialLineStatus.APPROVED);
+  });
+
+  it('allows declining an off-catalogue line with no invoice (no approval guard on decline)', async () => {
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.PENDING_REVIEW, materialId: null, supplierInvoiceUrl: null });
+    mocked.bookingMaterial.update.mockResolvedValue({ id: 'line1', status: MaterialLineStatus.DECLINED });
+    const svc = new BookingMaterialService(makeCatalogStub());
+    const result = await svc.adminReview('line1', 'DECLINED', 'admin1');
+    expect(result.status).toBe(MaterialLineStatus.DECLINED);
+  });
+});
+
+describe('BookingMaterialService.substituteLine', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects substitution once the booking has locked the original line', async () => {
+    mocked.technicianProfile.findUnique.mockResolvedValue({ id: TECH_PROFILE_ID });
+    mocked.booking.findUnique.mockResolvedValue({ id: BOOKING_ID, technicianId: TECH_PROFILE_ID, status: BookingStatus.IN_PROGRESS, serviceId: 's1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.LOCKED, materialId: null, source: 'TECHNICIAN_PROCURED' });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    await expect(
+      svc.substituteLine(BOOKING_ID, 'line1', TECH_USER, { description: 'Different paint', unitPriceFils: 4000 }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('rejects any substitute (even off-catalogue) when the service policy is NOT_ALLOWED', async () => {
+    mocked.technicianProfile.findUnique.mockResolvedValue({ id: TECH_PROFILE_ID });
+    mocked.booking.findUnique.mockResolvedValue({ id: BOOKING_ID, technicianId: TECH_PROFILE_ID, status: BookingStatus.ARRIVED, serviceId: 's1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING, materialId: null, source: 'TECHNICIAN_PROCURED' });
+    mocked.serviceMaterialPolicy.findUnique.mockResolvedValue({ substitution: 'NOT_ALLOWED' });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    // No materialId — an off-catalogue substitute — must still be blocked.
+    await expect(
+      svc.substituteLine(BOOKING_ID, 'line1', TECH_USER, { description: 'Different paint', unitPriceFils: 4000 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('rejects a lower-tier substitute material (SAME_OR_HIGHER_TIER default)', async () => {
+    mocked.technicianProfile.findUnique.mockResolvedValue({ id: TECH_PROFILE_ID });
+    mocked.booking.findUnique.mockResolvedValue({ id: BOOKING_ID, technicianId: TECH_PROFILE_ID, status: BookingStatus.ARRIVED, serviceId: 's1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING, materialId: 'old-mat', source: 'TECHNICIAN_PROCURED' });
+    mocked.serviceMaterialPolicy.findUnique.mockResolvedValue(null);
+    const get = jest.fn()
+      .mockResolvedValueOnce({ id: 'old-mat', tier: 'PREMIUM', unitPriceFils: 5000, priceMinFils: 3000, priceMaxFils: 7000 })
+      .mockResolvedValueOnce({ id: 'new-mat', tier: 'ECONOMY', unitPriceFils: 4000, priceMinFils: 2000, priceMaxFils: 6000 });
+    const svc = new BookingMaterialService(makeCatalogStub({ get }));
+
+    await expect(
+      svc.substituteLine(BOOKING_ID, 'line1', TECH_USER, { materialId: 'new-mat', description: 'Cheaper paint', unitPriceFils: 4000 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('creates a linked replacement line and marks the original REPLACED', async () => {
+    mocked.technicianProfile.findUnique.mockResolvedValue({ id: TECH_PROFILE_ID });
+    mocked.booking.findUnique.mockResolvedValue({ id: BOOKING_ID, technicianId: TECH_PROFILE_ID, status: BookingStatus.ARRIVED, serviceId: 's1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING, materialId: null, source: 'TECHNICIAN_PROCURED' });
+    mocked.serviceMaterialPolicy.findUnique.mockResolvedValue(null);
+    mocked.bookingMaterial.update.mockResolvedValue({});
+    mocked.bookingMaterial.create.mockResolvedValue({ id: 'line2' });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    const result = await svc.substituteLine(BOOKING_ID, 'line1', TECH_USER, { description: 'Different off-catalogue part', unitPriceFils: 4000 });
+
+    expect(mocked.bookingMaterial.update).toHaveBeenCalledWith({ where: { id: 'line1' }, data: { status: MaterialLineStatus.REPLACED } });
+    expect(mocked.bookingMaterial.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ replacesLineId: 'line1', status: MaterialLineStatus.PENDING_REVIEW }) }),
+    );
+    expect(result).toEqual({ id: 'line2' });
+  });
+});
+
+describe('BookingMaterialService.approveByCustomer', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects approval of a line that is not plain PENDING (e.g. still under review)', async () => {
+    mocked.booking.findUnique.mockResolvedValue({ customerId: 'owner-1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING_REVIEW });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    await expect(svc.approveByCustomer(BOOKING_ID, 'line1', 'owner-1')).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('sets customerAckAt and stamps the booking-level workmanship-only ack for a CUSTOMER_SUPPLIED line', async () => {
+    mocked.booking.findUnique.mockResolvedValue({ customerId: 'owner-1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING, source: 'CUSTOMER_SUPPLIED' });
+    mocked.bookingMaterial.update.mockResolvedValue({ id: 'line1', customerAckAt: new Date() });
+    mocked.booking.updateMany.mockResolvedValue({ count: 1 });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    await svc.approveByCustomer(BOOKING_ID, 'line1', 'owner-1');
+
+    expect(mocked.bookingMaterial.update).toHaveBeenCalledWith({ where: { id: 'line1' }, data: { customerAckAt: expect.any(Date) } });
+    expect(mocked.booking.updateMany).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID, customerSuppliedMaterialsAckAt: null },
+      data: { customerSuppliedMaterialsAckAt: expect.any(Date) },
+    });
+  });
+
+  it('does not touch the booking-level ack for a normal TECHNICIAN_PROCURED line', async () => {
+    mocked.booking.findUnique.mockResolvedValue({ customerId: 'owner-1' });
+    mocked.bookingMaterial.findUnique.mockResolvedValue({ id: 'line1', bookingId: BOOKING_ID, status: MaterialLineStatus.PENDING, source: 'TECHNICIAN_PROCURED' });
+    mocked.bookingMaterial.update.mockResolvedValue({ id: 'line1' });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    await svc.approveByCustomer(BOOKING_ID, 'line1', 'owner-1');
+
+    expect(mocked.booking.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookingMaterialService.settleExpiredBomReviews', () => {
+  it('auto-approves overdue pending_review lines in a single bulk update (§0.6.2)', async () => {
+    mocked.bookingMaterial.updateMany.mockResolvedValue({ count: 3 });
+    const svc = new BookingMaterialService(makeCatalogStub());
+
+    const settled = await svc.settleExpiredBomReviews();
+
+    expect(settled).toBe(3);
+    expect(mocked.bookingMaterial.updateMany).toHaveBeenCalledWith({
+      where: { status: MaterialLineStatus.PENDING_REVIEW, createdAt: { lt: expect.any(Date) } },
+      data: { status: MaterialLineStatus.APPROVED, reviewedAt: expect.any(Date) },
+    });
+  });
 });
 
 describe('lockBookingMaterials', () => {
-  it('locks only PENDING/APPROVED lines, leaving PENDING_REVIEW untouched', async () => {
+  it('locks only PENDING/APPROVED lines, leaving PENDING_REVIEW untouched, and folds their total into materialsFils/totalJod', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 2 });
-    const tx = { bookingMaterial: { updateMany } } as unknown as Prisma.TransactionClient;
+    const findMany = jest.fn().mockResolvedValue([{ totalFils: 3000 }, { totalFils: 2000 }]);
+    const findUniqueOrThrow = jest.fn().mockResolvedValue({ totalJod: new Prisma.Decimal(20) });
+    const update = jest.fn().mockResolvedValue({});
+    const tx = {
+      bookingMaterial: { updateMany, findMany },
+      booking: { findUniqueOrThrow, update },
+    } as unknown as Prisma.TransactionClient;
 
     await lockBookingMaterials(tx, BOOKING_ID);
 
@@ -243,5 +389,19 @@ describe('lockBookingMaterials', () => {
       where: { bookingId: BOOKING_ID, status: { in: [MaterialLineStatus.PENDING, MaterialLineStatus.APPROVED] } },
       data: { status: MaterialLineStatus.LOCKED },
     });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID },
+      data: { materialsFils: { increment: 5000 }, totalJod: new Prisma.Decimal(25) },
+    });
+  });
+
+  it('is a no-op when there are no execution-ready lines to lock', async () => {
+    const updateMany = jest.fn();
+    const findMany = jest.fn().mockResolvedValue([]);
+    const tx = { bookingMaterial: { updateMany, findMany } } as unknown as Prisma.TransactionClient;
+
+    await lockBookingMaterials(tx, BOOKING_ID);
+
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });

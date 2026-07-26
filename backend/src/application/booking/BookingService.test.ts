@@ -339,10 +339,16 @@ describe('BookingService', () => {
       const create = jest.fn().mockResolvedValue({});
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
         fn({
-          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }) },
+          booking: {
+            findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }),
+            update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }),
+          },
           outboxEvent: { create },
           bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
-          bookingMaterial: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          // No BOM lines on this booking: the approval gate has nothing to
+          // block on, and lockBookingMaterials' findMany returning [] means
+          // it never reaches updateMany/the materialsFils recompute.
+          bookingMaterial: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         }),
       );
 
@@ -353,13 +359,21 @@ describe('BookingService', () => {
 
     it('locks execution-ready BOM lines in the same transaction as the ARRIVED → IN_PROGRESS transition', async () => {
       mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
-      const updateManyMaterials = jest.fn().mockResolvedValue({ count: 3 });
+      const updateManyMaterials = jest.fn().mockResolvedValue({ count: 1 });
       mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
         fn({
-          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }) },
+          booking: {
+            findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }),
+            update: jest.fn().mockResolvedValue({ id: 'b1', status: 'IN_PROGRESS' }),
+            findUniqueOrThrow: jest.fn().mockResolvedValue({ totalJod: new Prisma.Decimal(30) }),
+          },
           outboxEvent: { create: jest.fn() },
           bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
-          bookingMaterial: { updateMany: updateManyMaterials },
+          bookingMaterial: {
+            count: jest.fn().mockResolvedValue(0),
+            findMany: jest.fn().mockResolvedValue([{ totalFils: 5000 }]),
+            updateMany: updateManyMaterials,
+          },
         }),
       );
 
@@ -368,6 +382,23 @@ describe('BookingService', () => {
       expect(updateManyMaterials).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ bookingId: 'b1' }) }),
       );
+    });
+
+    it('refuses ARRIVED → IN_PROGRESS when a BOM line is still awaiting customer approval', async () => {
+      mockedPrisma.technicianProfile.findUnique.mockResolvedValue({ id: 'tp1' });
+      const update = jest.fn();
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 3, customerId: 'c1', preStartChecklistAt: new Date() }), update },
+          outboxEvent: { create: jest.fn() },
+          bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
+          // One PENDING line with no customerAckAt — requireBomApprovedForWorkStart
+          // must block before lockBookingMaterials ever runs.
+          bookingMaterial: { count: jest.fn().mockResolvedValue(1), findMany: jest.fn(), updateMany: jest.fn() },
+        }),
+      );
+      await expect(service.advanceStatus('b1', 'u1', 'IN_PROGRESS')).rejects.toBeInstanceOf(ValidationError);
+      expect(update).not.toHaveBeenCalled();
     });
 
     it('refuses ARRIVED → IN_PROGRESS when the pre-start SOP checklist has not been submitted', async () => {
@@ -391,7 +422,7 @@ describe('BookingService', () => {
           booking: { findUnique: jest.fn().mockResolvedValue({ technicianId: 'tp1', status: 'ARRIVED', version: 1, customerId: 'c1', preStartChecklistAt: new Date() }), update },
           outboxEvent: { create: jest.fn() },
           bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
-          bookingMaterial: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          bookingMaterial: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         }),
       );
       await service.advanceStatus('b1', 'u1', 'IN_PROGRESS');
@@ -530,6 +561,10 @@ describe('BookingService', () => {
         outboxEvent: { create },
         bookingStatusHistory: { create: jest.fn().mockResolvedValue({}) },
         dispatchOffer: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        // requireMaterialInvoicesComplete's gate — default to "nothing missing"
+        // so these tests, none of which are about the materials invoice gate,
+        // keep exercising exactly what they did before that gate existed.
+        bookingMaterial: { count: jest.fn().mockResolvedValue(0) },
       }),
     );
     return { update, create };

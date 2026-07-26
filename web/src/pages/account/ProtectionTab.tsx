@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Gift, Video, Check, Wallet } from 'lucide-react';
 import { api, Subscription } from '../../lib/api';
+import { formatDateAr } from '../../lib/format';
 import { Card, ConfirmDialog, notify } from '../../components/shared';
 import { DEFAULT_PROTECTION_DISCOUNT_PERCENT, PROTECTION_GUARANTEE_DAYS } from '../../lib/constants';
 import { COLOR_BADGE_INFO_BG, COLOR_BG_SUBTLE, COLOR_BRAND_ACCENT_TEAL, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_STRONG, COLOR_WARNING_TEXT, COLOR_WHITE } from '../../lib/theme';
@@ -22,7 +23,7 @@ export function ProtectionTab() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const active = sub?.status === 'ACTIVE';
   const balance = Number(credits?.balanceJod ?? 0);
-  const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('ar-JO', { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+  const fmtDate = (iso?: string | null) => (iso ? formatDateAr(iso, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
 
   async function subscribe() {
     try {

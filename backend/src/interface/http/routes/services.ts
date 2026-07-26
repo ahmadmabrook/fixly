@@ -1,11 +1,28 @@
 import { Router } from 'express';
-import { query } from 'express-validator';
-import { Prisma } from '@prisma/client';
+import { param, query } from 'express-validator';
+import { Prisma, MaterialMode, SubstitutionPolicy, MaterialTier } from '@prisma/client';
 import { prisma } from '../../../infrastructure/database/prisma';
+import { authenticate } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
+import { MaterialCatalogService } from '../../../application/materials/MaterialCatalogService';
 
 export const servicesRouter: Router = Router();
+
+const catalogService = new MaterialCatalogService();
+
+/** Mirrors ServiceMaterialPolicy's own Prisma @default values — a service
+ *  with no policy row behaves exactly as if this were its row. */
+const DEFAULT_MATERIAL_POLICY = {
+  mode: MaterialMode.LABOUR_ONLY,
+  microThresholdFils: 3000,
+  allowCustomerSupply: true,
+  substitution: SubstitutionPolicy.SAME_OR_HIGHER_TIER,
+  quoteRequiredAboveFils: null as number | null,
+  quoteValidityHours: 168,
+  qualityFloorGrade: MaterialTier.ECONOMY,
+  surplusBelongsToCustomer: true,
+};
 
 servicesRouter.get(
   '/',
@@ -50,5 +67,31 @@ servicesRouter.get(
 
     res.set('Cache-Control', 'public, max-age=300');
     res.json({ data: services, meta: { categories: categories.map((c) => c.category) } });
+  }),
+);
+
+// §17.5.5 — the five materials-policy questions, "shown before booking".
+// Public (no auth) like the rest of this router: a prospective customer must
+// be able to see this before they've even signed up.
+servicesRouter.get(
+  '/:id/material-policy',
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const policy = await prisma.serviceMaterialPolicy.findUnique({ where: { serviceId: req.params.id } });
+    res.json({ data: policy ?? { serviceId: req.params.id, ...DEFAULT_MATERIAL_POLICY } });
+  }),
+);
+
+// §17.5.6 rule 2 "the technician selects, never prices" — the price book for
+// one service, for the app's material picker (technician BOM drafting,
+// itemized-quote assessment). Authenticated (not public): this is the
+// operational price book, not marketing content.
+servicesRouter.get(
+  '/:id/materials',
+  authenticate,
+  validate([param('id').isUUID()]),
+  asyncHandler(async (req, res) => {
+    const { items } = await catalogService.list({ serviceId: req.params.id, isActive: true }, 200, 0);
+    res.json({ data: items });
   }),
 );

@@ -23,6 +23,7 @@ import { DispatchService, setDispatchService, getDispatchService } from './appli
 import { SubscriptionService } from './application/subscription/SubscriptionService';
 import { TrustService } from './application/technician/TrustService';
 import { MaterialVerificationService } from './application/materials/MaterialVerificationService';
+import { BookingMaterialService } from './application/materials/BookingMaterialService';
 import { PaymentProviderFactory } from './infrastructure/providers/PaymentProviderFactory';
 import {
   outboxPendingGauge, outboxFailedGauge, paymentStuckPreauthGauge,
@@ -39,6 +40,10 @@ const TRUST_RECOMPUTE_INTERVAL_MS = 60 * 60_000;
 // §17.5.14 step 4: a 24h dispute deadline doesn't need fine-grained polling —
 // 15 minutes keeps the overshoot small without adding meaningful DB load.
 const MATERIAL_VERIFICATION_SETTLE_INTERVAL_MS = 15 * 60_000;
+// §0.6.2 founder-on-a-phone fallback: a 2h review deadline needs tighter
+// polling than the 24h verification deadline above so the overshoot stays a
+// small fraction of the window.
+const BOM_REVIEW_SETTLE_INTERVAL_MS = 5 * 60_000;
 
 async function main() {
   const env = loadEnv(); // fail-fast on missing/unsafe config
@@ -138,6 +143,21 @@ async function main() {
   }, MATERIAL_VERIFICATION_SETTLE_INTERVAL_MS);
   materialVerificationSettleTimer.unref();
 
+  // BOM review auto-fallback (§0.6.2, §3.4): a pending_review line nobody
+  // actioned within BOM_REVIEW_TIMEOUT_HOURS auto-approves rather than
+  // blocking the customer's BOM approval — see settleExpiredBomReviews' own
+  // doc comment for why there's no price "cap" logic here.
+  const bookingMaterialService = new BookingMaterialService();
+  const bomReviewSettleTimer = setInterval(() => {
+    void bookingMaterialService
+      .settleExpiredBomReviews()
+      .then((n) => {
+        if (n > 0) logger.info({ count: n }, 'BOM review auto-fallback cycle');
+      })
+      .catch((err) => logger.warn({ err }, 'BOM review auto-fallback cycle failed'));
+  }, BOM_REVIEW_SETTLE_INTERVAL_MS);
+  bomReviewSettleTimer.unref();
+
   httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Fixly backend running');
   });
@@ -145,6 +165,7 @@ async function main() {
   registerShutdown(httpServer, io.close.bind(io), worker, [
     gaugeTimer, reconcileTimer, checkoutExpiryTimer, dispatchSweepTimer,
     subscriptionBillerTimer, trustRecomputeTimer, materialVerificationSettleTimer,
+    bomReviewSettleTimer,
   ]);
 }
 

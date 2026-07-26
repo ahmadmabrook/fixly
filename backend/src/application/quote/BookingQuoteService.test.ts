@@ -10,12 +10,19 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     bookingQuote: { findUnique: jest.fn(), update: jest.fn() },
     quoteLine: { create: jest.fn(), update: jest.fn(), delete: jest.fn(), findMany: jest.fn() },
     notification: { create: jest.fn().mockResolvedValue({}) },
+    // §17.5.8 computed labour pricing — findFirst resolves null (no rate
+    // card) by default, so existing tests that don't care about this new
+    // path keep using the assessor-typed unitPriceFils unchanged.
+    serviceRateCard: { findFirst: jest.fn().mockResolvedValue(null) },
+    serviceMaterialPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
   },
 }));
 
 const mocked = prisma as unknown as {
   bookingQuote: { findUnique: jest.Mock; update: jest.Mock };
   quoteLine: { create: jest.Mock; update: jest.Mock; delete: jest.Mock; findMany: jest.Mock };
+  serviceRateCard: { findFirst: jest.Mock };
+  serviceMaterialPolicy: { findUnique: jest.Mock };
 };
 
 function makeService(
@@ -132,6 +139,40 @@ describe('BookingQuoteService.addLine', () => {
     expect(catalogGet).not.toHaveBeenCalled();
     expect(mocked.quoteLine.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ totalFils: 45_000 }) }));
     expect(result).toEqual(expect.objectContaining({ labourFils: 45_000 }));
+  });
+
+  it('overrides an assessor-typed labour price with the tier rate card, when one exists (§17.5.8)', async () => {
+    mocked.bookingQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'PENDING', serviceId: 'svc1', requestedTier: 'STANDARD' });
+    mocked.serviceRateCard.findFirst.mockResolvedValue({ rateFils: 8000 });
+    mocked.quoteLine.create.mockResolvedValue({});
+    mocked.quoteLine.findMany.mockResolvedValue([{ kind: 'LABOUR', totalFils: 40_000 }]);
+    mocked.bookingQuote.update.mockResolvedValue({ id: 'q1', labourFils: 40_000, materialsFils: 0 });
+    const { svc } = makeService();
+
+    // Assessor types 45,000 fils/m²; the rate card says 8,000/m² — the card wins.
+    await svc.addLine('q1', { kind: 'LABOUR' as never, description: 'Room painting, 5m²', qty: 5, unitPriceFils: 45_000 });
+
+    expect(mocked.serviceRateCard.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ serviceId: 'svc1', tier: 'STANDARD' }) }),
+    );
+    expect(mocked.quoteLine.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ unitPriceFils: 8000, totalFils: 40_000 }) }),
+    );
+  });
+
+  it('rejects a material line backed by an unconfirmed catalog price (§17.5.13(c))', async () => {
+    mocked.bookingQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'PENDING', serviceId: 'svc1' });
+    const { svc, catalogGet, assertPriceBand } = makeService(
+      undefined,
+      jest.fn().mockResolvedValue({ priceMinFils: 100, priceMaxFils: 500, priceConfidence: 'ESTIMATED' }),
+      jest.fn(),
+    );
+    await expect(
+      svc.addLine('q1', { kind: 'MATERIAL' as never, materialId: 'mat1', description: 'Paint', unitPriceFils: 300 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(catalogGet).toHaveBeenCalled();
+    expect(assertPriceBand).toHaveBeenCalled();
+    expect(mocked.quoteLine.create).not.toHaveBeenCalled();
   });
 });
 

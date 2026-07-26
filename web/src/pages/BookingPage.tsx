@@ -151,6 +151,27 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
     );
   }
 
+  // §0.2 #4 — quote_first services (e.g. Painting) are never instant-bookable;
+  // the backend rejects this too, but the booking form must not even be
+  // offered for a service reached by direct link rather than through
+  // ServicePage's own quote_first branch.
+  if (svc.pricingModel === 'QUOTE_FIRST') {
+    return (
+      <main className="max-w-[720px] mx-auto px-6 py-16 text-center">
+        <p style={{ fontSize: 15, color: COLOR_TEXT_SECONDARY }}>
+          هذه الخدمة تحتاج معاينة أولاً — لا يوجد سعر فوري لها.
+        </p>
+        <a
+          href="/quotes"
+          className="mt-4 inline-flex items-center justify-center h-11 px-6 rounded-xl"
+          style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
+        >
+          اطلب عرض سعر
+        </a>
+      </main>
+    );
+  }
+
   const price = Number(svc.priceJod);
   // Mirrors BookingService.create.ts's subscriberPrice: list price minus the
   // active subscription's percentage discount, rounded to the nearest cent.

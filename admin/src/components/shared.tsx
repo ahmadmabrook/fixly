@@ -1,4 +1,4 @@
-import { ReactNode, useId, useEffect } from 'react';
+import { ReactNode, useId, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useDialog } from '../hooks/useDialog';
 import type { AdminRole } from '../lib/store';
@@ -129,6 +129,25 @@ export function OpsStatTile({ label, value }: { label: string; value: string | n
       <div style={{ fontSize: 12, color: COLOR_TEXT_MUTED, marginTop: 2 }}>{label}</div>
     </div>
   );
+}
+
+/**
+ * Live countdown to a deadline (§0.6.2 founder-on-a-phone SLAs — 2h BOM
+ * review, 24h price-verification, etc). Ticks on its own so the label never
+ * goes stale while the page sits open, unlike a plain `new Date(deadlineAt) -
+ * Date.now()` computed once at render time.
+ */
+export function Countdown({ deadlineAt, expiredLabel = 'انتهت المهلة' }: { deadlineAt: string; expiredLabel?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const ms = new Date(deadlineAt).getTime() - now;
+  if (ms <= 0) return <span>{expiredLabel}</span>;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return <span style={{ fontFamily: 'Inter' }}>{h}:{String(m).padStart(2, '0')}</span>;
 }
 
 export function Spinner() {

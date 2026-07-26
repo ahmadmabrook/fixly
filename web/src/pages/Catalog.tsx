@@ -166,7 +166,7 @@ export default function Catalog() {
                   {t('catalog.duration')}: <span style={{ fontFamily: 'Inter' }}>{s.durationMin}</span> {t('catalog.minutes')}
                 </div>
               </div>
-              <PriceBadge amount={Number(s.priceJod)} />
+              <PriceBadge amount={Number(s.priceJod)} quoteFirst={s.pricingModel === 'QUOTE_FIRST'} />
             </Card>
           </button>
         ))}

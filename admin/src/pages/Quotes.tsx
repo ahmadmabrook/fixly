@@ -33,7 +33,7 @@ const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
   EXPIRED: { ar: 'منتهٍ', bg: COLOR_BORDER_LIGHT, fg: COLOR_TEXT_SECONDARY },
 };
 const KIND_LABEL: Record<QuoteLineKind, string> = { LABOUR: 'أجور عمل', MATERIAL: 'مادة', PREP: 'تجهيز', FEE: 'رسوم' };
-const TIER_LABEL: Record<string, string> = { ECONOMY: 'اقتصادي', STANDARD: 'قياسي', PREMIUM: 'ممتاز' };
+const TIER_LABEL: Record<string, string> = { ECONOMY: 'اقتصادي', STANDARD: 'متوسط', PREMIUM: 'ممتاز' };
 
 interface LineDraft {
   kind: QuoteLineKind;

@@ -12,12 +12,28 @@ describe('PriceBadge', () => {
     expect(screen.getByText('20')).toBeInTheDocument();
     expect(screen.getByText('دينار')).toBeInTheDocument();
   });
+
+  it('renders "حسب المعاينة" instead of a number for a quote_first service (§0.2 #4)', () => {
+    render(<PriceBadge amount={20} quoteFirst />);
+    expect(screen.getByText('حسب المعاينة')).toBeInTheDocument();
+    expect(screen.queryByText('20')).not.toBeInTheDocument();
+  });
 });
 
 describe('StatusBadge', () => {
-  it('maps a known status to its Arabic label', () => {
+  it('maps PENDING to "searching for a technician", not a payment label (AWAITING_PAYMENT owns that state)', () => {
     render(<StatusBadge status="PENDING" />);
+    expect(screen.getByText('قيد البحث عن فني')).toBeInTheDocument();
+  });
+
+  it('maps AWAITING_PAYMENT to its own Arabic label rather than falling through to the raw enum', () => {
+    render(<StatusBadge status="AWAITING_PAYMENT" />);
     expect(screen.getByText('بانتظار الدفع')).toBeInTheDocument();
+  });
+
+  it('maps NO_SHOW to its own Arabic label rather than falling through to the raw enum', () => {
+    render(<StatusBadge status="NO_SHOW" />);
+    expect(screen.getByText('عدم تواجد العميل')).toBeInTheDocument();
   });
 
   it('maps EN_ROUTE to the on-the-way label', () => {

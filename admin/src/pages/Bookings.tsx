@@ -25,7 +25,7 @@ import {
 
 const STATUS_DIST_COLORS = [COLOR_CHART_ORANGE, COLOR_ACCENT_TEAL, COLOR_CHART_GREEN, COLOR_CHART_ROSE];
 
-const STATUSES = ['', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+const STATUSES = ['', 'AWAITING_PAYMENT', 'PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DISPUTED', 'NO_SHOW'];
 const STATUS_LABELS: Record<string, string> = {
   '': 'الكل', PENDING: 'معلّق', CONFIRMED: 'مؤكد', EN_ROUTE: 'في الطريق', ARRIVED: 'وصل الفني',
   IN_PROGRESS: 'جارٍ', COMPLETED: 'مكتمل', CANCELLED: 'ملغى', DISPUTED: 'نزاع',
@@ -44,12 +44,12 @@ const WORK_STATUS_LABELS: Record<string, string> = {
 
 function fmt(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ar-JO', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleDateString('ar-JO-u-nu-latn', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function fmtDateTime(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('ar-JO', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString('ar-JO-u-nu-latn', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /** Server-side CSV export (GET /admin/bookings.csv) — mirrors Reports.tsx's
@@ -255,6 +255,18 @@ function BookingDetailDrawer({ id, onClose }: { id: string; onClose: () => void 
                 <span style={{ color: COLOR_TEXT_MUTED }}>موعد الحجز</span>
                 <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmt(booking.scheduledAt)}</span>
               </div>
+              {booking.cancelReason && (
+                <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                  <span style={{ color: COLOR_TEXT_MUTED }}>سبب الإلغاء</span>
+                  <span style={{ fontWeight: 700 }}>{booking.cancelReason}</span>
+                </div>
+              )}
+              {Number(booking.lateCompJod ?? 0) > 0 && (
+                <div className="flex items-center justify-between py-1" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
+                  <span style={{ color: COLOR_TEXT_MUTED }}>تعويض التأخير</span>
+                  <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{fmtJod(booking.lateCompJod)} JD</span>
+                </div>
+              )}
               <div className="flex items-center justify-between py-1">
                 <span style={{ color: COLOR_TEXT_MUTED }}>المبلغ الإجمالي</span>
                 <span style={{ fontFamily: 'Inter', fontWeight: 800, color: COLOR_BRAND_PRIMARY_DARK }}>{fmtJod(booking.totalJod)} JD</span>

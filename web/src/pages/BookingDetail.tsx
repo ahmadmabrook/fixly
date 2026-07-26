@@ -2,12 +2,19 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Star, Navigation, ShieldCheck, Download } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, Booking, AdditionalWorkItem } from '../lib/api';
+import { api, Booking, AdditionalWorkItem, Subscription } from '../lib/api';
+import { formatDateAr, formatDateTimeAr } from '../lib/format';
+import { DEFAULT_GUARANTEE_DAYS, PROTECTION_GUARANTEE_DAYS } from '../lib/constants';
 import {
   Card, ServiceIcon, StatusBadge, InlineRow, Modal, notify,
   ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
 } from '../components/shared';
 import { COLOR_ACCENT_AMBER, COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_ERROR_BG, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WARNING_BORDER, COLOR_WHITE } from '../lib/theme';
+
+/** §17.5.4 three-line invoice fields, fils→JOD (1000 fils = 1 JOD). */
+function fmtFilsJod(fils: number | undefined): number {
+  return (fils ?? 0) / 1000;
+}
 
 const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
 const TIME_SLOTS = Array.from({ length: 13 }, (_, i) => {
@@ -61,18 +68,26 @@ export function escapeHtml(value: unknown): string {
 }
 
 export function generateReceiptHtml(b: FullBooking, extras: AdditionalWorkItem[]) {
-  const price = Number(b.service?.priceJod ?? b.totalJod);
   const discount = Number(b.discountJod ?? 0);
+  const materialsJod = fmtFilsJod(b.materialsFils);
+  // §17.5.4 — labour · materials · fees, never one opaque total. labourFils
+  // defaults to the full price for bookings created before this split existed.
+  const labourJod = b.labourFils != null ? fmtFilsJod(b.labourFils) : Number(b.service?.priceJod ?? b.totalJod);
+  const feesJod = fmtFilsJod(b.feesFils);
+  const surchargeJod = fmtFilsJod(b.surchargeFils);
   const rows = [
-    `<tr><td>سعر الخدمة</td><td>${escapeHtml(price)} دينار</td></tr>`,
+    `<tr><td>أجور العمل</td><td>${escapeHtml(labourJod)} دينار</td></tr>`,
+    ...(materialsJod > 0 ? [`<tr><td>المواد</td><td>${escapeHtml(materialsJod)} دينار</td></tr>`] : []),
+    ...(feesJod > 0 ? [`<tr><td>الرسوم</td><td>${escapeHtml(feesJod)} دينار</td></tr>`] : []),
+    ...(surchargeJod > 0 ? [`<tr><td>رسوم طارئة/خارج الدوام</td><td>${escapeHtml(surchargeJod)} دينار</td></tr>`] : []),
     ...(discount > 0 ? [`<tr><td>الخصم</td><td>- ${escapeHtml(discount)} دينار</td></tr>`] : []),
     ...extras.map((e) => `<tr><td>عمل إضافي: ${escapeHtml(e.description)}</td><td>${escapeHtml(Number(e.amountJod))} دينار</td></tr>`),
   ].join('');
 
   const date = b.scheduledAt
-    ? new Date(b.scheduledAt).toLocaleDateString('ar-JO')
+    ? formatDateAr(b.scheduledAt)
     : b.createdAt
-      ? new Date(b.createdAt).toLocaleDateString('ar-JO')
+      ? formatDateAr(b.createdAt)
       : '—';
 
   return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
@@ -145,14 +160,20 @@ export default function BookingDetail() {
     queryKey: ['booking-extra', id],
     queryFn: () => api.get<AdditionalWorkItem[]>(`/bookings/${id}/additional-work`),
   });
+  const { data: sub } = useQuery({ queryKey: ['subscription'], queryFn: () => api.get<Subscription | null>('/subscriptions/me') });
 
   if (isLoading) return <Centered>جارٍ التحميل...</Centered>;
   if (!b) return <Centered tone="error">الحجز غير موجود</Centered>;
 
-  const price = Number(b.service?.priceJod ?? b.totalJod);
   const discount = Number(b.discountJod ?? 0);
+  const labourJod = b.labourFils != null ? fmtFilsJod(b.labourFils) : Number(b.service?.priceJod ?? b.totalJod);
+  const materialsJod = fmtFilsJod(b.materialsFils);
+  const feesJod = fmtFilsJod(b.feesFils);
+  const surchargeJod = fmtFilsJod(b.surchargeFils);
+  const price = labourJod; // kept for CancelBookingModal's pre-cancellation breakdown below
   const approvedExtras = (extra ?? []).filter((e) => e.status === 'APPROVED');
   const proposedExtras = (extra ?? []).filter((e) => e.status === 'PROPOSED');
+  const guaranteeDays = sub?.status === 'ACTIVE' ? sub?.guaranteeDays ?? PROTECTION_GUARANTEE_DAYS : DEFAULT_GUARANTEE_DAYS;
 
   async function respondExtra(itemId: string, approve: boolean) {
     try {
@@ -166,7 +187,7 @@ export default function BookingDetail() {
   }
   const isScheduled = ['PENDING', 'CONFIRMED'].includes(b.status) && !!b.scheduledAt;
   const isActive = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'].includes(b.status);
-  const within30d = b.completedAt ? Date.now() - new Date(b.completedAt).getTime() < 30 * 864e5 : false;
+  const withinGuaranteeWindow = b.completedAt ? Date.now() - new Date(b.completedAt).getTime() < guaranteeDays * 864e5 : false;
 
   async function submitReview() {
     try {
@@ -216,7 +237,7 @@ export default function BookingDetail() {
           <div className="flex-1">
             <div style={{ fontWeight: 800, fontSize: 18 }}>{b.service?.nameAr}</div>
             <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>
-              {b.scheduledAt ? new Date(b.scheduledAt).toLocaleString('ar-JO') : 'فوراً'}
+              {b.scheduledAt ? formatDateTimeAr(b.scheduledAt) : 'فوراً'}
             </div>
           </div>
           <StatusBadge status={b.status} />
@@ -224,7 +245,11 @@ export default function BookingDetail() {
 
         <div className="my-4 h-px bg-slate-100" />
         <h2 style={{ fontWeight: 700, fontSize: 15 }}>الإيصال</h2>
-        <InlineRow label="سعر الخدمة" value={`${price} دينار`} />
+        {/* §17.5.4 three-line invoice — never one opaque total. */}
+        <InlineRow label="أجور العمل" value={`${labourJod} دينار`} />
+        {materialsJod > 0 && <InlineRow label="المواد" value={`${materialsJod} دينار`} />}
+        {feesJod > 0 && <InlineRow label="الرسوم" value={`${feesJod} دينار`} />}
+        {surchargeJod > 0 && <InlineRow label="رسوم طارئة/خارج الدوام" value={`${surchargeJod} دينار`} />}
         {discount > 0 && <InlineRow label="الخصم" value={`- ${discount} دينار`} />}
         {approvedExtras.map((e) => (
           <InlineRow key={e.id} label={`عمل إضافي: ${e.description}`} value={`${Number(e.amountJod)} دينار`} />
@@ -233,6 +258,11 @@ export default function BookingDetail() {
         <InlineRow strong label="الإجمالي المدفوع" value={`${Number(b.totalJod)} دينار`} />
         {b.payment && (
           <p className="mt-2" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 12 }}>حالة الدفع: {b.payment.status}</p>
+        )}
+        {Number(b.lateCompJod ?? 0) > 0 && (
+          <p className="mt-2" style={{ color: COLOR_SUCCESS_TEXT, fontSize: 12, fontWeight: 600 }}>
+            حصلت على <span style={{ fontFamily: 'Inter' }}>{Number(b.lateCompJod)}</span> دينار كتعويض تأخير — أُضيفت إلى رصيدك
+          </p>
         )}
         <button
           onClick={() => downloadReceipt(b, approvedExtras)}
@@ -270,7 +300,7 @@ export default function BookingDetail() {
             <Star size={18} /> قيّم الخدمة
           </button>
         )}
-        {b.status === 'COMPLETED' && within30d && (
+        {b.status === 'COMPLETED' && withinGuaranteeWindow && (
           <button onClick={() => navigate('/guarantee')} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT, fontWeight: 700 }}>
             <ShieldCheck size={18} /> فتح تذكرة ضمان
           </button>

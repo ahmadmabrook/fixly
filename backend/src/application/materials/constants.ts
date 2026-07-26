@@ -33,3 +33,16 @@ export const VARIANCE_JUSTIFY_BPS = 2000;
  * the difference (step 4).
  */
 export const MATERIAL_VERIFICATION_DEADLINE_HOURS = 24;
+
+/**
+ * §0.6.2 / §3.4 founder-on-a-phone fallback: a BookingMaterial line left
+ * `pending_review` (off-catalogue, or in-band but over the catalog's
+ * varianceAlertBps) this long with no ops decision auto-approves rather than
+ * silently blocking the customer's BOM approval indefinitely. Not a price
+ * "cap" in practice — assertPriceBand already hard-rejects any catalogue-
+ * linked line outside [priceMinFils, priceMaxFils] at write time, so nothing
+ * reaching this timeout can be above a catalogue max to begin with; the
+ * timeout exists for off-catalogue and in-band-but-high-variance lines, which
+ * this auto-approves at whatever price was recorded.
+ */
+export const BOM_REVIEW_TIMEOUT_HOURS = 2;
