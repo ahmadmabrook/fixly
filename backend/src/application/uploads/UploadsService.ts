@@ -8,7 +8,8 @@ export type UploadPurpose =
   | 'certificate'
   | 'intro_video'
   | 'checklist_photo'
-  | 'guarantee_evidence';
+  | 'guarantee_evidence'
+  | 'supplier_invoice';
 
 export interface PresignRequest {
   contentType: string;
@@ -35,6 +36,7 @@ const ALLOWED_CONTENT_TYPES: Record<UploadPurpose, readonly string[]> = {
   certificate: IMAGE_CONTENT_TYPES,
   checklist_photo: IMAGE_CONTENT_TYPES,
   guarantee_evidence: IMAGE_CONTENT_TYPES,
+  supplier_invoice: IMAGE_CONTENT_TYPES,
   intro_video: VIDEO_CONTENT_TYPES,
 };
 

@@ -400,6 +400,7 @@ export default function Dashboard() {
             { label: 'نسبة توثيق الفنيين',  value: stats.totalTechnicians > 0 ? `${Math.round((stats.verifiedTechnicians / stats.totalTechnicians) * 100)}%` : 'لا بيانات' },
             { label: 'متوسط قيمة الحجز',   value: stats.completedBookings > 0 ? `${fmtJod(stats.totalRevenueJod / stats.completedBookings)} JD` : 'لا بيانات' },
             { label: 'مدفوعات قيد الانتظار', value: stats.pendingPayouts },
+            { label: 'أرصدة العملاء المستحقة', value: `${fmtJod(stats.totalOutstandingCreditsJod)} JD` },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${COLOR_SURFACE_MUTED}` }}>
               <span style={{ fontSize: 13, color: COLOR_TEXT_MUTED }}>{label}</span>

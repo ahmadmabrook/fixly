@@ -199,7 +199,71 @@ export interface BookingListItem {
   status: BookingStatus;
   scheduledAt: string | null;
   totalJod: string | number;
-  service?: Pick<Service, 'nameAr' | 'nameEn'> | null;
+  service?: Pick<Service, 'id' | 'nameAr' | 'nameEn'> | null;
+}
+
+export type MaterialSource = 'TECHNICIAN_PROCURED' | 'CUSTOMER_SUPPLIED' | 'PLATFORM_ARRANGED';
+export type MaterialLineStatus = 'PENDING' | 'PENDING_REVIEW' | 'APPROVED' | 'DECLINED' | 'REPLACED' | 'UNUSED' | 'LOCKED';
+export type VarianceReasonKind = 'SPECIAL_TYPE' | 'IMPORTED_BRAND' | 'ACCESS_DIFFICULTY' | 'OTHER';
+
+/** One Bill-of-Materials line (§17.5.9). Mirrors backend BookingMaterial. */
+export interface BookingMaterialItem {
+  id: string;
+  bookingId: string;
+  materialId: string | null;
+  source: MaterialSource;
+  status: MaterialLineStatus;
+  description: string;
+  brand: string | null;
+  qty: string | number;
+  unit?: string | null;
+  unitPriceFils: number;
+  totalFils: number;
+  referencePriceFils: number | null;
+  varianceBps: number | null;
+  varianceReason: VarianceReasonKind | null;
+  varianceReasonNote?: string | null;
+  customerAckAt: string | null;
+  isMicro?: boolean;
+  supplierInvoiceUrl: string | null;
+  material?: {
+    nameAr: string;
+    nameEn: string;
+    tier: string;
+    priceMinFils: number;
+    priceMaxFils: number;
+    priceConfidence: string;
+  } | null;
+}
+
+/** Price-book row for the technician's material picker (§17.5.6 — "the
+ *  technician selects, never prices"). GET /services/:id/materials. */
+export interface MaterialCatalogItem {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  brand: string | null;
+  tier: string;
+  unit: string;
+  unitPriceFils: number;
+  priceMinFils: number;
+  priceMaxFils: number;
+}
+
+export type VerificationStatus = 'OPEN' | 'INVOICE_PROVIDED' | 'UPHELD' | 'DEDUCTED' | 'WITHDRAWN';
+
+/** Price-variance dispute (§17.5.14) — technician has 24h to upload the
+ *  original invoice before auto-settle deducts the difference. */
+export interface MaterialVerificationItem {
+  id: string;
+  bookingId: string;
+  technicianId: string;
+  status: VerificationStatus;
+  referencePriceFils: number;
+  chargedPriceFils: number;
+  deltaFils: number;
+  invoiceUrl: string | null;
+  deadlineAt: string;
 }
 
 export interface CreateBookingInput {

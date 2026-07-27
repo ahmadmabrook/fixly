@@ -73,6 +73,24 @@ export class PriceIndexService {
    * fabricates a "change" from nothing.
    */
   async rebaseCatalogForKind(kind: PriceIndexKind, periodMonth: Date): Promise<number> {
+    // §17.5.13(0) defines TWO formulas, not one: material prices re-base as
+    // `base × (1 + CPI% change)` (below), but MEMR_FUEL is specified as
+    // `callout_fee = base_callout_fee + (petrol_price_per_litre × distance_coefficient)`
+    // — an absolute additive formula against Service.calloutFeeJod, not a
+    // percentage re-base against MaterialCatalog.unitPriceFils. Applying the
+    // CPI-style formula to a MaterialCatalog row linked to MEMR_FUEL would be
+    // silently wrong, so that path is refused rather than mis-executed. The
+    // correct fuel formula needs a real, business-supplied petrol-price→
+    // distance-coefficient mapping (Service has no such field yet) — recording
+    // the reading itself (recordReading, above) still succeeds either way.
+    if (kind === PriceIndexKind.MEMR_FUEL) {
+      logger.warn(
+        { kind, periodMonth },
+        'PriceIndexService: MEMR_FUEL reading recorded, but Service.calloutFeeJod re-basing needs a real distance-coefficient input — not yet configured, skipping re-base',
+      );
+      return 0;
+    }
+
     const [current, previous] = await Promise.all([
       prisma.priceIndexReading.findUnique({ where: { kind_periodMonth: { kind, periodMonth } } }),
       prisma.priceIndexReading.findFirst({

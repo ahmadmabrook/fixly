@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Check, Phone, MessageCircle, Star, Search } from 'lucide-react';
+import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
 import {
-  Card, StatusBadge, Stars, Avatar, Modal, notify,
+  Card, StatusBadge, Stars, Avatar, CertifiedBadge, Modal, notify,
   ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
 } from '../components/shared';
 import TrackingMap from '../components/TrackingMap';
-import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
+import { CustomerMaterialsSection } from './BookingMaterials';
+import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
 // Below this the countdown stops quoting minutes and just says "about to
 // arrive" — rounding 30s up to "1 minute" reads as wrong to someone watching
@@ -134,6 +135,19 @@ export default function TrackingPage() {
         </div>
 
         <div className="space-y-4">
+          {/* Late-arrival compensation (§0.3): granted the instant the technician
+              is marked ARRIVED past the SLA + grace window — surfaced live here
+              rather than making the customer wait for the post-completion
+              receipt to discover the credit. */}
+          {Number(booking.lateCompJod ?? 0) > 0 && (
+            <div className="flex items-center gap-2 p-4 rounded-2xl" style={{ background: COLOR_SUCCESS_BG }}>
+              <Wallet size={18} color={COLOR_SUCCESS_TEXT} />
+              <span style={{ color: COLOR_SUCCESS_TEXT, fontWeight: 700, fontSize: 13 }}>
+                حصلت على <span style={{ fontFamily: 'Inter' }}>{Number(booking.lateCompJod)}</span> دينار كتعويض تأخير — أُضيفت إلى رصيدك
+              </span>
+            </div>
+          )}
+
           {/* Status + vertical stepper */}
           <Card className="p-6">
             <div className="flex items-center justify-between">
@@ -177,6 +191,7 @@ export default function TrackingPage() {
                     <Stars rating={Number(tech.rating)} />
                     <span style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>({tech.totalReviews} تقييم)</span>
                   </div>
+                  {tech.isVerified && <div className="mt-1.5"><CertifiedBadge /></div>}
                   {tech.vehicle && <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12, marginTop: 2 }}>{tech.vehicle}</div>}
                 </div>
               </div>
@@ -197,6 +212,8 @@ export default function TrackingPage() {
               </div>
             </Card>
           )}
+
+          <CustomerMaterialsSection bookingId={id} />
 
           {cancellable && (
             <button onClick={() => setCancelling(true)} className="w-full h-12 rounded-xl" style={{ color: COLOR_ERROR_TEXT, fontWeight: 600, border: `1px solid ${COLOR_ERROR_BORDER}` }}>

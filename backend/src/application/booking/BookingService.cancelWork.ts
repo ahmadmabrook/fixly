@@ -83,14 +83,27 @@ export class BookingCancelFlow {
   /** Technician proposes extra work mid-job (itemised). Customer must approve
    *  before it's added to the total. Only the assigned tech, only IN_PROGRESS. */
   async proposeAdditionalWork(bookingId: string, technicianUserId: string, description: string, amountJod: number | string) {
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true, technician: { select: { userId: true } } } });
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { status: true, customerId: true, technician: { select: { userId: true } } } });
     if (!booking) throw new NotFoundError('Booking');
     if (!booking.technician || booking.technician.userId !== technicianUserId) throw new ForbiddenError();
     if (booking.status !== BookingStatus.IN_PROGRESS) throw new ConflictError('Additional work can only be added while the job is in progress');
     const amount = new Prisma.Decimal(amountJod);
     if (amount.lessThanOrEqualTo(0) || amount.decimalPlaces() > 3) throw new ValidationError('Invalid amount');
-    return prisma.additionalWorkItem.create({
-      data: { bookingId, description: description.trim(), amountJod: amount, status: AdditionalWorkStatus.PROPOSED },
+    const trimmedDescription = description.trim();
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.additionalWorkItem.create({
+        data: { bookingId, description: trimmedDescription, amountJod: amount, status: AdditionalWorkStatus.PROPOSED },
+      });
+      // §2.6 extra-work rule: "notify customer" — the customer must see this
+      // live, not just discover it was silently added to their total.
+      await tx.outboxEvent.create({
+        data: {
+          bookingId,
+          eventType: OutboxEventType.EXTRA_WORK_PROPOSED,
+          payload: { bookingId, customerId: booking.customerId, description: trimmedDescription, amountJod: amount.toString() },
+        },
+      });
+      return item;
     });
   }
 
@@ -98,7 +111,7 @@ export class BookingCancelFlow {
    *  the amount to the booking total atomically. */
   async respondAdditionalWork(bookingId: string, itemId: string, customerId: string, approve: boolean) {
     return prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+      const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { technician: { select: { userId: true } } } });
       if (!booking) throw new NotFoundError('Booking');
       if (booking.customerId !== customerId) throw new ForbiddenError();
       const item = await tx.additionalWorkItem.findUnique({ where: { id: itemId } });
@@ -133,6 +146,15 @@ export class BookingCancelFlow {
         if (payment && payment.status === PaymentStatus.PRE_AUTHORIZED) {
           await tx.payment.update({ where: { id: payment.id }, data: { amountJod: { increment: item.amountJod } } });
         }
+      }
+      if (booking.technician) {
+        await tx.outboxEvent.create({
+          data: {
+            bookingId,
+            eventType: OutboxEventType.EXTRA_WORK_DECIDED,
+            payload: { bookingId, technicianUserId: booking.technician.userId, approved: approve, amountJod: item.amountJod.toString() },
+          },
+        });
       }
       return updated;
     });

@@ -3,13 +3,12 @@ import { body, param } from 'express-validator';
 import { authenticate, requireActiveUser } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
-import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+import { getBookingQuoteService } from '../../../application/quote/BookingQuoteService';
 import { MIN_LATITUDE, MAX_LATITUDE, MIN_LONGITUDE, MAX_LONGITUDE } from '../../../shared/geo';
 
 /** Customer video pre-check quotes (§0.3). Ops pricing lives on the admin router. */
 export const quotesRouter: Router = Router();
 
-const quoteService = new BookingQuoteService();
 
 quotesRouter.use(authenticate, requireActiveUser);
 
@@ -33,7 +32,7 @@ quotesRouter.post(
     body('addressLng').optional({ nullable: true }).isFloat({ min: MIN_LONGITUDE, max: MAX_LONGITUDE }).toFloat(),
   ]),
   asyncHandler(async (req, res) => {
-    const quote = await quoteService.create(req.user!.userId, {
+    const quote = await getBookingQuoteService().create(req.user!.userId, {
       serviceId: req.body.serviceId,
       videoUrl: req.body.videoUrl ?? undefined,
       siteMediaUrls: req.body.siteMediaUrls ?? undefined,
@@ -52,7 +51,7 @@ quotesRouter.post(
 quotesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ data: await quoteService.listForCustomer(req.user!.userId) });
+    res.json({ data: await getBookingQuoteService().listForCustomer(req.user!.userId) });
   }),
 );
 
@@ -61,7 +60,7 @@ quotesRouter.get(
   '/:id',
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await quoteService.getForCustomer(req.params.id, req.user!.userId) });
+    res.json({ data: await getBookingQuoteService().getForCustomer(req.params.id, req.user!.userId) });
   }),
 );
 
@@ -70,6 +69,6 @@ quotesRouter.post(
   '/:id/accept',
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    res.status(201).json({ data: await quoteService.accept(req.params.id, req.user!.userId) });
+    res.status(201).json({ data: await getBookingQuoteService().accept(req.params.id, req.user!.userId) });
   }),
 );

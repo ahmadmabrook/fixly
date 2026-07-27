@@ -15,6 +15,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     additionalWorkItem: { findMany: jest.fn() },
     service: { findMany: jest.fn() },
     guaranteeTicket: { count: jest.fn() },
+    serviceCredit: { aggregate: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -47,6 +48,7 @@ const mockedPrisma = prisma as unknown as {
   additionalWorkItem: { findMany: jest.Mock };
   service: { findMany: jest.Mock };
   guaranteeTicket: { count: jest.Mock };
+  serviceCredit: { aggregate: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -392,6 +394,7 @@ describe('AdminService.getStats (bookingsByService)', () => {
     mockedPrisma.technicianProfile.aggregate.mockResolvedValue({ _avg: { rating: 0 } });
     mockedPrisma.guaranteeTicket.count.mockResolvedValue(0);
     mockedPrisma.payout.count.mockResolvedValue(0);
+    mockedPrisma.serviceCredit.aggregate.mockResolvedValue({ _sum: { amountJod: 0 } });
   });
 
   it('maps grouped booking counts to their Arabic service names, preserving desc order', async () => {

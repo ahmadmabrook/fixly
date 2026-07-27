@@ -9,7 +9,8 @@ import { ActiveJobs } from './TechPortal.ActiveJobs';
 import { Earnings } from './TechPortal.Earnings';
 import { Ratings, Scorecard } from './TechPortal.Scorecard';
 import { ProfileTab } from './TechPortal.Profile';
-import { COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_BG_SOFT, COLOR_ERROR_TEXT, COLOR_ERROR_TEXT_STRONG, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_SECONDARY, COLOR_TIER_ELITE_BG, COLOR_TIER_ELITE_FG, COLOR_WARNING_BG, COLOR_WARNING_TEXT, COLOR_WARNING_TEXT_STRONG, COLOR_WHITE } from '../../lib/theme';
+import { Verifications, useOpenVerificationsCount } from './TechPortal.Materials';
+import { COLOR_BADGE_DOT, COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_BG_SOFT, COLOR_ERROR_TEXT, COLOR_ERROR_TEXT_STRONG, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_SECONDARY, COLOR_TIER_ELITE_BG, COLOR_TIER_ELITE_FG, COLOR_WARNING_BG, COLOR_WARNING_TEXT, COLOR_WARNING_TEXT_STRONG, COLOR_WHITE } from '../../lib/theme';
 
 const TRUST_TIER_LABELS: Record<TrustTier, { ar: string; bg: string; fg: string }> = {
   PROBATION: { ar: 'تحت التجربة', bg: COLOR_WARNING_BG, fg: COLOR_WARNING_TEXT },
@@ -29,9 +30,10 @@ function TrustTierBadge({ tier }: { tier: TrustTier }) {
 
 export function Dashboard({ me, onChange }: { me: TechnicianProfileMe; onChange: () => void }) {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'jobs' | 'active' | 'earnings' | 'ratings' | 'scorecard' | 'profile'>('jobs');
+  const [tab, setTab] = useState<'jobs' | 'active' | 'earnings' | 'ratings' | 'scorecard' | 'verifications' | 'profile'>('jobs');
   const [available, setAvailable] = useState(me.isAvailable);
   useTechnicianLocationPush(available);
+  const openVerifications = useOpenVerificationsCount();
 
   async function toggle() {
     try {
@@ -69,8 +71,22 @@ export function Dashboard({ me, onChange }: { me: TechnicianProfileMe; onChange:
       )}
 
       <div className="mt-4 flex gap-2 flex-wrap">
-        {([['jobs', 'طلبات قريبة'], ['active', 'مهامي'], ['earnings', 'الأرباح'], ['ratings', 'تقييماتي'], ['scorecard', 'أدائي'], ['profile', 'حسابي']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} className="px-4 h-10 rounded-full" style={{ background: tab === k ? COLOR_BRAND_PRIMARY : COLOR_WHITE, color: tab === k ? COLOR_WHITE : COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13, border: `1px solid ${COLOR_BORDER}` }}>{l}</button>
+        {([['jobs', 'طلبات قريبة'], ['active', 'مهامي'], ['earnings', 'الأرباح'], ['ratings', 'تقييماتي'], ['scorecard', 'أدائي'], ['verifications', 'التحقق من الأسعار'], ['profile', 'حسابي']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className="relative px-4 h-10 rounded-full" style={{ background: tab === k ? COLOR_BRAND_PRIMARY : COLOR_WHITE, color: tab === k ? COLOR_WHITE : COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13, border: `1px solid ${COLOR_BORDER}` }}>
+            {l}
+            {k === 'verifications' && openVerifications > 0 && (
+              <span
+                className="absolute flex items-center justify-center rounded-full"
+                style={{
+                  top: -4, insetInlineEnd: -4, minWidth: 16, height: 16, padding: '0 4px',
+                  background: COLOR_BADGE_DOT, color: COLOR_WHITE, fontSize: 10, fontWeight: 700, fontFamily: 'Inter',
+                  lineHeight: 1,
+                }}
+              >
+                {openVerifications > 99 ? '99+' : openVerifications}
+              </span>
+            )}
+          </button>
         ))}
       </div>
 
@@ -80,6 +96,7 @@ export function Dashboard({ me, onChange }: { me: TechnicianProfileMe; onChange:
         {tab === 'earnings' && <Earnings onChange={onChange} />}
         {tab === 'ratings' && <Ratings technicianId={me.id} />}
         {tab === 'scorecard' && <Scorecard />}
+        {tab === 'verifications' && <Verifications />}
         {tab === 'profile' && <ProfileTab />}
       </div>
     </main>

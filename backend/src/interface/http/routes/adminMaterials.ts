@@ -11,7 +11,7 @@ import { PriceIndexService } from '../../../application/materials/PriceIndexServ
 import { CategoryReadinessService } from '../../../application/materials/CategoryReadinessService';
 import { BookingMaterialService } from '../../../application/materials/BookingMaterialService';
 import { MaterialVerificationService } from '../../../application/materials/MaterialVerificationService';
-import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+import { getBookingQuoteService } from '../../../application/quote/BookingQuoteService';
 
 const CATALOG_SOURCES = Object.values(CatalogSource);
 const REFRESH_CADENCES = Object.values(RefreshCadence);
@@ -38,7 +38,6 @@ const priceIndexService = new PriceIndexService();
 const readinessService = new CategoryReadinessService();
 const bookingMaterialService = new BookingMaterialService();
 const verificationService = new MaterialVerificationService();
-const quoteService = new BookingQuoteService();
 
 // ── Materials catalog (OPS) ─────────────────────────────────────────────
 adminMaterialsRouter.get(
@@ -305,7 +304,7 @@ adminMaterialsRouter.post(
     body('source').optional().isIn(['TECHNICIAN_PROCURED', 'CUSTOMER_SUPPLIED', 'PLATFORM_ARRANGED']),
   ]),
   asyncHandler(async (req, res) => {
-    const quote = await quoteService.addLine(req.params.id, req.body);
+    const quote = await getBookingQuoteService().addLine(req.params.id, req.body);
     res.status(201).json({ data: quote });
   }),
 );
@@ -325,7 +324,7 @@ adminMaterialsRouter.patch(
     body('source').optional().isIn(['TECHNICIAN_PROCURED', 'CUSTOMER_SUPPLIED', 'PLATFORM_ARRANGED']),
   ]),
   asyncHandler(async (req, res) => {
-    const quote = await quoteService.updateLine(req.params.id, req.params.lineId, req.body);
+    const quote = await getBookingQuoteService().updateLine(req.params.id, req.params.lineId, req.body);
     res.json({ data: quote });
   }),
 );
@@ -335,7 +334,7 @@ adminMaterialsRouter.delete(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), param('lineId').isUUID()]),
   asyncHandler(async (req, res) => {
-    const quote = await quoteService.removeLine(req.params.id, req.params.lineId);
+    const quote = await getBookingQuoteService().removeLine(req.params.id, req.params.lineId);
     res.json({ data: quote });
   }),
 );
@@ -347,7 +346,7 @@ adminMaterialsRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await quoteService.opsReview(req.params.id, req.user!.userId) });
+    res.json({ data: await getBookingQuoteService().opsReview(req.params.id, req.user!.userId) });
   }),
 );
 
@@ -356,7 +355,7 @@ adminMaterialsRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID()]),
   asyncHandler(async (req, res) => {
-    res.json({ data: await quoteService.sendItemizedQuote(req.params.id, req.user!.userId) });
+    res.json({ data: await getBookingQuoteService().sendItemizedQuote(req.params.id, req.user!.userId) });
   }),
 );
 

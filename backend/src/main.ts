@@ -20,6 +20,7 @@ import { NotificationService } from './application/notification/NotificationServ
 import { AdminService } from './application/admin/AdminService';
 import { BookingService } from './application/booking/BookingService';
 import { DispatchService, setDispatchService, getDispatchService } from './application/dispatch/DispatchService';
+import { BookingQuoteService, setBookingQuoteService } from './application/quote/BookingQuoteService';
 import { SubscriptionService } from './application/subscription/SubscriptionService';
 import { TrustService } from './application/technician/TrustService';
 import { MaterialVerificationService } from './application/materials/MaterialVerificationService';
@@ -95,6 +96,7 @@ async function main() {
 
   // Dispatch sweep: expire timed-out rounds + bootstrap un-dispatched bookings.
   setDispatchService(new DispatchService(io));
+  setBookingQuoteService(new BookingQuoteService(undefined, undefined, io));
   const dispatchSweepTimer = setInterval(() => {
     void getDispatchService()
       .expireRounds()
@@ -219,6 +221,14 @@ function buildOutboxWorker(
   ]) {
     worker.register(eventType, (p) => notification.handleBookingEvent(eventType, p as { bookingId: string }));
   }
+
+  // §3.3 v1.5 events — same outbox transport, separate handlers (different
+  // payload shapes / recipients than the booking-lifecycle status events above).
+  worker
+    .register(OutboxEventType.EXTRA_WORK_PROPOSED, (p) => notification.handleExtraWorkProposed(p as never))
+    .register(OutboxEventType.EXTRA_WORK_DECIDED, (p) => notification.handleExtraWorkDecided(p as never))
+    .register(OutboxEventType.QUOTE_READY, (p) => notification.handleQuoteReady(p as never))
+    .register(OutboxEventType.CREDIT_GRANTED, (p) => notification.handleCreditGranted(p as never));
 
   return worker;
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PlayCircle, Plus, Trash2, ShieldCheck, Send } from 'lucide-react';
-import { api, DEFAULT_PAGE_SIZE, type AdminQuoteItem, type QuoteLineKind, type MaterialSource } from '../lib/api';
+import { PlayCircle, Plus, Trash2, ShieldCheck, Send, Clock } from 'lucide-react';
+import { api, DEFAULT_PAGE_SIZE, type AdminQuoteItem, type QuoteLineKind, type MaterialSource, type MaterialCatalogItem } from '../lib/api';
 import { Card, Spinner, EmptyState, ActionBtn, ConfirmDialog, notify, Pagination, Pill } from '../components/shared';
 import { fmtJod, fmtFils, shortId, safeHttpsUrl } from '../lib/format';
 import {
@@ -34,6 +34,18 @@ const STATUS_PILL: Record<string, { ar: string; bg: string; fg: string }> = {
 };
 const KIND_LABEL: Record<QuoteLineKind, string> = { LABOUR: 'أجور عمل', MATERIAL: 'مادة', PREP: 'تجهيز', FEE: 'رسوم' };
 const TIER_LABEL: Record<string, string> = { ECONOMY: 'اقتصادي', STANDARD: 'متوسط', PREMIUM: 'ممتاز' };
+
+/** §2.6 materials rule 5 — expiresAt is set once at request time from the
+ *  service's quoteValidityHours policy; the clock keeps running while ops
+ *  builds the itemized price, so this is how much runway is actually left. */
+function formatValidity(expiresAt: string): { label: string; urgent: boolean; expired: boolean } {
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return { label: 'منتهي الصلاحية', urgent: true, expired: true };
+  const hours = ms / (60 * 60 * 1000);
+  const urgent = hours < 24;
+  if (hours >= 24) return { label: `صالح ${Math.floor(hours / 24)} يوم`, urgent, expired: false };
+  return { label: `صالح ${Math.floor(hours)} ساعة`, urgent, expired: false };
+}
 
 interface LineDraft {
   kind: QuoteLineKind;
@@ -145,6 +157,14 @@ export default function Quotes() {
                   </div>
                   <div className="flex items-center gap-2">
                     {isItemized && <Pill label="عرض مفصّل" bg={COLOR_STATUS_INFO_BG} fg={COLOR_BRAND_PRIMARY} />}
+                    {(q.status === 'PENDING' || q.status === 'QUOTED') && q.expiresAt && (() => {
+                      const v = formatValidity(q.expiresAt);
+                      return (
+                        <span className="inline-flex items-center gap-1" style={{ fontSize: 11, fontWeight: 700, color: v.urgent ? COLOR_STATUS_DANGER : COLOR_TEXT_MUTED }}>
+                          <Clock size={12} /> {v.label}
+                        </span>
+                      );
+                    })()}
                     <Pill label={STATUS_PILL[q.status]?.ar ?? q.status} bg={STATUS_PILL[q.status]?.bg ?? COLOR_BORDER_LIGHT} fg={STATUS_PILL[q.status]?.fg ?? COLOR_TEXT_SECONDARY} />
                   </div>
                 </div>
@@ -235,7 +255,25 @@ export default function Quotes() {
                           {(Object.keys(KIND_LABEL) as QuoteLineKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
                         </select>
                         <input placeholder="الوصف" value={draft.description} onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...draft, description: e.target.value } }))} className="h-9 rounded-lg border border-slate-200 px-2 col-span-2" style={{ fontSize: 12 }} />
-                        <input placeholder="معرّف المادة (اختياري)" value={draft.materialId} onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...draft, materialId: e.target.value } }))} className="h-9 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12, direction: 'ltr' }} />
+                        {draft.kind === 'MATERIAL' ? (
+                          <MaterialPicker
+                            serviceId={q.serviceId}
+                            value={draft.materialId}
+                            onChange={(materialId, item) =>
+                              setDrafts((d) => ({
+                                ...d,
+                                [q.id]: {
+                                  ...draft,
+                                  materialId,
+                                  description: item ? item.nameAr : draft.description,
+                                  unitPriceFils: item ? (item.unitPriceFils / 1000).toFixed(3) : draft.unitPriceFils,
+                                },
+                              }))
+                            }
+                          />
+                        ) : (
+                          <div />
+                        )}
                         <input placeholder="الكمية" value={draft.qty} onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...draft, qty: e.target.value.replace(/[^\d.]/g, '') } }))} className="h-9 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12, direction: 'ltr' }} />
                         <input placeholder="سعر الوحدة (د.أ)" value={draft.unitPriceFils} onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: { ...draft, unitPriceFils: e.target.value.replace(/[^\d.]/g, '') } }))} className="h-9 rounded-lg border border-slate-200 px-2" style={{ fontSize: 12, direction: 'ltr' }} />
                         <ActionBtn
@@ -282,5 +320,35 @@ export default function Quotes() {
         onCancel={() => setConfirmQuote(null)}
       />
     </div>
+  );
+}
+
+/** §17.5.6 rule 2 "the technician selects, never prices" applied to ops too —
+ *  a MATERIAL line picks from the priced catalogue instead of a free-typed
+ *  material UUID; picking an item prefills description + unit price. */
+function MaterialPicker({ serviceId, value, onChange }: { serviceId: string; value: string; onChange: (materialId: string, item: MaterialCatalogItem | null) => void }) {
+  const { data } = useQuery({
+    queryKey: ['materials-catalog-picker', serviceId],
+    queryFn: () => api.list<MaterialCatalogItem>(`/materials?serviceId=${serviceId}&isActive=true&limit=200`),
+    enabled: !!serviceId,
+  });
+  const items = data?.items ?? [];
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const item = items.find((i) => i.id === e.target.value) ?? null;
+        onChange(e.target.value, item);
+      }}
+      aria-label="اختر مادة من الكتالوج"
+      className="h-9 rounded-lg border border-slate-200 px-2"
+      style={{ fontSize: 12 }}
+    >
+      <option value="">مادة (اختياري)</option>
+      {items.map((i) => (
+        <option key={i.id} value={i.id}>{i.nameAr} — {fmtFils(i.unitPriceFils)} د.أ</option>
+      ))}
+    </select>
   );
 }

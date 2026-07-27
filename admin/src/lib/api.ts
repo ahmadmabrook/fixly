@@ -209,6 +209,9 @@ export interface AdminStats {
   avgRating: number;
   openGuarantees: number;
   pendingPayouts: number;
+  /** Platform-wide, net of redemptions — SUM(amountJod) across every
+   *  customer's service-credit wallet (late-comp / referral / goodwill). */
+  totalOutstandingCreditsJod: number;
   bookingsByService?: Array<{ serviceId: string; nameAr: string; count: number }>;
   bookingsByStatus?: { inProgress: number; arriving: number; completed: number; cancelled: number };
 }
@@ -466,6 +469,7 @@ export interface QuoteLineItem {
 export interface AdminQuoteItem {
   id: string;
   status: 'PENDING' | 'QUOTED' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+  serviceId: string;
   videoUrl: string | null;
   siteMediaUrls: string[];
   dimensionsNote: string | null;
@@ -476,6 +480,10 @@ export interface AdminQuoteItem {
   materialsFils: number | null;
   opsReviewedById: string | null;
   opsReviewedAt: string | null;
+  /** Set once, at request time, from the service's quoteValidityHours policy
+   *  (§2.6 materials rule 5) — the clock starts when the customer asks for an
+   *  assessment, not when ops finishes pricing it. */
+  expiresAt: string;
   lines: QuoteLineItem[];
   createdAt: string;
   service?: { nameAr?: string | null } | null;

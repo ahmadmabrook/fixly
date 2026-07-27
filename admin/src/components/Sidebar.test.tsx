@@ -1,13 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { useAuth, type AdminRole } from '../lib/store';
 import Sidebar from './Sidebar';
 
-function renderSidebar() {
+function renderSidebar(props?: { open?: boolean; onClose?: () => void }) {
   return render(
     <MemoryRouter>
-      <Sidebar />
+      <Sidebar {...props} />
     </MemoryRouter>,
   );
 }
@@ -48,5 +49,47 @@ describe('Sidebar RBAC (least privilege)', () => {
     expect(screen.queryByText('المسؤولون')).not.toBeInTheDocument();
     expect(screen.queryByText('المدفوعات')).not.toBeInTheDocument();
     expect(screen.queryByText('الفنيون')).not.toBeInTheDocument();
+  });
+});
+
+describe('Sidebar founder-mobile responsive drawer', () => {
+  it('anchors to the inline-START side (right, in this RTL app) — regression guard: inset-inline-END resolves to the LEFT in RTL and would leave the closed drawer only partially off-screen', () => {
+    login('SUPER_ADMIN');
+    renderSidebar({ open: false });
+    const aside = document.querySelector('aside')!;
+    expect(aside.className).toContain('start-0');
+    expect(aside.className).not.toContain('end-0');
+    expect(aside.className).toContain('translate-x-full');
+  });
+
+  it('renders no backdrop and a closed transform when open=false (default)', () => {
+    login('SUPER_ADMIN');
+    renderSidebar();
+    expect(document.querySelector('.fixed.inset-0')).not.toBeInTheDocument();
+  });
+
+  it('renders a backdrop when open=true, and clicking it calls onClose', async () => {
+    login('SUPER_ADMIN');
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderSidebar({ open: true, onClose });
+
+    const aside = document.querySelector('aside')!;
+    expect(aside.className).toContain('translate-x-0');
+
+    const backdrop = document.querySelector('.fixed.inset-0')!;
+    expect(backdrop).toBeInTheDocument();
+    await user.click(backdrop);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the drawer when a nav link is clicked (founder taps through to an approval queue)', async () => {
+    login('SUPER_ADMIN');
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderSidebar({ open: true, onClose });
+
+    await user.click(screen.getByText('مراجعة المواد'));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

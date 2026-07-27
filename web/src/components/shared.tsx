@@ -10,3 +10,4 @@ export * from './shared/badges';
 export * from './shared/dialogs';
 export * from './shared/misc';
 export * from './shared/domain';
+export * from './shared/upload';

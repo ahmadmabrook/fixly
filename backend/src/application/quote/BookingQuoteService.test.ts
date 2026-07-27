@@ -25,18 +25,49 @@ const mocked = prisma as unknown as {
   serviceMaterialPolicy: { findUnique: jest.Mock };
 };
 
+// Mirrors DispatchService.test.ts's makeIo helper.
+function makeIo() {
+  const emit = jest.fn();
+  const to = jest.fn(() => ({ emit }));
+  return { io: { to } as unknown as import('socket.io').Server, to, emit };
+}
+
 function makeService(
   createBooking = jest.fn().mockResolvedValue({ id: 'b1', totalJod: new Prisma.Decimal(40) }),
   catalogGet = jest.fn(),
   assertPriceBand = jest.fn(),
+  io?: import('socket.io').Server,
 ) {
   const bookingStub = { createBooking } as unknown as BookingService;
   const catalogStub = { get: catalogGet, assertPriceBand } as unknown as MaterialCatalogService;
-  return { svc: new BookingQuoteService(bookingStub, catalogStub), createBooking, catalogGet, assertPriceBand };
+  return { svc: new BookingQuoteService(bookingStub, catalogStub, io), createBooking, catalogGet, assertPriceBand };
 }
 
 const future = () => new Date(Date.now() + 3 * 86_400_000);
 const past = () => new Date(Date.now() - 86_400_000);
+
+describe('BookingQuoteService.setQuote (§17.5.3/§17.5.12 live push)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('emits quote:ready to the customer room in addition to the existing inbox notification', async () => {
+    mocked.bookingQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'PENDING', customerId: 'c1' });
+    mocked.bookingQuote.update.mockResolvedValue({ id: 'q1', status: 'QUOTED' });
+    const { emit, to, io } = makeIo();
+    const { svc } = makeService(undefined, undefined, undefined, io);
+
+    await svc.setQuote('q1', 'admin1', 25);
+
+    expect(to).toHaveBeenCalledWith('user:c1');
+    expect(emit).toHaveBeenCalledWith('quote:ready', { quoteId: 'q1', customerId: 'c1' });
+  });
+
+  it('does not throw when no io was injected (route-level singleton constructed before main.ts wires the socket server)', async () => {
+    mocked.bookingQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'PENDING', customerId: 'c1' });
+    mocked.bookingQuote.update.mockResolvedValue({ id: 'q1', status: 'QUOTED' });
+    const { svc } = makeService(); // no io
+    await expect(svc.setQuote('q1', 'admin1', 25)).resolves.toBeDefined();
+  });
+});
 
 describe('BookingQuoteService.accept', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -209,5 +240,20 @@ describe('BookingQuoteService.sendItemizedQuote', () => {
       expect.objectContaining({ data: expect.objectContaining({ status: 'QUOTED', quotedById: 'admin1' }) }),
     );
     expect(result).toEqual(expect.objectContaining({ status: 'QUOTED' }));
+  });
+
+  it('emits quote:ready to the customer room on send', async () => {
+    mocked.bookingQuote.findUnique.mockResolvedValue({
+      id: 'q1', status: 'PENDING', customerId: 'c1', labourFils: 5_000, materialsFils: 5_000, opsReviewedAt: null,
+      lines: [{ kind: 'LABOUR', materialId: null }],
+    });
+    mocked.bookingQuote.update.mockResolvedValue({ id: 'q1', status: 'QUOTED' });
+    const { emit, to, io } = makeIo();
+    const { svc } = makeService(undefined, undefined, undefined, io);
+
+    await svc.sendItemizedQuote('q1', 'admin1');
+
+    expect(to).toHaveBeenCalledWith('user:c1');
+    expect(emit).toHaveBeenCalledWith('quote:ready', { quoteId: 'q1', customerId: 'c1' });
   });
 });

@@ -29,6 +29,7 @@ export async function getAdminStats() {
     ratingResult,
     openGuarantees,
     pendingPayouts,
+    outstandingCreditsResult,
   ] = await Promise.all([
     prisma.booking.count(),
     prisma.booking.count({ where: { status: BookingStatus.PENDING } }),
@@ -44,6 +45,10 @@ export async function getAdminStats() {
     prisma.technicianProfile.aggregate({ _avg: { rating: true }, where: { totalReviews: { gt: 0 } } }),
     prisma.guaranteeTicket.count({ where: { status: { in: [GuaranteeStatus.OPEN, GuaranteeStatus.IN_REVIEW] } } }),
     prisma.payout.count({ where: { status: PayoutStatus.PENDING } }),
+    // Platform-wide service-credit liability: ServiceCredit rows are signed
+    // (grants positive, redemptions negative — see ServiceCreditService), so
+    // an unscoped SUM nets to exactly what's still owed across every wallet.
+    prisma.serviceCredit.aggregate({ _sum: { amountJod: true } }),
   ]);
 
   const bookingsByService = await prisma.booking.groupBy({
@@ -76,6 +81,7 @@ export async function getAdminStats() {
     avgRating: Number(ratingResult._avg.rating ?? 0),
     openGuarantees,
     pendingPayouts,
+    totalOutstandingCreditsJod: Number(outstandingCreditsResult._sum.amountJod ?? 0),
     bookingsByService: bookingsByService.map((b) => ({
       serviceId: b.serviceId,
       nameAr: nameMap.get(b.serviceId) ?? b.serviceId,

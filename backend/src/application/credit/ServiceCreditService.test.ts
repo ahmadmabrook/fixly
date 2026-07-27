@@ -87,5 +87,24 @@ describe('ServiceCreditService', () => {
         svc.grant(tx as never, { customerId: 'c1', amountJod: 20, reason: 'GOODWILL' }),
       ).rejects.toThrow('boom');
     });
+
+    it('§3.3 credit:granted — writes a booking-scoped outbox event when bookingId is present', async () => {
+      const outboxCreate = jest.fn().mockResolvedValue({});
+      const tx = { serviceCredit: { create: jest.fn().mockResolvedValue({}) }, outboxEvent: { create: outboxCreate } };
+      await svc.grant(tx as never, { customerId: 'c1', amountJod: 20, reason: 'LATE_COMPENSATION', bookingId: 'b1', refKey: 'latecomp:b1' });
+      expect(outboxCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ bookingId: 'b1', eventType: 'credit.granted', payload: expect.objectContaining({ customerId: 'c1', amountJod: '20' }) }),
+        }),
+      );
+    });
+
+    it('skips the outbox event entirely for a bookingId-less (pure goodwill) grant', async () => {
+      // No `outboxEvent` on the tx stub at all — if the code tried to reach it
+      // unconditionally, this would throw "Cannot read properties of undefined".
+      const tx = { serviceCredit: { create: jest.fn().mockResolvedValue({}) } };
+      const ok = await svc.grant(tx as never, { customerId: 'c1', amountJod: 20, reason: 'GOODWILL' });
+      expect(ok).toBe(true);
+    });
   });
 });

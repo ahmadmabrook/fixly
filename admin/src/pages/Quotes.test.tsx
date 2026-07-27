@@ -157,3 +157,63 @@ describe('Quotes page (itemized quote-first path)', () => {
     });
   });
 });
+
+const catalogueItem = {
+  id: 'mat1', serviceId: 'svc1', supplierId: null, slug: 'pipe', nameAr: 'أنبوب PVC', nameEn: 'PVC Pipe',
+  brand: null, tier: 'STANDARD', unit: 'قطعة', unitPriceFils: 2500, priceMinFils: 2000, priceMaxFils: 3000,
+  varianceAlertBps: 1500, coverageNote: null, priceConfidence: 'CONFIRMED', lastPricedAt: null,
+  refreshCadence: 'QUARTERLY', isActive: true,
+};
+
+const itemizedWithValidityPayload = {
+  data: [
+    {
+      ...itemizedListPayload.data[0],
+      id: 'q3', serviceId: 'svc1',
+      // +5min buffer over the exact 3 days so Math.floor(hours/24) reliably
+      // reads 3 regardless of a few seconds of test execution delay.
+      expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 5 * 60 * 1000).toISOString(),
+      lines: [],
+      labourFils: 0, materialsFils: 0,
+    },
+  ],
+  meta: { total: 1, limit: 50, offset: 0 },
+};
+
+describe('Quotes page — validity control + catalogue picker (§2.6/§17.5.6)', () => {
+  it('shows a validity countdown derived from expiresAt', async () => {
+    mockFetchWith([{ payload: itemizedWithValidityPayload }]);
+    renderWithProviders(<Quotes />);
+    expect(await screen.findByText(/صالح 3 يوم/)).toBeInTheDocument();
+  });
+
+  it('lets ops pick a material from the catalogue, prefilling description and price', async () => {
+    const seq = mockFetchWith([
+      { payload: itemizedWithValidityPayload },
+      { payload: { data: [catalogueItem], meta: { total: 1, limit: 200, offset: 0 } } },
+      { payload: { data: { id: 'q3' } } },
+      { payload: itemizedWithValidityPayload },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<Quotes />);
+    await waitFor(() => expect(screen.getByText(/صالح 3 يوم/)).toBeInTheDocument());
+
+    const kindSelect = screen.getByDisplayValue('أجور عمل');
+    await user.selectOptions(kindSelect, 'مادة');
+
+    const picker = await screen.findByLabelText('اختر مادة من الكتالوج');
+    await user.selectOptions(picker, 'mat1');
+
+    expect(screen.getByPlaceholderText('الوصف')).toHaveValue('أنبوب PVC');
+    expect(screen.getByPlaceholderText('سعر الوحدة (د.أ)')).toHaveValue('2.500');
+
+    await user.click(screen.getByRole('button', { name: /إضافة بند/ }));
+
+    await waitFor(() => {
+      const lineCall = seq.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/quotes/q3/lines'));
+      expect(lineCall).toBeTruthy();
+      const body = JSON.parse(String((lineCall?.[1] as RequestInit | undefined)?.body));
+      expect(body).toEqual(expect.objectContaining({ kind: 'MATERIAL', materialId: 'mat1', description: 'أنبوب PVC', unitPriceFils: 2500 }));
+    });
+  });
+});

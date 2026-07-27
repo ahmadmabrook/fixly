@@ -1,6 +1,7 @@
 import { Prisma, CreditReason } from '@prisma/client';
 import { prisma } from '../../infrastructure/database/prisma';
 import { PrismaErrorCode } from '../../shared/errors';
+import { OutboxEventType } from '../../shared/outboxEvents';
 
 /** Automatic late-arrival compensation (§0.3): 20 JOD if the technician arrives
  *  more than this grace past the promised SLA window. */
@@ -53,15 +54,28 @@ export class ServiceCreditService {
     },
   ): Promise<boolean> {
     try {
+      const amount = new Prisma.Decimal(params.amountJod);
       await tx.serviceCredit.create({
         data: {
           customerId: params.customerId,
-          amountJod: new Prisma.Decimal(params.amountJod),
+          amountJod: amount,
           reason: params.reason,
           bookingId: params.bookingId ?? null,
           refKey: params.refKey ?? null,
         },
       });
+      // §3.3 credit:granted — booking-scoped outbox transport, so a credit
+      // with no booking context (pure goodwill) has nowhere to route the
+      // event and skips it; the customer still sees it via /credits/me.
+      if (params.bookingId) {
+        await tx.outboxEvent.create({
+          data: {
+            bookingId: params.bookingId,
+            eventType: OutboxEventType.CREDIT_GRANTED,
+            payload: { bookingId: params.bookingId, customerId: params.customerId, amountJod: amount.toString(), reason: params.reason },
+          },
+        });
+      }
       return true;
     } catch (e) {
       if (isUniqueViolation(e)) return false; // already granted for this refKey

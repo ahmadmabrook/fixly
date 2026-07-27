@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star } from 'lucide-react';
 import { api, BookingListItem, BookingStatus } from '../../lib/api';
-import { Card, ServiceIcon, StatusBadge, Modal, ConfirmDialog, notify } from '../../components/shared';
+import { Card, ServiceIcon, StatusBadge, Modal, MediaUpload, ConfirmDialog, notify } from '../../components/shared';
+import { MaterialsSection } from './TechPortal.Materials';
 import { REALTIME_POLL_INTERVAL_MS } from '../../lib/constants';
 import { COLOR_ACCENT_AMBER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../../lib/theme';
 
@@ -102,6 +103,7 @@ export function ActiveJobs() {
                 <button onClick={() => setExtraFor(b.id)} className="mt-2 text-start" style={{ color: COLOR_BRAND_PRIMARY, fontSize: 13, fontWeight: 600 }}>+ إضافة عمل إضافي</button>
               )
             )}
+            {b.service?.id && <MaterialsSection bookingId={b.id} serviceId={b.service.id} bookingStatus={b.status} />}
           </Card>
         );
       })}
@@ -132,24 +134,19 @@ export function ActiveJobs() {
  *  transition with a 422 unless this was submitted first, so the modal always
  *  runs before the status call rather than reacting to the error. */
 function ChecklistModal({ stage, onCancel, onSubmit }: { stage: 'pre-start' | 'pre-close'; onCancel: () => void; onSubmit: (photoUrls: string[]) => void }) {
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const isPreStart = stage === 'pre-start';
   return (
     <Modal title={isPreStart ? 'قائمة تحقق ما قبل الخدمة' : 'قائمة تحقق ما بعد الخدمة'} onClose={onCancel} variant="sheet" maxWidth="sm">
       <p className="mt-2" style={{ color: COLOR_TEXT_SECONDARY, fontSize: 13 }}>
-        {isPreStart ? 'أضف رابط صورة واحدة على الأقل قبل بدء الخدمة.' : 'أضف رابط صورة واحدة على الأقل بعد انتهاء الخدمة.'}
+        {isPreStart ? 'أضف صورة واحدة على الأقل قبل بدء الخدمة.' : 'أضف صورة واحدة على الأقل بعد انتهاء الخدمة.'}
       </p>
-      <input
-        value={photoUrl}
-        onChange={(e) => setPhotoUrl(e.target.value)}
-        placeholder={isPreStart ? 'رابط صورة قبل الخدمة' : 'رابط صورة بعد الخدمة'}
-        className="mt-3 w-full h-11 rounded-xl border border-slate-200 px-4"
-        style={{ fontSize: 14, direction: 'ltr' }}
-        aria-label={isPreStart ? 'رابط صورة قبل الخدمة' : 'رابط صورة بعد الخدمة'}
-      />
+      <div className="mt-3">
+        <MediaUpload value={photoUrls} onChange={setPhotoUrls} purpose="checklist_photo" />
+      </div>
       <button
-        onClick={() => onSubmit([photoUrl.trim()])}
-        disabled={!photoUrl.trim()}
+        onClick={() => onSubmit(photoUrls)}
+        disabled={photoUrls.length === 0}
         className="mt-4 w-full h-11 rounded-xl disabled:opacity-50"
         style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700 }}
       >

@@ -7,7 +7,7 @@ import { requireAdminRole } from '../middleware/auth';
 import { TrustService } from '../../../application/technician/TrustService';
 import { ConductReportService } from '../../../application/conduct/ConductReportService';
 import { SubscriptionService } from '../../../application/subscription/SubscriptionService';
-import { BookingQuoteService } from '../../../application/quote/BookingQuoteService';
+import { getBookingQuoteService } from '../../../application/quote/BookingQuoteService';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { audit } from '../../../application/admin/adminAudit';
 
@@ -22,7 +22,6 @@ export const adminBusinessRouter: Router = Router();
 const trustService = new TrustService();
 const conductService = new ConductReportService();
 const subscriptionService = new SubscriptionService();
-const quoteService = new BookingQuoteService();
 
 const TRUST_TIERS = Object.values(TrustTier);
 const CONDUCT_STATUSES = Object.values(ConductStatus);
@@ -146,7 +145,7 @@ adminBusinessRouter.get(
     const limit = (req.query.limit as unknown as number | undefined) ?? 50;
     const offset = (req.query.offset as unknown as number | undefined) ?? 0;
     const status = req.query.status as QuoteStatus | undefined;
-    const { items, total } = await quoteService.listForAdmin(status, limit, offset);
+    const { items, total } = await getBookingQuoteService().listForAdmin(status, limit, offset);
     res.json({ data: items, meta: { total, limit, offset } });
   }),
 );
@@ -157,7 +156,7 @@ adminBusinessRouter.post(
   requireAdminRole('OPS'),
   validate([param('id').isUUID(), moneyBody('quotedJod')]),
   asyncHandler(async (req, res) => {
-    const data = await quoteService.setQuote(req.params.id, req.user!.userId, req.body.quotedJod as string);
+    const data = await getBookingQuoteService().setQuote(req.params.id, req.user!.userId, req.body.quotedJod as string);
     await audit(prisma, req.user!.userId, 'quote.price', { type: 'BookingQuote', id: req.params.id }, { quotedJod: req.body.quotedJod }, req.ip);
     res.json({ data });
   }),

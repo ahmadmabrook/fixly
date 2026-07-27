@@ -83,6 +83,60 @@ export class NotificationService {
     logger.debug({ bookingId: payload.bookingId, eventType }, 'Notification dispatched');
   }
 
+  /** §2.6 extra-work rule: technician proposes → customer sees it live, not
+   *  just on next inbox poll (the whole point of the fixed-price gate is that
+   *  the customer notices before it's silently added to their total). */
+  async handleExtraWorkProposed(payload: { bookingId: string; customerId: string; description: string; amountJod: string }): Promise<void> {
+    const dedupeKey = `${payload.bookingId}:extra_proposed:${payload.description}:${payload.amountJod}`;
+    const notified = await this.tryNotify(payload.customerId, payload.bookingId, dedupeKey, 'عمل إضافي مقترح', `اقترح الفني عملاً إضافياً بقيمة ${payload.amountJod} دينار — يحتاج موافقتك.`);
+    if (!notified) return;
+    this.io.to(`user:${payload.customerId}`).emit('booking:extra_proposed', payload);
+  }
+
+  /** Mirrors handleExtraWorkProposed for the technician-facing decision. */
+  async handleExtraWorkDecided(payload: { bookingId: string; technicianUserId: string; approved: boolean; amountJod: string }): Promise<void> {
+    const dedupeKey = `${payload.bookingId}:extra_decided:${payload.approved}:${payload.amountJod}`;
+    const title = payload.approved ? 'تمت الموافقة على العمل الإضافي' : 'تم رفض العمل الإضافي';
+    const body = payload.approved ? `وافق العميل على ${payload.amountJod} دينار عمل إضافي.` : 'رفض العميل العمل الإضافي المقترح.';
+    const notified = await this.tryNotify(payload.technicianUserId, payload.bookingId, dedupeKey, title, body);
+    if (!notified) return;
+    this.io.to(`user:${payload.technicianUserId}`).emit('booking:extra_decided', payload);
+  }
+
+  /** §17.5.3/§17.5.12 — live push only. setQuote/sendItemizedQuote already
+   *  write the inbox Notification row directly (createUserNotification) at
+   *  the call site; this only adds the socket push, so retries of this
+   *  at-least-once outbox event just re-emit a harmless duplicate live toast
+   *  instead of a second inbox row. */
+  async handleQuoteReady(payload: { bookingId: string; customerId: string; quoteId: string }): Promise<void> {
+    this.io.to(`user:${payload.customerId}`).emit('quote:ready', payload);
+  }
+
+  /** Wallet-credit grants (late-comp, referral, etc.) — live balance nudge. */
+  async handleCreditGranted(payload: { bookingId: string; customerId: string; amountJod: string; reason: string }): Promise<void> {
+    const dedupeKey = `${payload.bookingId}:credit_granted:${payload.reason}`;
+    const notified = await this.tryNotify(payload.customerId, payload.bookingId, dedupeKey, 'تمت إضافة رصيد', `أُضيف ${payload.amountJod} دينار إلى رصيدك.`);
+    if (!notified) return;
+    this.io.to(`user:${payload.customerId}`).emit('credit:granted', payload);
+  }
+
+  /** Shared idempotent-insert-then-decide-whether-to-emit helper — the same
+   *  at-least-once/dedupeKey shape as handleBookingEvent, factored out so the
+   *  four handlers above don't each re-implement the try/catch. Returns false
+   *  (skip the emit) only when this exact event was already delivered. */
+  private async tryNotify(userId: string, bookingId: string, dedupeKey: string, titleAr: string, bodyAr: string): Promise<boolean> {
+    try {
+      await prisma.notification.create({ data: { userId, bookingId, dedupeKey, titleAr, bodyAr, sentAt: new Date() } });
+      return true;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PrismaErrorCode.UNIQUE_CONSTRAINT_VIOLATION) {
+        logger.debug({ dedupeKey }, 'Notification already sent — skipping duplicate');
+        return false;
+      }
+      throw err;
+    }
+  }
+
   private async resolveCustomerId(bookingId: string): Promise<string | null> {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },

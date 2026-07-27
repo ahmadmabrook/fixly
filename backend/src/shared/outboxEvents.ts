@@ -16,6 +16,13 @@ export const OutboxEventType = {
   BOOKING_COMPLETED: 'booking.completed',
   BOOKING_CANCELLED: 'booking.cancelled',
   BOOKING_NO_SHOW: 'booking.no_show',
+  // §3.3 v1.5 events — booking-scoped (OutboxEvent.bookingId is required), so
+  // a credit grant with no booking context (pure goodwill) skips the event
+  // rather than emitting one with no room to route it to.
+  EXTRA_WORK_PROPOSED: 'booking.extra_proposed',
+  EXTRA_WORK_DECIDED: 'booking.extra_decided',
+  QUOTE_READY: 'quote.ready',
+  CREDIT_GRANTED: 'credit.granted',
 } as const;
 
 export type OutboxEventType = (typeof OutboxEventType)[keyof typeof OutboxEventType];

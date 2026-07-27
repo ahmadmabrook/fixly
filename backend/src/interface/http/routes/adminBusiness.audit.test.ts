@@ -47,7 +47,9 @@ jest.mock('../../../application/subscription/SubscriptionService', () => ({
 
 const setQuoteMock = jest.fn().mockResolvedValue({ id: VALID_ID, status: 'QUOTED', quotedJod: '25.000' });
 jest.mock('../../../application/quote/BookingQuoteService', () => ({
-  BookingQuoteService: jest.fn().mockImplementation(() => ({ setQuote: setQuoteMock, listForAdmin: jest.fn() })),
+  // adminBusiness.ts calls the lazy singleton getter (io-bound instance set up
+  // in main.ts), not `new BookingQuoteService()` — mock that entry point.
+  getBookingQuoteService: () => ({ setQuote: setQuoteMock, listForAdmin: jest.fn() }),
 }));
 
 const { adminBusinessRouter } = require('./adminBusiness');

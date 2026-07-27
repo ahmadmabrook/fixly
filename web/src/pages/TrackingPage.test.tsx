@@ -23,6 +23,9 @@ function renderPage(booking: Record<string, unknown>) {
     if (url.includes('/technicians/')) {
       return { ok: true, status: 200, json: async () => ({ data: { id: 't1', name: 'أحمد', avatarUrl: null, rating: '4.8', totalReviews: 12, vehicle: null, isVerified: true } }) } as Response;
     }
+    if (url.endsWith('/materials')) {
+      return { ok: true, status: 200, json: async () => ({ data: [] }) } as Response;
+    }
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   }) as unknown as typeof fetch);
 
@@ -89,6 +92,9 @@ describe('TrackingPage', () => {
       }
       if (url.endsWith('/bookings/b1/masked-call') && opts?.method === 'POST') {
         return { ok: true, status: 200, json: async () => ({ data: { proxyNumber: '+962790000000' } }) } as Response;
+      }
+      if (url.endsWith('/materials')) {
+        return { ok: true, status: 200, json: async () => ({ data: [] }) } as Response;
       }
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     }) as unknown as typeof fetch);

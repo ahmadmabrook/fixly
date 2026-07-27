@@ -47,7 +47,7 @@ describe('Dashboard', () => {
     useAuth.getState().setAuth('tok', { id: 'a1', name: 'A', email: 'a@b.c' });
     const okPayload = { data: {
       totalBookings: 10, pendingBookings: 2, completedBookings: 5,
-      totalTechnicians: 3, verifiedTechnicians: 2, totalRevenueJod: 150, pendingPayouts: 1,
+      totalTechnicians: 3, verifiedTechnicians: 2, totalRevenueJod: 150, pendingPayouts: 1, totalOutstandingCreditsJod: 45,
     } };
     const fetchMock = vi.fn(async () => ({
       ok: true, status: 200, json: async () => okPayload,
@@ -72,7 +72,7 @@ describe('Dashboard', () => {
     const statsPayload = { data: {
       totalBookings: 10, pendingBookings: 2, completedBookings: 5, totalTechnicians: 3,
       verifiedTechnicians: 2, activeTechnicians: 1, totalRevenueJod: 150, todayRevenueJod: 20,
-      avgRating: 4.5, openGuarantees: 0, pendingPayouts: 1,
+      avgRating: 4.5, openGuarantees: 0, pendingPayouts: 1, totalOutstandingCreditsJod: 45,
     } };
     const financialPayload = { data: { series: [], totals: { bookings: 0, grossJod: 0, platformFeeJod: 0, technicianNetJod: 0 } } };
     const operationalPayload = { data: {
@@ -115,7 +115,7 @@ describe('Dashboard', () => {
     const statsPayload = { data: {
       totalBookings: 0, pendingBookings: 0, completedBookings: 0, totalTechnicians: 0,
       verifiedTechnicians: 0, activeTechnicians: 0, totalRevenueJod: 0, todayRevenueJod: 0,
-      avgRating: 0, openGuarantees: 0, pendingPayouts: 0,
+      avgRating: 0, openGuarantees: 0, pendingPayouts: 0, totalOutstandingCreditsJod: 0,
     } };
     const financialPayload = { data: { series: [], totals: { bookings: 0, grossJod: 0, platformFeeJod: 0, technicianNetJod: 0 } } };
     // avgTimeToAssignSeconds / avgArrivalDelaySeconds are null when the window has no rows.
@@ -157,7 +157,7 @@ describe('Dashboard (live activity feed + at-risk orders)', () => {
     const statsPayload = { data: {
       totalBookings: 10, pendingBookings: 2, completedBookings: 5, totalTechnicians: 3,
       verifiedTechnicians: 2, activeTechnicians: 1, totalRevenueJod: 150, todayRevenueJod: 20,
-      avgRating: 4.5, openGuarantees: 0, pendingPayouts: 1,
+      avgRating: 4.5, openGuarantees: 0, pendingPayouts: 1, totalOutstandingCreditsJod: 45,
     } };
     const financialPayload = { data: { series: [], totals: { bookings: 0, grossJod: 0, platformFeeJod: 0, technicianNetJod: 0 } } };
     const operationalPayload = { data: {
@@ -215,5 +215,8 @@ describe('Dashboard (live activity feed + at-risk orders)', () => {
 
     await waitFor(() => expect(screen.getByText('لا يوجد نشاط حديث')).toBeInTheDocument());
     expect(screen.getByText('لا توجد طلبات معرّضة للخطر')).toBeInTheDocument();
+    // Platform-wide outstanding customer-credit liability (§ dashboard aggregates).
+    expect(screen.getByText('أرصدة العملاء المستحقة')).toBeInTheDocument();
+    expect(screen.getByText('45.00 JD')).toBeInTheDocument();
   });
 });

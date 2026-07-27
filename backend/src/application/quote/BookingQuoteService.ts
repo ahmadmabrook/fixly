@@ -1,4 +1,5 @@
 import { Prisma, QuoteStatus, QuoteLineKind, MaterialSource, MaterialTier, PriceConfidence, PricingModel } from '@prisma/client';
+import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../../infrastructure/database/prisma';
 import { NotFoundError, ForbiddenError, ConflictError, ValidationError } from '../../shared/errors';
 import { BookingService } from '../booking/BookingService';
@@ -6,6 +7,18 @@ import { createUserNotification } from '../notification/notify';
 import { MaterialCatalogService } from '../materials/MaterialCatalogService';
 import { fromMinorUnits } from '../../shared/money';
 import { env } from '../../shared/env';
+
+// ── Singleton accessor (routes reach the io-bound instance, same pattern as
+// DispatchService) — a BookingQuote has no Booking row until accept(), so
+// quote:ready can't ride the booking-scoped outbox; it needs a direct socket
+// handle instead. ──────────────────────────────────────────────────────────
+let instance: BookingQuoteService | null = null;
+
+export function setBookingQuoteService(svc: BookingQuoteService): void { instance = svc; }
+export function getBookingQuoteService(): BookingQuoteService {
+  if (!instance) throw new Error('BookingQuoteService not initialised');
+  return instance;
+}
 
 /** Video pre-check quotes are valid for this long once a firm price is set. */
 export const QUOTE_TTL_DAYS = 7;
@@ -56,7 +69,16 @@ export class BookingQuoteService {
   constructor(
     private readonly bookingService: BookingService = new BookingService(),
     private readonly catalogService: MaterialCatalogService = new MaterialCatalogService(),
+    // Optional: undefined in the module-level route singletons constructed
+    // before main.ts creates the socket server. emitQuoteReady no-ops when
+    // absent rather than throwing, so quote drafting/sending still works
+    // without live push (matches the pre-existing inbox-only notification).
+    private readonly io?: SocketServer,
   ) {}
+
+  private emitQuoteReady(quoteId: string, customerId: string): void {
+    this.io?.to(`user:${customerId}`).emit('quote:ready', { quoteId, customerId });
+  }
 
   async create(customerId: string, input: CreateQuoteInput) {
     const service = await prisma.service.findUnique({ where: { id: input.serviceId } });
@@ -132,6 +154,7 @@ export class BookingQuoteService {
       titleAr: 'تم تسعير طلبك',
       bodyAr: `السعر النهائي: ${new Prisma.Decimal(quotedJod).toFixed(3)} دينار. راجع العرض للتأكيد.`,
     });
+    this.emitQuoteReady(quote.id, quote.customerId);
     return updated;
   }
 
@@ -249,6 +272,7 @@ export class BookingQuoteService {
       titleAr: 'عرض السعر جاهز',
       bodyAr: `السعر الإجمالي: ${quotedJod.toFixed(3)} دينار (أجور + مواد). راجع تفاصيل العرض للموافقة.`,
     });
+    this.emitQuoteReady(quote.id, quote.customerId);
     return updated;
   }
 

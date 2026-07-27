@@ -25,6 +25,7 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     technicianProfile: { findUnique: jest.fn() },
     outboxEvent: { create: jest.fn() },
     bookingStatusHistory: { create: jest.fn(), createMany: jest.fn() },
+    additionalWorkItem: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -37,6 +38,7 @@ const mockedPrisma = prisma as unknown as {
   technicianProfile: { findUnique: jest.Mock };
   outboxEvent: { create: jest.Mock };
   bookingStatusHistory: { create: jest.Mock; createMany: jest.Mock };
+  additionalWorkItem: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -674,6 +676,63 @@ describe('BookingService', () => {
         where: { bookingId: 'b1', status: 'OFFERED' },
         data: { status: 'EXPIRED' },
       });
+    });
+  });
+
+  describe('proposeAdditionalWork / respondAdditionalWork (§2.6 extra-work notify)', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it('proposeAdditionalWork writes a booking.extra_proposed outbox event with the customer id', async () => {
+      mockedPrisma.booking.findUnique.mockResolvedValue({ status: 'IN_PROGRESS', customerId: 'c1', technician: { userId: 'techU1' } });
+      const create = jest.fn().mockResolvedValue({ id: 'aw1' });
+      const outboxCreate = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({ additionalWorkItem: { create }, outboxEvent: { create: outboxCreate } }),
+      );
+
+      await service.proposeAdditionalWork('b1', 'techU1', ' مفتاح إضافي ', 5);
+
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ bookingId: 'b1', description: 'مفتاح إضافي' }) }));
+      expect(outboxCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            bookingId: 'b1',
+            eventType: 'booking.extra_proposed',
+            payload: expect.objectContaining({ customerId: 'c1', description: 'مفتاح إضافي' }),
+          }),
+        }),
+      );
+    });
+
+    it('respondAdditionalWork(approve) writes a booking.extra_decided outbox event with the technician user id', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'aw1', status: 'APPROVED' });
+      const outboxCreate = jest.fn().mockResolvedValue({});
+      mockedPrisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) =>
+        fn({
+          booking: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'b1', customerId: 'c1', technician: { userId: 'techU1' } }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+          additionalWorkItem: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'aw1', bookingId: 'b1', status: 'PROPOSED', amountJod: new Prisma.Decimal(5) }),
+            update,
+          },
+          payment: { findUnique: jest.fn().mockResolvedValue(null) },
+          outboxEvent: { create: outboxCreate },
+        }),
+      );
+
+      await service.respondAdditionalWork('b1', 'aw1', 'c1', true);
+
+      expect(outboxCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            bookingId: 'b1',
+            eventType: 'booking.extra_decided',
+            payload: expect.objectContaining({ technicianUserId: 'techU1', approved: true }),
+          }),
+        }),
+      );
     });
   });
 

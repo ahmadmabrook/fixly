@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import Sidebar from './Sidebar';
@@ -8,6 +8,7 @@ import { COLOR_APP_BACKGROUND, COLOR_TEXT_MUTED } from '../lib/theme';
 
 export default function Layout() {
   const { accessToken } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (!accessToken) {
     return <Navigate to="/login" replace />;
@@ -15,9 +16,9 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen" style={{ background: COLOR_APP_BACKGROUND }}>
-      <Sidebar />
+      <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Header />
+        <Header onMenuClick={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: COLOR_TEXT_MUTED, fontSize: 14 }}>جارٍ التحميل…</div>}>
             <Outlet />

@@ -28,6 +28,20 @@ describe('rebasePrice (pure formula)', () => {
   });
 });
 
+describe('PriceIndexService.rebaseCatalogForKind — MEMR_FUEL (§17.5.13(0))', () => {
+  it('never applies the CPI% material-price formula to a MEMR_FUEL reading, even with a prior reading available', async () => {
+    mocked.priceIndexReading.findUnique.mockResolvedValue({ valueNumeric: new Prisma.Decimal('1.2') });
+    mocked.priceIndexReading.findFirst.mockResolvedValue({ valueNumeric: new Prisma.Decimal('1.0') });
+    const svc = new PriceIndexService();
+
+    const rebased = await svc.rebaseCatalogForKind(PriceIndexKind.MEMR_FUEL, new Date('2026-04-01'));
+
+    expect(rebased).toBe(0);
+    expect(mocked.materialCatalog.findMany).not.toHaveBeenCalled();
+    expect(mocked.materialCatalog.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('PriceIndexService.recordReading', () => {
   beforeEach(() => jest.clearAllMocks());
 

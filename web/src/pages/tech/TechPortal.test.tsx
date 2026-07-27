@@ -45,6 +45,49 @@ const inProgressBooking = {
   service: { nameAr: 'سباكة', nameEn: 'Plumbing' },
 };
 
+// Only a booking whose `service.id` is present mounts MaterialsSection
+// (ActiveJobs.tsx guards on `b.service?.id`) — the two fixtures above
+// deliberately omit it so the pre-existing checklist tests stay unaffected.
+const arrivedBookingWithBom = {
+  id: 'b-3',
+  status: 'ARRIVED',
+  scheduledAt: null,
+  totalJod: '80',
+  service: { id: 'elec', nameAr: 'كهرباء', nameEn: 'Electricity' },
+};
+
+const bomLine = {
+  id: 'bm-1',
+  bookingId: 'b-3',
+  materialId: null,
+  source: 'TECHNICIAN_PROCURED',
+  status: 'PENDING',
+  description: 'قاطع كهرباء',
+  brand: null,
+  qty: '1',
+  unit: 'قطعة',
+  unitPriceFils: 3000,
+  totalFils: 3000,
+  referencePriceFils: null,
+  varianceBps: null,
+  varianceReason: null,
+  varianceReasonNote: null,
+  customerAckAt: null,
+  supplierInvoiceUrl: null,
+};
+
+const openVerification = {
+  id: 'v-1',
+  bookingId: 'b-3',
+  technicianId: 'tech-1',
+  status: 'OPEN',
+  referencePriceFils: 3000,
+  chargedPriceFils: 4200,
+  deltaFils: 1200,
+  invoiceUrl: null,
+  deadlineAt: new Date(Date.now() + 20 * 60 * 60 * 1000).toISOString(),
+};
+
 const scorecard = {
   onTimeRate: 92.5,
   redoRate: 3.1,
@@ -62,7 +105,7 @@ function renderPortal() {
   );
 }
 
-function mockFetch(bookings: unknown[], overrides?: { me?: typeof me; jobs?: unknown[] }) {
+function mockFetch(bookings: unknown[], overrides?: { me?: typeof me; jobs?: unknown[]; verifications?: unknown[] }) {
   const meResponse = overrides?.me ?? me;
   const jobs = overrides?.jobs ?? [];
   vi.stubGlobal(
@@ -81,6 +124,32 @@ function mockFetch(bookings: unknown[], overrides?: { me?: typeof me; jobs?: unk
       }
       if (url.endsWith('/technician/scorecard')) {
         return { ok: true, status: 200, json: async () => ({ data: scorecard }) } as Response;
+      }
+      if (url.endsWith('/uploads/presign') && method === 'POST') {
+        return {
+          ok: true, status: 200, json: async () => ({
+            data: { uploadUrl: 'https://mock-uploads.fixly.local/x?mock=1', publicUrl: 'https://mock-uploads.fixly.local/x.jpg', expiresAt: new Date().toISOString() },
+          }),
+        } as Response;
+      }
+      if (url.endsWith('/bookings/b-3/materials') && method === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ data: [bomLine] }) } as Response;
+      }
+      if (url.includes('/bookings/') && url.endsWith('/materials') && method === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ data: [] }) } as Response;
+      }
+      if (url.endsWith('/bookings/b-3/materials') && method === 'POST') {
+        const body = JSON.parse(init!.body as string);
+        return { ok: true, status: 201, json: async () => ({ data: { ...bomLine, id: 'bm-2', ...body } }) } as Response;
+      }
+      if (url.endsWith('/services/elec/materials') && method === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ data: [] }) } as Response;
+      }
+      if (url.endsWith('/verifications') && method === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ data: { items: overrides?.verifications ?? [], total: (overrides?.verifications ?? []).length } }) } as Response;
+      }
+      if (url.includes('/verifications/') && url.endsWith('/invoice') && method === 'POST') {
+        return { ok: true, status: 200, json: async () => ({ data: { ...openVerification, status: 'INVOICE_PROVIDED' } }) } as Response;
       }
       if (url.endsWith('/no-show') && method === 'POST') {
         return { ok: true, status: 200, json: async () => ({ data: { ...arrivedBooking, status: 'CANCELLED' } }) } as Response;
@@ -196,14 +265,15 @@ describe('TechPortal ActiveJobs — SOP checklist gating', () => {
     const continueBtn = within(modal).getByRole('button', { name: 'متابعة' });
     expect(continueBtn).toBeDisabled();
 
-    await user.type(within(modal).getByLabelText('رابط صورة قبل الخدمة'), 'https://example.com/before.jpg');
-    expect(continueBtn).toBeEnabled();
+    const fileInput = modal.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, new File(['abc'], 'before.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(continueBtn).toBeEnabled());
     await user.click(continueBtn);
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining('/bookings/b-1/checklist/pre-start'),
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ photoUrls: ['https://example.com/before.jpg'] }) }),
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ photoUrls: ['https://mock-uploads.fixly.local/x.jpg'] }) }),
       );
     });
     // Chains into the existing status transition after the checklist call.
@@ -228,7 +298,9 @@ describe('TechPortal ActiveJobs — SOP checklist gating', () => {
     const modal = await screen.findByRole('dialog');
     expect(within(modal).getByText('قائمة تحقق ما بعد الخدمة')).toBeInTheDocument();
 
-    await user.type(within(modal).getByLabelText('رابط صورة بعد الخدمة'), 'https://example.com/after.jpg');
+    const fileInput = modal.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, new File(['abc'], 'after.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(within(modal).getByRole('button', { name: 'متابعة' })).toBeEnabled());
     await user.click(within(modal).getByRole('button', { name: 'متابعة' }));
 
     await waitFor(() => {
@@ -240,6 +312,62 @@ describe('TechPortal ActiveJobs — SOP checklist gating', () => {
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining('/bookings/b-2/complete'),
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+});
+
+describe('TechPortal ActiveJobs — BOM drafting (§17.5.9)', () => {
+  it('lists an existing BOM line and lets the technician add a new one', async () => {
+    const user = userEvent.setup();
+    mockFetch([arrivedBookingWithBom]);
+    renderPortal();
+
+    await screen.findByText('لوحة الفني');
+    await user.click(screen.getByRole('button', { name: 'مهامي' }));
+
+    expect(await screen.findByText('قاطع كهرباء')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إضافة مادة' }));
+    const modal = await screen.findByRole('dialog');
+    await user.type(within(modal).getByLabelText('وصف المادة'), 'سلك كهرباء');
+    await user.type(within(modal).getByLabelText('سعر الوحدة بالدينار'), '1.500');
+    await user.click(within(modal).getByRole('button', { name: 'حفظ' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/bookings/b-3/materials'),
+        expect.objectContaining({ method: 'POST', body: expect.stringContaining('"unitPriceFils":1500') }),
+      );
+    });
+  });
+});
+
+describe('TechPortal Verifications tab (§17.5.14)', () => {
+  it('badges the tab with the open-request count and uploads an invoice for one', async () => {
+    const user = userEvent.setup();
+    mockFetch([], { verifications: [openVerification] });
+    renderPortal();
+
+    await screen.findByText('لوحة الفني');
+    expect(await screen.findByText('1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /التحقق من الأسعار/ }));
+    expect(await screen.findByText(/فرق سعر/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'رفع فاتورة الشراء' }));
+    const modal = await screen.findByRole('dialog');
+    const fileInput = modal.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, new File(['abc'], 'invoice.jpg', { type: 'image/jpeg' }));
+
+    const sendBtn = within(modal).getByRole('button', { name: 'إرسال' });
+    await waitFor(() => expect(sendBtn).toBeEnabled());
+    await user.click(sendBtn);
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/verifications/v-1/invoice'),
         expect.objectContaining({ method: 'POST' }),
       );
     });

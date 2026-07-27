@@ -32,6 +32,7 @@ describe('UploadsService.presign', () => {
     ['certificate', 'image/webp'],
     ['checklist_photo', 'image/heic'],
     ['guarantee_evidence', 'image/jpeg'],
+    ['supplier_invoice', 'image/png'],
     ['intro_video', 'video/mp4'],
   ] as const)('accepts %s / %s and derives a scoped, uuid-based key', async (purpose, contentType) => {
     const { service, presignPut } = makeService();

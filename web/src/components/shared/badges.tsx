@@ -1,4 +1,4 @@
-import { ShieldCheck, Star } from 'lucide-react';
+import { BadgeCheck, ShieldCheck, Star } from 'lucide-react';
 import { BookingStatus } from '../../lib/api';
 import { COLOR_ACCENT_AMBER, COLOR_BADGE_INFO_BG, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WARNING_TEXT } from '../../lib/theme';
 
@@ -74,6 +74,17 @@ export function Stars({ rating, size = 14 }: { rating: number; size?: number }) 
     <span className="inline-flex items-center gap-1" style={{ color: COLOR_ACCENT_AMBER, fontWeight: 600, fontSize: size }}>
       <Star size={size} fill={COLOR_ACCENT_AMBER} strokeWidth={0} />
       <span style={{ fontFamily: 'Inter', color: COLOR_TEXT_PRIMARY }}>{rating.toFixed(1)}</span>
+    </span>
+  );
+}
+
+/** Fixly Certified pill — shown next to a verified technician's name (design
+ *  system: DesignSystem.tsx/CustomerWeb.tsx `CertifiedBadge`), distinct from
+ *  the small checkmark ring `Avatar`'s own `verified` prop draws. */
+export function CertifiedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY, fontSize: 11, fontWeight: 700 }}>
+      <BadgeCheck size={12} /> فني معتمد
     </span>
   );
 }

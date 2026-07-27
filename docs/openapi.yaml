@@ -89,6 +89,10 @@ components:
 
     Service:
       type: object
+      description: >
+        pricingModel decides the booking flow (§17.5.1): FIXED_SCOPE shows priceJod
+        and books instantly; QUOTE_FIRST hides priceJod, discloses inspectionFeeFils
+        instead, and only produces a chargeable total once a BookingQuote is accepted.
       properties:
         id: { type: string, example: elec }
         nameAr: { type: string, example: كهرباء }
@@ -98,6 +102,11 @@ components:
         durationMin: { type: integer, example: 45 }
         isActive: { type: boolean, example: true }
         category: { type: string, nullable: true, example: HOME_REPAIR }
+        pricingModel: { type: string, enum: [FIXED_SCOPE, QUOTE_FIRST], default: FIXED_SCOPE }
+        inspectionFeeFils: { type: integer, nullable: true, description: Disclosed assessment fee for QUOTE_FIRST services only. }
+        calloutFeeJod: { type: string, example: '5.000', description: Flat fee charged on a technician-initiated NO_SHOW. }
+        sopIncludes: { type: array, items: { type: string } }
+        sopExcludes: { type: array, items: { type: string } }
 
     Booking:
       type: object
@@ -109,6 +118,23 @@ components:
         scheduledAt: { type: string, format: date-time, nullable: true }
         totalJod: { type: string, example: '50.00' }
         service: { $ref: '#/components/schemas/Service' }
+        labourFils: { type: integer, description: 'Three-line invoice (§17.5.4): labour bucket, 1000 fils = 1 JOD.' }
+        materialsFils: { type: integer, description: Three-line invoice materials bucket; 0 for FIXED_SCOPE bookings. }
+        feesFils: { type: integer, description: Three-line invoice platform/service-fee bucket; from QuoteLineKind.FEE lines. }
+        isEmergency: { type: boolean, default: false }
+        surchargeFils: { type: integer, description: Emergency/night surcharge (§17.5.2) — always its own disclosed line, never folded into labourFils. }
+        discountJod: { type: string, example: '0.000' }
+        lateCompJod: { type: string, example: '0.000', description: Auto-granted service credit when arrivedAt misses slaArriveBy (§0.3). }
+        slaArriveBy: { type: string, format: date-time, nullable: true }
+        arrivedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        isPriority: { type: boolean, default: false, description: Subscriber fast-lane dispatch priority. }
+        customerSuppliedMaterialsAckAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the customer acknowledges supplying their own materials — narrows the guarantee to labour-only (§17.8).
 
     CheckoutSession:
       type: object
@@ -467,6 +493,7 @@ components:
         source: { type: string, enum: [TECHNICIAN_PROCURED, CUSTOMER_SUPPLIED, PLATFORM_ARRANGED] }
         status: { type: string, enum: [PENDING, PENDING_REVIEW, APPROVED, DECLINED, REPLACED, UNUSED, LOCKED] }
         description: { type: string }
+        brand: { type: string, nullable: true }
         qty: { type: string }
         unitPriceFils: { type: integer }
         totalFils: { type: integer }
@@ -474,6 +501,8 @@ components:
         varianceBps: { type: integer, nullable: true }
         varianceReason: { type: string, nullable: true, enum: [SPECIAL_TYPE, IMPORTED_BRAND, ACCESS_DIFFICULTY, OTHER] }
         customerAckAt: { type: string, format: date-time, nullable: true }
+        isMicro: { type: boolean, default: false, description: Below the service's microThresholdFils — exempt from itemized BOM approval. }
+        replacesLineId: { type: string, format: uuid, nullable: true, description: Set when this line is a technician substitution for a prior REPLACED line. }
         supplierInvoiceUrl: { type: string, nullable: true }
 
     MaterialVerificationRequest:
@@ -1045,6 +1074,18 @@ paths:
       responses:
         '200': { description: A short list of recent reviews (reviewer first-name only). }
 
+  /technicians/nearby:
+    get:
+      tags: [Reviews]
+      summary: Approximate live positions of currently-available technicians near a point
+      description: Registered before /{id} so "nearby" isn't swallowed as a UUID param. Redis GEO-backed with a Postgres scan fallback.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: lat, required: true, schema: { type: number } }
+        - { in: query, name: lng, required: true, schema: { type: number } }
+        - { in: query, name: radiusKm, schema: { type: number, default: 15, minimum: 1, maximum: 50 } }
+      responses:
+        '200': { description: Nearby available technicians (id, name, lat, lng, rating, isVerified, vehicle). }
   /technicians/{id}:
     get:
       tags: [Reviews]
@@ -1855,10 +1896,11 @@ paths:
       description: >
         The client PUTs the file bytes to `uploadUrl`, then submits `publicUrl` as the
         corresponding field on the consuming endpoint (technician KYC docs/certificate/
-        selfie, intro video, booking checklist photos, guarantee evidence). `contentType`
-        must be on the allow-list for `purpose` (images for kyc_doc/selfie/certificate/
-        checklist_photo/guarantee_evidence; video for intro_video). The object key is
-        derived server-side — never from a client-supplied filename.
+        selfie, intro video, booking checklist photos, guarantee evidence, BOM/verification
+        supplier invoices). `contentType` must be on the allow-list for `purpose` (images for
+        kyc_doc/selfie/certificate/checklist_photo/guarantee_evidence/supplier_invoice; video
+        for intro_video). The object key is derived server-side — never from a client-supplied
+        filename.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -1869,7 +1911,7 @@ paths:
               required: [contentType, purpose]
               properties:
                 contentType: { type: string, example: image/jpeg }
-                purpose: { type: string, enum: [kyc_doc, selfie, certificate, intro_video, checklist_photo, guarantee_evidence] }
+                purpose: { type: string, enum: [kyc_doc, selfie, certificate, intro_video, checklist_photo, guarantee_evidence, supplier_invoice] }
       responses:
         '200':
           description: Presigned URL.

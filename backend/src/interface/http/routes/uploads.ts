@@ -8,7 +8,8 @@ import { UploadsProviderFactory } from '../../../infrastructure/providers/Upload
 
 /** Presigned-upload issuance for every media-upload field in the app (technician
  *  KYC docs/certificate/selfie, intro video, booking checklist photos, guarantee
- *  evidence). Any authenticated active user may request a presign — the real
+ *  evidence, BOM/verification supplier invoices). Any authenticated active user
+ *  may request a presign — the real
  *  authorization boundary is what the resulting URL is submitted as, which is
  *  already validated per-field on the consuming endpoint (isURL, ownership checks). */
 export const uploadsRouter: Router = Router();
@@ -30,7 +31,7 @@ uploadsRouter.post(
     body('purpose')
       .isString()
       .trim()
-      .isIn(['kyc_doc', 'selfie', 'certificate', 'intro_video', 'checklist_photo', 'guarantee_evidence']),
+      .isIn(['kyc_doc', 'selfie', 'certificate', 'intro_video', 'checklist_photo', 'guarantee_evidence', 'supplier_invoice']),
   ]),
   asyncHandler(async (req, res) => {
     const result = await uploadsService.presign(req.user!.userId, {
