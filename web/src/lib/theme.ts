@@ -39,6 +39,11 @@ export const COLOR_BG_UNREAD = '#F0F7FF';
 // Success
 export const COLOR_SUCCESS_TEXT = '#15803D';
 export const COLOR_SUCCESS_BG = '#DCFCE7';
+/** The design system's actual "Success" swatch (DesignSystem.tsx) — distinct
+ *  from COLOR_SUCCESS_TEXT (a darker green used for badge/status text on a
+ *  light bg). This is the brighter green used for solid success/approve
+ *  action buttons throughout the mockups. */
+export const COLOR_SUCCESS_ACTION = '#1FAA59';
 
 // Warning
 export const COLOR_WARNING_TEXT = '#B45309';

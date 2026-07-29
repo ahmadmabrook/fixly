@@ -5,7 +5,7 @@ import { api, BookingListItem, BookingStatus } from '../../lib/api';
 import { Card, ServiceIcon, StatusBadge, Modal, MediaUpload, ConfirmDialog, notify } from '../../components/shared';
 import { MaterialsSection } from './TechPortal.Materials';
 import { REALTIME_POLL_INTERVAL_MS } from '../../lib/constants';
-import { COLOR_ACCENT_AMBER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../../lib/theme';
+import { COLOR_ACCENT_AMBER, COLOR_BRAND_PRIMARY, COLOR_ERROR_BG, COLOR_ERROR_TEXT, COLOR_SUCCESS_ACTION, COLOR_TEXT_MUTED, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../../lib/theme';
 
 const NEXT_STATUS: Partial<Record<BookingStatus, { to: BookingStatus; label: string }>> = {
   CONFIRMED: { to: 'EN_ROUTE', label: 'بدء التوجه' },
@@ -81,7 +81,7 @@ export function ActiveJobs() {
                 </button>
               )}
               {b.status === 'IN_PROGRESS' && (
-                <button onClick={() => setChecklistFor({ id: b.id, stage: 'pre-close' })} className="flex-1 h-11 rounded-xl" style={{ background: COLOR_SUCCESS_TEXT, color: COLOR_WHITE, fontWeight: 700 }}>إنهاء الخدمة</button>
+                <button onClick={() => setChecklistFor({ id: b.id, stage: 'pre-close' })} className="flex-1 h-11 rounded-xl" style={{ background: COLOR_SUCCESS_ACTION, color: COLOR_WHITE, fontWeight: 700 }}>إنهاء الخدمة</button>
               )}
             </div>
             {b.status === 'ARRIVED' && (

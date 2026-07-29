@@ -9,7 +9,7 @@ import {
   Card, ServiceIcon, StatusBadge, InlineRow, Modal, notify,
   ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
 } from '../components/shared';
-import { COLOR_ACCENT_AMBER, COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_ERROR_BG, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WARNING_BORDER, COLOR_WHITE } from '../lib/theme';
+import { COLOR_ACCENT_AMBER, COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_ERROR_BG, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_ACTION, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WARNING_BORDER, COLOR_WHITE } from '../lib/theme';
 
 /** §17.5.4 three-line invoice fields, fils→JOD (1000 fils = 1 JOD). */
 function fmtFilsJod(fils: number | undefined): number {
@@ -282,7 +282,7 @@ export default function BookingDetail() {
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{e.description}</div>
                 <div style={{ color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 700, fontSize: 14 }}><span style={{ fontFamily: 'Inter' }}>{Number(e.amountJod)}</span> دينار</div>
               </div>
-              <button onClick={() => void respondExtra(e.id, true)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_SUCCESS_TEXT, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}>موافقة</button>
+              <button onClick={() => void respondExtra(e.id, true)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_SUCCESS_ACTION, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}>موافقة</button>
               <button onClick={() => void respondExtra(e.id, false)} className="px-4 h-10 rounded-xl" style={{ background: COLOR_ERROR_BG, color: COLOR_ERROR_TEXT, fontWeight: 600, fontSize: 13 }}>رفض</button>
             </div>
           ))}
