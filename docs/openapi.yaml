@@ -1349,6 +1349,43 @@ paths:
       summary: Mark all read
       security: [{ bearerAuth: [] }]
       responses: { '200': { description: OK. } }
+  /notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Notification toggles (created with all-true-except-promotions defaults on first read)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Preferences.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      bookings: { type: boolean }
+                      arriving: { type: boolean }
+                      completed: { type: boolean }
+                      guarantee: { type: boolean }
+                      promotions: { type: boolean }
+    patch:
+      tags: [Notifications]
+      summary: Partial update of notification toggles
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bookings: { type: boolean }
+                arriving: { type: boolean }
+                completed: { type: boolean }
+                guarantee: { type: boolean }
+                promotions: { type: boolean }
+      responses: { '200': { description: Updated preferences (same shape as GET). } }
   /devices:
     post:
       tags: [Devices]

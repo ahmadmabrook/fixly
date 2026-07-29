@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { param, query } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { authenticate, requireActiveUser } from '../middleware/auth';
 import { asyncHandler } from '../asyncHandler';
 import { validate } from '../validate';
@@ -50,5 +50,50 @@ notificationsRouter.post(
   asyncHandler(async (req, res) => {
     await prisma.notification.updateMany({ where: { userId: req.user!.userId, isRead: false }, data: { isRead: true } });
     res.json({ data: { ok: true } });
+  }),
+);
+
+type NotificationPrefsDto = { bookings: boolean; arriving: boolean; completed: boolean; guarantee: boolean; promotions: boolean };
+
+function toPrefsDto(prefs: NotificationPrefsDto): NotificationPrefsDto {
+  return { bookings: prefs.bookings, arriving: prefs.arriving, completed: prefs.completed, guarantee: prefs.guarantee, promotions: prefs.promotions };
+}
+
+// GET /notifications/preferences — 5 toggles (Figma SettingsNotificationsPref).
+// Row is created lazily on first read, mirroring the technician-side
+// GET /technician/notification-preferences pattern.
+notificationsRouter.get(
+  '/preferences',
+  asyncHandler(async (req, res) => {
+    const prefs = await prisma.customerNotificationPrefs.upsert({
+      where: { customerId: req.user!.userId },
+      update: {},
+      create: { customerId: req.user!.userId },
+    });
+    res.json({ data: toPrefsDto(prefs) });
+  }),
+);
+
+// PATCH /notifications/preferences — partial update.
+notificationsRouter.patch(
+  '/preferences',
+  validate([
+    body('bookings').optional().isBoolean().toBoolean(),
+    body('arriving').optional().isBoolean().toBoolean(),
+    body('completed').optional().isBoolean().toBoolean(),
+    body('guarantee').optional().isBoolean().toBoolean(),
+    body('promotions').optional().isBoolean().toBoolean(),
+  ]),
+  asyncHandler(async (req, res) => {
+    const input: Partial<NotificationPrefsDto> = {};
+    (['bookings', 'arriving', 'completed', 'guarantee', 'promotions'] as const).forEach((key) => {
+      if (req.body[key] !== undefined) input[key] = req.body[key];
+    });
+    const prefs = await prisma.customerNotificationPrefs.upsert({
+      where: { customerId: req.user!.userId },
+      update: input,
+      create: { customerId: req.user!.userId, ...input },
+    });
+    res.json({ data: toPrefsDto(prefs) });
   }),
 );
