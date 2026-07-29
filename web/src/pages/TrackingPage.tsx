@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet, Video, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Check, Phone, LifeBuoy, Star, Search, Wallet, Video, RefreshCw } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
@@ -246,11 +246,12 @@ export default function TrackingPage() {
                 <button onClick={() => void callTechnician()} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 600, fontSize: 13 }}>
                   <Phone size={16} /> اتصال
                 </button>
-                {/* No booking-scoped chat endpoint exists yet (only /support
-                    tickets, which aren't tied to a specific technician) — say
-                    so honestly instead of a fake "chat opened" toast. */}
-                <button onClick={() => notify('المحادثة داخل التطبيق غير متاحة بعد — يمكنك الاتصال أو التواصل مع الدعم', 'info')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 600, fontSize: 13 }}>
-                  <MessageCircle size={16} /> رسالة
+                {/* No booking-scoped chat with the technician exists yet — route
+                    to the real support-ticket thread instead of a dead-end
+                    "chat unavailable" toast (§17.1: support reachable from the
+                    order screen). */}
+                <button onClick={() => navigate('/account?tab=support')} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontWeight: 600, fontSize: 13 }}>
+                  <LifeBuoy size={16} /> الدعم
                 </button>
                 <button onClick={() => setShowReviews(true)} className="flex items-center justify-center gap-1 h-11 rounded-xl" style={{ background: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13 }}>
                   <Star size={16} /> التقييمات

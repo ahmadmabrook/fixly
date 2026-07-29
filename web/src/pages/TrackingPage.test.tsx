@@ -35,6 +35,7 @@ function renderPage(booking: Record<string, unknown>) {
         <Routes>
           <Route path="/bookings/:id/track" element={<TrackingPage />} />
           <Route path="/services/:id/book" element={<div>BOOK PAGE</div>} />
+          <Route path="/account" element={<div>ACCOUNT PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -94,6 +95,14 @@ describe('TrackingPage', () => {
     expect(await screen.findByText('سبب الإلغاء: غيّرت رأيي')).toBeInTheDocument();
     expect(screen.queryByText('لم نجد فنياً متاحاً')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'اطلب مرة أخرى' })).not.toBeInTheDocument();
+  });
+
+  it('navigates to the support tab instead of a dead-end "chat unavailable" toast', async () => {
+    const user = userEvent.setup();
+    renderPage({ id: 'b1', status: 'EN_ROUTE', scheduledAt: null, totalJod: '50', service: svc, technicianId: 't1', addressLat: 31.9, addressLng: 35.9 });
+
+    await user.click(await screen.findByRole('button', { name: 'الدعم' }));
+    expect(await screen.findByText('ACCOUNT PAGE')).toBeInTheDocument();
   });
 
   it('calling the technician requests a masked-call proxy number and dials it', async () => {

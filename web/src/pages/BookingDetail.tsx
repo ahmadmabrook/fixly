@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Star, Navigation, ShieldCheck, Download } from 'lucide-react';
+import { ChevronLeft, Star, Navigation, ShieldCheck, Download, LifeBuoy } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, AdditionalWorkItem, Subscription } from '../lib/api';
 import { formatDateAr, formatDateTimeAr } from '../lib/format';
@@ -308,6 +308,11 @@ export default function BookingDetail() {
         {b.status === 'COMPLETED' && (
           <ReportTechnicianButton onClick={() => setShowReport(true)} className="w-full h-12" label="الإبلاغ عن الفني" />
         )}
+        {/* §17.1: support reachable from the order screen — always available,
+            not just for completed bookings. */}
+        <button onClick={() => navigate('/account?tab=support')} className="w-full h-12 rounded-xl flex items-center justify-center gap-2" style={{ background: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY, fontWeight: 600 }}>
+          <LifeBuoy size={18} /> تواصل مع الدعم
+        </button>
         {isScheduled && (
           <Card className="p-4">
             <label className="block" style={{ fontSize: 13, color: COLOR_TEXT_SECONDARY }}>تغيير الموعد</label>

@@ -24,6 +24,7 @@ function renderPage(booking: Record<string, unknown>) {
       <MemoryRouter initialEntries={['/bookings/b1']}>
         <Routes>
           <Route path="/bookings/:id" element={<BookingDetail />} />
+          <Route path="/account" element={<div>ACCOUNT PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -39,6 +40,14 @@ describe('BookingDetail', () => {
   it('shows a report-technician action for completed bookings', async () => {
     renderPage({ id: 'b1', status: 'COMPLETED', scheduledAt: null, totalJod: '50', service: svc, technicianId: 't1', completedAt: new Date().toISOString() });
     expect(await screen.findByRole('button', { name: /الإبلاغ عن الفني/ })).toBeInTheDocument();
+  });
+
+  it('links to support from the order screen regardless of status', async () => {
+    const user = userEvent.setup();
+    renderPage({ id: 'b1', status: 'PENDING', scheduledAt: new Date(Date.now() + 86_400_000).toISOString(), totalJod: '50', discountJod: '0', service: svc, technicianId: null });
+
+    await user.click(await screen.findByRole('button', { name: 'تواصل مع الدعم' }));
+    expect(await screen.findByText('ACCOUNT PAGE')).toBeInTheDocument();
   });
 
   it('does not show a cancel option once completed', async () => {

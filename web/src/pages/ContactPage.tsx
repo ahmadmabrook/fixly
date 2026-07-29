@@ -1,10 +1,13 @@
 import { useNavigate } from 'react-router-dom';
-import { Phone, Mail, MapPin, LifeBuoy } from 'lucide-react';
+import { Phone, Mail, MessageCircle, MapPin, LifeBuoy } from 'lucide-react';
 import { Card } from '../components/shared';
 import { COLOR_BG_SUBTLE, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
 
+// §17.9: the human-support path is masked calling + a WhatsApp deep-link
+// (full in-app chat is Phase 2) — WhatsApp was missing from this list.
 const CHANNELS = [
   { icon: Phone, label: 'اتصل بنا', value: '+962 6 555 0000', href: 'tel:+96265550000' },
+  { icon: MessageCircle, label: 'واتساب', value: '+962 79 555 0000', href: 'https://wa.me/962795550000' },
   { icon: Mail, label: 'راسلنا', value: 'support@fixly.jo', href: 'mailto:support@fixly.jo' },
 ];
 

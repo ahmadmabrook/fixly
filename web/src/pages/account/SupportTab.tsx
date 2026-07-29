@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, MessageCircle } from 'lucide-react';
 import { api, SupportTicketItem } from '../../lib/api';
 import { Card, notify, FaqAccordion } from '../../components/shared';
 import { FAQ_ITEMS } from '../../lib/faq';
@@ -28,6 +28,22 @@ export function SupportTab() {
         <h2 style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>الأسئلة الشائعة</h2>
         <FaqAccordion items={FAQ_ITEMS} />
       </div>
+
+      {/* §17.9: human-support path is masked calling + a WhatsApp deep-link
+          (full in-app chat is Phase 2). */}
+      <a
+        href="https://wa.me/962795550000"
+        className="flex items-center gap-3 p-4 rounded-2xl"
+        style={{ background: COLOR_BG_SUBTLE }}
+      >
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_BRAND_PRIMARY_TINT }}>
+          <MessageCircle size={20} color={COLOR_BRAND_PRIMARY_DARK} aria-hidden="true" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>تواصل عبر واتساب</div>
+          <div style={{ color: COLOR_TEXT_SECONDARY, fontSize: 12 }}>للتواصل المباشر مع فريق الدعم</div>
+        </div>
+      </a>
 
       {(tickets ?? []).map((t) => (
         <Card key={t.id} className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => setOpenId(t.id)}>

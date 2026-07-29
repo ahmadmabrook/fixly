@@ -117,12 +117,14 @@ describe('Account', () => {
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({ promotions: true });
   });
 
-  it('shows the FAQ accordion under the support tab', async () => {
+  it('shows the FAQ accordion and a WhatsApp link under the support tab', async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('tab', { name: 'الدعم' }));
     expect(await screen.findByText('الأسئلة الشائعة')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'كيف يتم الدفع؟' })).toBeInTheDocument();
+    // §17.9: human-support path is masked calling + a WhatsApp deep-link.
+    expect(screen.getByRole('link', { name: /واتساب/ })).toHaveAttribute('href', 'https://wa.me/962795550000');
   });
 
   describe('receipts tab', () => {
