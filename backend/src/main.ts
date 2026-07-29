@@ -219,7 +219,7 @@ function buildOutboxWorker(
     OutboxEventType.BOOKING_ARRIVED, OutboxEventType.BOOKING_IN_PROGRESS, OutboxEventType.BOOKING_COMPLETED, OutboxEventType.BOOKING_CANCELLED,
     OutboxEventType.BOOKING_NO_SHOW,
   ]) {
-    worker.register(eventType, (p) => notification.handleBookingEvent(eventType, p as { bookingId: string }));
+    worker.register(eventType, (p) => notification.handleBookingEvent(eventType, p as { bookingId: string; customerId?: string; reason?: string }));
   }
 
   // §3.3 v1.5 events — same outbox transport, separate handlers (different

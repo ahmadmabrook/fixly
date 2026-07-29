@@ -34,6 +34,7 @@ function renderPage(booking: Record<string, unknown>) {
       <MemoryRouter initialEntries={['/bookings/b1/track']}>
         <Routes>
           <Route path="/bookings/:id/track" element={<TrackingPage />} />
+          <Route path="/services/:id/book" element={<div>BOOK PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -74,6 +75,25 @@ describe('TrackingPage', () => {
     await user.click(await screen.findByRole('button', { name: /إبلاغ/ }));
     expect(await screen.findByText('الإبلاغ عن الفني')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'محاولة التعامل خارج التطبيق' })).toBeInTheDocument();
+  });
+
+  it('shows the reassuring no-technician card with a retry CTA when dispatch was exhausted', async () => {
+    const user = userEvent.setup();
+    renderPage({ id: 'b1', status: 'CANCELLED', scheduledAt: null, totalJod: '50', service: svc, technicianId: null, addressLat: 31.9, addressLng: 35.9, cancelReason: 'no_technician_available' });
+
+    expect(await screen.findByText('لم نجد فنياً متاحاً')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إلغاء الحجز' })).not.toBeInTheDocument(); // already cancelled
+
+    await user.click(screen.getByRole('button', { name: 'اطلب مرة أخرى' }));
+    expect(await screen.findByText('BOOK PAGE')).toBeInTheDocument();
+  });
+
+  it('shows a quiet reason line (no retry push) when the customer cancelled by their own choice', async () => {
+    renderPage({ id: 'b1', status: 'CANCELLED', scheduledAt: null, totalJod: '50', service: svc, technicianId: null, addressLat: 31.9, addressLng: 35.9, cancelReason: 'CHANGED_MIND' });
+
+    expect(await screen.findByText('سبب الإلغاء: غيّرت رأيي')).toBeInTheDocument();
+    expect(screen.queryByText('لم نجد فنياً متاحاً')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'اطلب مرة أخرى' })).not.toBeInTheDocument();
   });
 
   it('calling the technician requests a masked-call proxy number and dials it', async () => {

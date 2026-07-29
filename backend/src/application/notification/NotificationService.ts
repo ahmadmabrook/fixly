@@ -8,6 +8,10 @@ import { OutboxEventType } from '../../shared/outboxEvents';
 interface BookingEventPayload {
   bookingId: string;
   customerId?: string;
+  /** Only meaningful for BOOKING_CANCELLED — distinguishes a system-initiated
+   *  cancellation (dispatch exhausted every round, no technician available)
+   *  from the customer's own cancel, which needs no special reassurance. */
+  reason?: string;
 }
 
 /** Arabic copy per booking lifecycle event. */
@@ -22,6 +26,16 @@ const NOTIFICATION_COPY: Record<string, { titleAr: string; bodyAr: string; statu
   [OutboxEventType.BOOKING_NO_SHOW]: { titleAr: 'لم يتم العثور عليك', bodyAr: 'أبلغ الفني بعدم تواجدك في العنوان. تم تحصيل رسوم الزيارة.', status: BookingStatus.NO_SHOW },
 };
 
+/** §2.6 dispatch exhaustion — reassuring, action-oriented copy instead of the
+ *  generic cancel message, since this is Fixly's own gap (no tech found), not
+ *  something the customer did. Mirrors the design's dedicated "no technicians
+ *  available" screen (retry / book later) rather than a flat "cancelled". */
+const NO_TECHNICIAN_COPY = {
+  titleAr: 'لم نجد فنياً متاحاً',
+  bodyAr: 'تعذّر إيجاد فني متاح حالياً وتم استرداد المبلغ بالكامل. جرّب الطلب مرة أخرى أو اختر موعداً لاحقاً.',
+  status: BookingStatus.CANCELLED,
+};
+
 /**
  * Persists in-app notifications and pushes a real-time status update to the
  * customer's personal socket room. Invoked by the outbox worker, so it must be
@@ -32,7 +46,9 @@ export class NotificationService {
   constructor(private readonly io: SocketServer) {}
 
   async handleBookingEvent(eventType: string, payload: BookingEventPayload): Promise<void> {
-    const copy = NOTIFICATION_COPY[eventType];
+    const copy = eventType === OutboxEventType.BOOKING_CANCELLED && payload.reason === 'no_technician_available'
+      ? NO_TECHNICIAN_COPY
+      : NOTIFICATION_COPY[eventType];
     if (!copy) {
       logger.warn({ eventType }, 'NotificationService: no copy for event, skipping');
       return;

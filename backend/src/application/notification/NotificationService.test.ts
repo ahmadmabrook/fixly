@@ -85,6 +85,30 @@ describe('NotificationService', () => {
     expect(to).toHaveBeenCalledWith('user:cu-9');
   });
 
+  it('uses the reassuring no-technician copy for booking.cancelled when reason is no_technician_available', async () => {
+    const { io, emit } = makeIo();
+    mockedPrisma.notification.create.mockResolvedValue({});
+    const svc = new NotificationService(io);
+
+    await svc.handleBookingEvent('booking.cancelled', { bookingId: 'bk-4', customerId: 'cu-1', reason: 'no_technician_available' });
+
+    expect(mockedPrisma.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ titleAr: 'لم نجد فنياً متاحاً' }) }));
+    const statusCall = emit.mock.calls.find((c) => c[0] === 'booking:status');
+    expect(statusCall![1].titleAr).toBe('لم نجد فنياً متاحاً');
+  });
+
+  it('keeps the generic cancelled copy for booking.cancelled when the reason is the customer\'s own choice (or absent)', async () => {
+    const { io } = makeIo();
+    mockedPrisma.notification.create.mockResolvedValue({});
+    const svc = new NotificationService(io);
+
+    await svc.handleBookingEvent('booking.cancelled', { bookingId: 'bk-5', customerId: 'cu-1', reason: 'CHANGED_MIND' });
+
+    expect(mockedPrisma.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ titleAr: 'تم إلغاء الطلب' }) }));
+  });
+
   it('has copy for booking.no_show and emits NO_SHOW status', async () => {
     const { io, emit } = makeIo();
     mockedPrisma.notification.create.mockResolvedValue({});

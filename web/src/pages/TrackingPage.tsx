@@ -1,16 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet, Video } from 'lucide-react';
+import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet, Video, RefreshCw } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
 import {
   Card, StatusBadge, Stars, Avatar, CertifiedBadge, Modal, notify,
-  ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal,
+  ReportTechnicianButton, ReportTechnicianModal, CancelBookingModal, CANCEL_REASON_LABEL,
 } from '../components/shared';
 import TrackingMap from '../components/TrackingMap';
 import { CustomerMaterialsSection } from './BookingMaterials';
-import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../lib/theme';
+import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ENROUTE_BG, COLOR_ENROUTE_TEXT, COLOR_ERROR_BORDER, COLOR_ERROR_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG_SOFT, COLOR_WARNING_BORDER, COLOR_WARNING_TEXT, COLOR_WARNING_TEXT_STRONG, COLOR_WHITE } from '../lib/theme';
+
+/** Reasons that mean "Fixly's own gap", not the customer's choice — worth a
+ *  reassuring, action-oriented card instead of a flat "cancelled" badge. */
+const SYSTEM_CANCEL_REASON = 'no_technician_available';
+
+/** cancelReason values a customer should never see verbatim: internal/system
+ *  strings that aren't in CANCEL_REASON_LABEL and aren't SYSTEM_CANCEL_REASON
+ *  (e.g. the payment-timeout auto-cancel's English housekeeping string). */
+function cancelReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  if (reason === SYSTEM_CANCEL_REASON) return null; // handled by its own dedicated card
+  return CANCEL_REASON_LABEL[reason] ?? 'تم إلغاء الطلب.';
+}
 
 // Below this the countdown stops quoting minutes and just says "about to
 // arrive" — rounding 30s up to "1 minute" reads as wrong to someone watching
@@ -136,6 +149,39 @@ export default function TrackingPage() {
         </div>
 
         <div className="space-y-4">
+          {/* Dispatch exhausted every round with no technician accepting —
+              Fixly's own gap, not the customer's doing, so lead with an
+              apology + full-refund confirmation + one-tap retry rather than
+              the flat generic "cancelled" badge. */}
+          {status === 'CANCELLED' && booking.cancelReason === SYSTEM_CANCEL_REASON && (
+            <div className="p-4 rounded-2xl" style={{ background: COLOR_WARNING_BG_SOFT, border: `1px solid ${COLOR_WARNING_BORDER}` }}>
+              <div className="flex items-center gap-2">
+                <RefreshCw size={18} color={COLOR_WARNING_TEXT_STRONG} />
+                <span style={{ color: COLOR_WARNING_TEXT_STRONG, fontWeight: 700, fontSize: 14 }}>لم نجد فنياً متاحاً</span>
+              </div>
+              <p className="mt-1.5" style={{ color: COLOR_WARNING_TEXT, fontSize: 13 }}>
+                تعذّر إيجاد فني متاح حالياً وتم استرداد المبلغ بالكامل. جرّب الطلب مرة أخرى أو اختر موعداً لاحقاً.
+              </p>
+              <button
+                onClick={() => navigate(`/services/${encodeURIComponent(booking.service.id)}/book`)}
+                className="mt-3 h-10 px-5 rounded-xl"
+                style={{ background: COLOR_BRAND_PRIMARY, color: COLOR_WHITE, fontWeight: 700, fontSize: 13 }}
+              >
+                اطلب مرة أخرى
+              </button>
+            </div>
+          )}
+          {/* Any other cancellation reason (customer's own choice, etc.) — a
+              quieter confirmation line, no retry push since the customer
+              already made this call themselves. */}
+          {status === 'CANCELLED' && booking.cancelReason !== SYSTEM_CANCEL_REASON && cancelReasonLabel(booking.cancelReason) && (
+            <div className="p-4 rounded-2xl" style={{ background: COLOR_BG_SUBTLE }}>
+              <span style={{ color: COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13 }}>
+                سبب الإلغاء: {cancelReasonLabel(booking.cancelReason)}
+              </span>
+            </div>
+          )}
+
           {/* Late-arrival compensation (§0.3): granted the instant the technician
               is marked ARRIVED past the SLA + grace window — surfaced live here
               rather than making the customer wait for the post-completion

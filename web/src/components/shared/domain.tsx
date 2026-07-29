@@ -108,7 +108,10 @@ export const CANCEL_REASONS: ReadonlyArray<readonly [string, string]> = [
   ['OTHER', 'سبب آخر'],
 ];
 
-const CANCEL_REASON_LABEL: Record<string, string> = Object.fromEntries(CANCEL_REASONS);
+/** Keyed by the customer-facing CANCEL_REASONS codes only — system-initiated
+ *  cancellations (dispatch exhaustion, payment timeout) have their own
+ *  distinct copy where they're surfaced, not a generic label lookup here. */
+export const CANCEL_REASON_LABEL: Record<string, string> = Object.fromEntries(CANCEL_REASONS);
 
 /**
  * Two-step cancellation: pick a reason, then confirm against an itemized
