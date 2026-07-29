@@ -29,6 +29,7 @@ function renderPage(bookings: Record<string, unknown>[] = []) {
         <Routes>
           <Route path="/account" element={<Account />} />
           <Route path="/referral" element={<div>REFERRAL PAGE</div>} />
+          <Route path="/quotes" element={<div>QUOTES PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -47,6 +48,43 @@ describe('Account', () => {
     renderPage();
     await user.click(screen.getByRole('tab', { name: 'الإحالة' }));
     expect(await screen.findByText('REFERRAL PAGE')).toBeInTheDocument();
+  });
+
+  it('navigates to /quotes when the video-quote ("الفحص المرئي") tab is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole('tab', { name: 'الفحص المرئي' }));
+    expect(await screen.findByText('QUOTES PAGE')).toBeInTheDocument();
+  });
+
+  it('shows the wallet balance and ledger under the "رصيدي" tab', async () => {
+    useAuth.getState().setTokens('tok', 'CUSTOMER');
+    const user = userEvent.setup();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/credits/me')) {
+        return {
+          ok: true, status: 200, json: async () => ({
+            data: { balanceJod: '20', items: [{ id: 'c1', amountJod: '20', reason: 'LATE_COMPENSATION', createdAt: new Date().toISOString() }] },
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ data: [] }) } as Response;
+    }) as unknown as typeof fetch);
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/account']}>
+          <Routes><Route path="/account" element={<Account />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'رصيدي' }));
+    // "20" also appears in the account header's wallet-balance pill, so this
+    // scopes to the wallet card specifically rather than the raw text.
+    expect(await screen.findByText('الرصيد الحالي')).toBeInTheDocument();
+    expect(screen.getAllByText('20').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('تعويض تأخير')).toBeInTheDocument();
   });
 
   it('shows the FAQ accordion under the support tab', async () => {
@@ -86,10 +124,39 @@ describe('Account', () => {
 
       renderPage([{ id: 'b1', status: 'COMPLETED', scheduledAt: null, totalJod: '50', service: svc }]);
       await user.click(screen.getByRole('tab', { name: 'الفواتير' }));
+      // Receipt rows are collapsed by default — expand it first to reveal the download button.
+      await user.click(await screen.findByText('كهرباء'));
       await user.click(await screen.findByRole('button', { name: 'تنزيل الإيصال' }));
 
       await vi.waitFor(() => expect(printWindow.print).toHaveBeenCalled());
       expect(printWindow.document.write).toHaveBeenCalledWith(expect.stringContaining('إيصال Fixly'));
+    });
+
+    it('expands to show the three-line breakdown and the full-warranty label by default', async () => {
+      useAuth.getState().setTokens('tok', 'CUSTOMER');
+      const user = userEvent.setup();
+      renderPage([{
+        id: 'b1', status: 'COMPLETED', scheduledAt: null, totalJod: '35', service: svc,
+        labourFils: 30000, materialsFils: 0, feesFils: 5000, customerSuppliedMaterialsAckAt: null,
+      }]);
+      await user.click(screen.getByRole('tab', { name: 'الفواتير' }));
+      expect(await screen.findByText('ضمان كامل')).toBeInTheDocument();
+
+      await user.click(screen.getByText('كهرباء'));
+      expect(await screen.findByText('أجور العمل')).toBeInTheDocument();
+      expect(screen.getByText('الرسوم')).toBeInTheDocument();
+      expect(screen.getByText('الإجمالي')).toBeInTheDocument();
+    });
+
+    it('shows the labour-only warranty label once the customer acknowledged supplying materials', async () => {
+      useAuth.getState().setTokens('tok', 'CUSTOMER');
+      const user = userEvent.setup();
+      renderPage([{
+        id: 'b1', status: 'COMPLETED', scheduledAt: null, totalJod: '40', service: svc,
+        customerSuppliedMaterialsAckAt: new Date().toISOString(),
+      }]);
+      await user.click(screen.getByRole('tab', { name: 'الفواتير' }));
+      expect(await screen.findByText('الضمان على العمل فقط — مواد العميل')).toBeInTheDocument();
     });
   });
 });

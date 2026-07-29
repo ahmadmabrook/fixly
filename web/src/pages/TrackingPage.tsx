@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet } from 'lucide-react';
+import { ChevronLeft, Check, Phone, MessageCircle, Star, Search, Wallet, Video } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, Booking, TechnicianCard } from '../lib/api';
 import { useBookingSocket, useBookingLocation } from '../lib/socket';
@@ -33,6 +33,7 @@ export default function TrackingPage() {
   const [cancelling, setCancelling] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showIntroVideo, setShowIntroVideo] = useState(false);
   // Live arrival ETA (minutes), driven by the tracking map's road route. Ticks
   // down every second between the ~2s location pings so it reads like Uber
   // instead of jumping.
@@ -210,6 +211,15 @@ export default function TrackingPage() {
                 </button>
                 <ReportTechnicianButton onClick={() => setShowReport(true)} />
               </div>
+              {tech.introVideoUrl && (
+                <button
+                  onClick={() => setShowIntroVideo(true)}
+                  className="mt-2 w-full h-10 rounded-xl flex items-center justify-center gap-1.5"
+                  style={{ background: COLOR_BG_SUBTLE, color: COLOR_TEXT_SECONDARY, fontWeight: 600, fontSize: 13 }}
+                >
+                  <Video size={15} /> مشاهدة الفيديو التعريفي
+                </button>
+              )}
             </Card>
           )}
 
@@ -239,6 +249,11 @@ export default function TrackingPage() {
       )}
       {showReviews && booking.technicianId && (
         <TechReviewsModal technicianId={booking.technicianId} onClose={() => setShowReviews(false)} />
+      )}
+      {showIntroVideo && tech?.introVideoUrl && (
+        <Modal title="الفيديو التعريفي" variant="sheet" maxWidth="md" onClose={() => setShowIntroVideo(false)}>
+          <video src={tech.introVideoUrl} controls autoPlay className="mt-3 w-full rounded-xl" style={{ maxHeight: 400, background: '#000' }} />
+        </Modal>
       )}
       {showReport && (
         <ReportTechnicianModal bookingId={id} technicianId={booking.technicianId} onClose={() => setShowReport(false)} />

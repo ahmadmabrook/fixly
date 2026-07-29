@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { User, MapPin, CreditCard, Bell, LifeBuoy, Settings as SettingsIcon, ShieldCheck, Gift, Receipt, Wallet, Star } from 'lucide-react';
+import { User, MapPin, CreditCard, Bell, LifeBuoy, Settings as SettingsIcon, ShieldCheck, Gift, Receipt, Wallet, Star, Video } from 'lucide-react';
 import { api, Subscription } from '../lib/api';
 import { Card, Avatar } from '../components/shared';
 import { ProfileTab } from './account/ProfileTab';
 import { ProtectionTab } from './account/ProtectionTab';
+import { WalletTab } from './account/WalletTab';
 import { AddressesTab } from './account/AddressesTab';
 import { PaymentTab } from './account/PaymentTab';
 import { ReceiptsTab } from './account/ReceiptsTab';
@@ -14,10 +15,12 @@ import { SupportTab } from './account/SupportTab';
 import { SettingsTab } from './account/SettingsTab';
 import { COLOR_ACCENT_AMBER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_TEXT_SECONDARY, COLOR_WARNING_BG, COLOR_WARNING_TEXT } from '../lib/theme';
 
-type Tab = 'profile' | 'protection' | 'referral' | 'addresses' | 'payment' | 'receipts' | 'notifications' | 'support' | 'settings';
+type Tab = 'profile' | 'protection' | 'wallet' | 'quotes' | 'referral' | 'addresses' | 'payment' | 'receipts' | 'notifications' | 'support' | 'settings';
 const TABS: ReadonlyArray<readonly [Tab, string, typeof User]> = [
   ['profile', 'حسابي', User],
   ['protection', 'الحماية', ShieldCheck],
+  ['wallet', 'رصيدي', Wallet],
+  ['quotes', 'الفحص المرئي', Video],
   ['referral', 'الإحالة', Gift],
   ['addresses', 'العناوين', MapPin],
   ['payment', 'الدفع', CreditCard],
@@ -39,11 +42,25 @@ export default function Account() {
   const member = sub?.status === 'ACTIVE';
   const balance = Number(credits?.balanceJod ?? 0);
 
+  // A deep link straight to a route-only tab (e.g. /account?tab=referral)
+  // must not leave the panel blank — `tab` can only hold these two values at
+  // the very first render (selectTab never sets them), so this fires once.
+  useEffect(() => {
+    if (tab === 'referral') navigate('/referral', { replace: true });
+    else if (tab === 'quotes') navigate('/quotes', { replace: true });
+  }, [tab, navigate]);
+
   function selectTab(k: Tab) {
-    // The referral program lives on its own route (shareable, deep-linkable)
-    // rather than an in-page panel, so route there instead of switching tabs.
+    // Referral and video-quote requests each live on their own route
+    // (shareable/deep-linkable, and quotes is also reachable from a
+    // QUOTE_FIRST service page) rather than an in-page panel — route there
+    // instead of switching tabs.
     if (k === 'referral') {
       navigate('/referral');
+      return;
+    }
+    if (k === 'quotes') {
+      navigate('/quotes');
       return;
     }
     setTab(k);
@@ -90,6 +107,7 @@ export default function Account() {
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === 'profile' && <ProfileTab />}
           {tab === 'protection' && <ProtectionTab />}
+          {tab === 'wallet' && <WalletTab />}
           {tab === 'addresses' && <AddressesTab />}
           {tab === 'payment' && <PaymentTab />}
           {tab === 'receipts' && <ReceiptsTab />}

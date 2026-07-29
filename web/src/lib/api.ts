@@ -198,8 +198,18 @@ export interface BookingListItem {
   id: string;
   status: BookingStatus;
   scheduledAt: string | null;
+  createdAt?: string;
   totalJod: string | number;
   service?: Pick<Service, 'id' | 'nameAr' | 'nameEn'> | null;
+  /** §17.5.4 three-line invoice split: labour · materials · fees (fils, 1000/JOD). */
+  labourFils?: number;
+  materialsFils?: number;
+  feesFils?: number;
+  surchargeFils?: number;
+  discountJod?: string | number;
+  /** Set once the customer approves a CUSTOMER_SUPPLIED materials line — the
+   *  guarantee then covers workmanship only, not the materials (§17.8). */
+  customerSuppliedMaterialsAckAt?: string | null;
 }
 
 export type MaterialSource = 'TECHNICIAN_PROCURED' | 'CUSTOMER_SUPPLIED' | 'PLATFORM_ARRANGED';
@@ -349,6 +359,7 @@ export interface TechnicianCard {
   totalReviews: number;
   vehicle: string | null;
   isVerified: boolean;
+  introVideoUrl: string | null;
 }
 
 /** GET /technicians/nearby item — live-ish approximate position of a

@@ -49,6 +49,7 @@ techniciansRouter.get(
         totalReviews: true,
         vehicle: true,
         isVerified: true,
+        introVideoUrl: true,
         user: { select: { name: true, avatarUrl: true } },
       },
     });
@@ -62,6 +63,7 @@ techniciansRouter.get(
         totalReviews: profile.totalReviews,
         vehicle: profile.vehicle,
         isVerified: profile.isVerified,
+        introVideoUrl: profile.introVideoUrl,
       },
     });
   }),
