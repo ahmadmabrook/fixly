@@ -476,6 +476,15 @@ export interface NotificationPreferences {
   promotions: boolean;
 }
 
+/** GET/PATCH /notifications/preferences (customer side). */
+export interface CustomerNotificationPreferences {
+  bookings: boolean;
+  arriving: boolean;
+  completed: boolean;
+  guarantee: boolean;
+  promotions: boolean;
+}
+
 /** GET/PATCH /technician/bank-account — payout details, independent of a withdrawal. */
 export interface BankAccount {
   iban: string | null;
