@@ -1,9 +1,59 @@
-import { useState } from 'react';
-import { Wrench } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Video, Wrench, X } from 'lucide-react';
 import { api, ApiError, Service } from '../../lib/api';
+import { uploadFile } from '../../lib/upload';
 import { useServices } from '../../hooks/useServices';
-import { Card, ServiceIcon, notify } from '../../components/shared';
+import { Card, MediaUpload, ServiceIcon, notify } from '../../components/shared';
 import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_TINT, COLOR_SUCCESS_BG, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_WHITE } from '../../lib/theme';
+
+/**
+ * Single-video variant of MediaUpload (shared/upload.tsx): that widget always
+ * renders an <img> thumbnail, which breaks for a video URL, so the intro
+ * video gets its own small picker backed by the same uploadFile() primitive.
+ */
+function VideoUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  async function handleFile(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      onChange(await uploadFile(file, 'intro_video'));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'تعذّر رفع الفيديو', 'error');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+  if (value) {
+    return (
+      <div className="mt-2 flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: COLOR_SUCCESS_TEXT, background: COLOR_SUCCESS_BG }}>
+        <Video size={18} color={COLOR_SUCCESS_TEXT} />
+        <span className="flex-1" style={{ fontSize: 13, fontWeight: 600, color: COLOR_SUCCESS_TEXT }}>تم رفع الفيديو التعريفي</span>
+        <button type="button" onClick={() => onChange('')} aria-label="إزالة الفيديو" style={{ color: COLOR_SUCCESS_TEXT }}>
+          <X size={16} />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => inputRef.current?.click()}
+      disabled={uploading}
+      className="mt-2 w-full p-4 rounded-xl border-2 border-dashed flex items-center gap-3 disabled:opacity-50"
+      style={{ borderColor: COLOR_BORDER }}
+    >
+      {uploading
+        ? <div className="animate-spin rounded-full shrink-0" style={{ width: 18, height: 18, border: `2px solid ${COLOR_BORDER}`, borderTopColor: COLOR_BRAND_PRIMARY }} />
+        : <Video size={18} color={COLOR_TEXT_MUTED} />}
+      <span style={{ fontSize: 13, fontWeight: 600, color: COLOR_TEXT_MUTED }}>{uploading ? 'جارٍ الرفع...' : 'رفع فيديو تعريفي قصير'}</span>
+      <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => void handleFile(e.target.files)} />
+    </button>
+  );
+}
 
 /**
  * Certification stepper (figma CERT_STEPS: kyc → docs → interview → test →
@@ -108,14 +158,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>المركبة (اختياري)</h2>
       <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="مثال: Hyundai H1 أبيض" className="mt-2 w-full h-12 rounded-xl border border-slate-200 px-4" style={{ fontSize: 14 }} />
 
-      <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>المستندات (روابط الصور)</h2>
-      <p style={{ color: COLOR_TEXT_MUTED, fontSize: 12 }}>ارفع صورك على خدمة تخزين وألصق الروابط (الرفع المباشر قريباً).</p>
-      <input value={idDocUrl} onChange={(e) => setIdDocUrl(e.target.value)} placeholder="رابط صورة الهوية" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-4" style={{ fontSize: 14, direction: 'ltr' }} />
-      <input value={certificateUrl} onChange={(e) => setCertificateUrl(e.target.value)} placeholder="رابط الشهادة (اختياري)" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-4" style={{ fontSize: 14, direction: 'ltr' }} />
-      <input value={selfieUrl} onChange={(e) => setSelfieUrl(e.target.value)} placeholder="رابط الصورة الشخصية" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-4" style={{ fontSize: 14, direction: 'ltr' }} />
+      <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>صورة الهوية الوطنية</h2>
+      <MediaUpload value={idDocUrl ? [idDocUrl] : []} onChange={(urls) => setIdDocUrl(urls[urls.length - 1] ?? '')} purpose="kyc_doc" max={1} />
+
+      <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>الشهادة المهنية (اختياري)</h2>
+      <MediaUpload value={certificateUrl ? [certificateUrl] : []} onChange={(urls) => setCertificateUrl(urls[urls.length - 1] ?? '')} purpose="certificate" max={1} />
+
+      <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>صورة شخصية</h2>
+      <MediaUpload value={selfieUrl ? [selfieUrl] : []} onChange={(urls) => setSelfieUrl(urls[urls.length - 1] ?? '')} purpose="selfie" max={1} />
 
       <h2 className="mt-4" style={{ fontWeight: 700, fontSize: 16 }}>فيديو تعريفي (اختياري)</h2>
-      <input value={introVideoUrl} onChange={(e) => setIntroVideoUrl(e.target.value)} placeholder="رابط الفيديو التعريفي" className="mt-2 w-full h-11 rounded-xl border border-slate-200 px-4" style={{ fontSize: 14, direction: 'ltr' }} />
+      <VideoUpload value={introVideoUrl} onChange={setIntroVideoUrl} />
 
       <label className="mt-5 flex items-start gap-2">
         <input type="checkbox" checked={agreementAccepted} onChange={(e) => setAgreementAccepted(e.target.checked)} className="mt-1" />
