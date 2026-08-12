@@ -47,6 +47,8 @@ export const ADMIN_ROUTES: readonly AdminRouteEntry[] = [
   { to: '/reports', labelAr: 'التقارير', roles: ['FINANCE'] },
   { to: '/broadcast', labelAr: 'إشعارات جماعية', roles: ['OPS'] },
   { to: '/admins', labelAr: 'المسؤولون', roles: [] },
+  { to: '/feature-flags', labelAr: 'مفاتيح الميزات', roles: [] },
+  { to: '/approvals', labelAr: 'موافقات المؤسس', roles: ['OPS'] },
 ];
 
 /** Least-privilege role check shared by Sidebar (nav visibility) and

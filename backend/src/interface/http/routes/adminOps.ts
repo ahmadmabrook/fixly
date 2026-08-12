@@ -344,6 +344,16 @@ adminOpsRouter.get(
 );
 
 // ── Technician withdrawals (FINANCE) ──────────────────────
+// ── Feature flags (§0.6.1/§17.16 readiness gate — SUPER_ADMIN, read-only) ──
+adminOpsRouter.get(
+  '/feature-flags',
+  requireAdminRole('SUPER_ADMIN'),
+  asyncHandler(async (_req, res) => {
+    const flags = await adminOpsService.getFeatureFlags();
+    res.json({ data: flags });
+  }),
+);
+
 adminOpsRouter.get(
   '/withdrawals',
   requireAdminRole('FINANCE'),

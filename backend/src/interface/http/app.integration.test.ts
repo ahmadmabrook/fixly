@@ -224,6 +224,23 @@ describe('bookings', () => {
       .expect(200);
     expect(list.body.data.some((b: { id: string }) => b.id === bookingId)).toBe(true);
   });
+
+  // §17.5.2: isEmergency is customer-declared (not auto-detected from
+  // time-of-day), so the route must actually read it off the request body —
+  // this was previously accepted by BookingService.createBooking's type but
+  // silently dropped by the route handler, making the whole feature
+  // unreachable from any client.
+  it('applies the flat emergency surcharge as its own invoice line when isEmergency=true', async () => {
+    const token = await login(TEST_PHONE);
+    const create = await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ serviceId: SEED_SERVICE_ID, addressLine: 'خلدا', addressLat: 31.9522, addressLng: 35.9331, isEmergency: true })
+      .expect(201);
+
+    expect(create.body.data.booking.isEmergency).toBe(true);
+    expect(Number(create.body.data.booking.surchargeFils)).toBe(10000);
+  });
 });
 
 describe('unmatched routes', () => {

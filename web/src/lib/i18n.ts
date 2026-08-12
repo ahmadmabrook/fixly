@@ -48,7 +48,7 @@ const AR: Dict = {
   'hero.badge': 'ضمان 30 يوم',
   'hero.title': 'فني محترف',
   'hero.titleAccent': 'خلال 30 دقيقة',
-  'hero.sub': 'كهرباء، سباكة، تكييف، دهان وتركيب أثاث — بأسعار ثابتة وضمان 30 يوم.',
+  'hero.sub': 'كهرباء، سباكة، تكييف — بأسعار ثابتة وضمان 30 يوم. وإن تأخر الفني نُعوّضك تلقائياً.',
   'hero.searchCta': 'اطلب الآن',
   'hero.searchPlaceholder': 'ما الخدمة التي تحتاجها؟',
   // value props
@@ -94,7 +94,7 @@ const EN: Dict = {
   'hero.badge': '30-Day Guarantee',
   'hero.title': 'A pro technician',
   'hero.titleAccent': 'in 30 minutes',
-  'hero.sub': 'Electricity, plumbing, AC, painting and furniture assembly — fixed prices and a 30-day guarantee.',
+  'hero.sub': 'Electricity, plumbing, AC — fixed prices and a 30-day guarantee. Late technician? You get compensated automatically.',
   'hero.searchCta': 'Book now',
   'hero.searchPlaceholder': 'What service do you need?',
   'vp.certified.t': 'Certified technicians', 'vp.certified.b': 'Fixly Certified — vetted before arrival',

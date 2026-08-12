@@ -42,6 +42,12 @@ export const PROTECTION_GUARANTEE_DAYS = 90;
  *  subscription payload omits `discountPercent`. */
 export const DEFAULT_PROTECTION_DISCOUNT_PERCENT = 15;
 
+/** §17.5.2 flat night/emergency surcharge (own invoice line, never discounted)
+ *  — mirrors backend's EMERGENCY_SURCHARGE_JOD (BookingService.create.ts).
+ *  Duplicated client-side only for pre-confirmation disclosure; the server is
+ *  still the source of truth for what's actually charged. */
+export const EMERGENCY_SURCHARGE_JOD = 10;
+
 /**
  * localStorage keys. Centralized because a key is a contract between the code
  * that writes it and every other place that reads it — a typo at one call site

@@ -11,6 +11,8 @@ jest.mock('../../infrastructure/database/prisma', () => ({
     payment: { findMany: jest.fn() },
     guaranteeTicket: { findMany: jest.fn() },
     user: { findMany: jest.fn() },
+    subscriptionCharge: { aggregate: jest.fn() },
+    categoryReadinessGate: { count: jest.fn() },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
   },
@@ -24,6 +26,8 @@ const mockedPrisma = prisma as unknown as {
   payment: { findMany: jest.Mock };
   guaranteeTicket: { findMany: jest.Mock };
   user: { findMany: jest.Mock };
+  subscriptionCharge: { aggregate: jest.Mock };
+  categoryReadinessGate: { count: jest.Mock };
   $transaction: jest.Mock;
   $queryRaw: jest.Mock;
 };
@@ -133,19 +137,22 @@ describe('AdminOpsService.getAtRiskOrders', () => {
     service = new AdminOpsService();
   });
 
-  it('splits results into late (past SLA, not yet arrived) and unassigned (no tech past the grace period)', async () => {
+  it('splits results into late (past SLA, not yet arrived), unassigned (no tech past the grace period), and high_risk (new customer + probation tech w/ complaint + high value)', async () => {
     const lateBooking = { id: 'late-1', status: 'EN_ROUTE', slaArriveBy: new Date(Date.now() - 60_000) };
     const unassignedBooking = { id: 'pending-1', status: 'PENDING', createdAt: new Date(Date.now() - 20 * 60_000) };
+    const highRiskBooking = { id: 'risky-1', status: 'CONFIRMED', totalJod: 200 };
     mockedPrisma.booking.findMany
       .mockResolvedValueOnce([lateBooking])
-      .mockResolvedValueOnce([unassignedBooking]);
+      .mockResolvedValueOnce([unassignedBooking])
+      .mockResolvedValueOnce([highRiskBooking]);
 
     const { items, total } = await service.getAtRiskOrders(50);
 
-    expect(total).toBe(2);
+    expect(total).toBe(3);
     expect(items).toEqual([
       { ...lateBooking, riskType: 'late' },
       { ...unassignedBooking, riskType: 'unassigned' },
+      { ...highRiskBooking, riskType: 'high_risk' },
     ]);
 
     // "late" query: active statuses, technician assigned, slaArriveBy passed, not yet arrived.
@@ -163,6 +170,16 @@ describe('AdminOpsService.getAtRiskOrders', () => {
     expect(unassignedArgs.where).toEqual(
       expect.objectContaining({ status: 'PENDING', technicianId: null }),
     );
+
+    // "high_risk" query: high value + probation tech with a prior complaint + a customer with no completed bookings.
+    const highRiskArgs = mockedPrisma.booking.findMany.mock.calls[2][0];
+    expect(highRiskArgs.where).toEqual(
+      expect.objectContaining({
+        totalJod: { gte: 150 },
+        technician: { trustTier: 'PROBATION', conductReports: { some: { status: { in: ['OPEN', 'REVIEWING', 'UPHELD'] } } } },
+        customer: { customerBookings: { none: { status: 'COMPLETED' } } },
+      }),
+    );
   });
 
   it('clamps the limit to the [1, 200] range', async () => {
@@ -172,7 +189,7 @@ describe('AdminOpsService.getAtRiskOrders', () => {
   });
 
   it('returns an empty result when nothing is at risk', async () => {
-    mockedPrisma.booking.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedPrisma.booking.findMany.mockResolvedValue([]);
     const { items, total } = await service.getAtRiskOrders();
     expect(items).toEqual([]);
     expect(total).toBe(0);
@@ -234,5 +251,67 @@ describe('AdminOpsService.getActivityFeed', () => {
     const feed = await service.getActivityFeed(2);
     expect(feed).toHaveLength(2);
     expect(mockedPrisma.user.findMany.mock.calls[0][0].take).toBe(2);
+  });
+});
+
+describe('AdminOpsService.getFinancialReport', () => {
+  let service: AdminOpsService;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AdminOpsService();
+  });
+
+  it('nets the platform fee of 16% GST (§0.4b: 20% × (1 – 0.16) = 16.8% effective) and adds the Protection revenue stream', async () => {
+    mockedPrisma.$queryRaw.mockResolvedValue([
+      { period: new Date('2026-08-01'), bookings: 10n, gross: '500.000', fee: '100.000' },
+    ]);
+    mockedPrisma.subscriptionCharge.aggregate.mockResolvedValue({ _sum: { amountJod: '25.000' } });
+
+    const report = await service.getFinancialReport(new Date('2026-08-01'), new Date('2026-08-31'), 'day');
+
+    expect(report.totals.platformFeeJod).toBe(100);
+    expect(report.totals.platformFeeGstJod).toBeCloseTo(16, 5);
+    expect(report.totals.platformFeeGstNetJod).toBeCloseTo(84, 5);
+    expect(report.streams).toEqual({ jobCommissionJod: 100, protectionJod: 25, techProJod: 0, b2bJod: 0 });
+  });
+
+  it('reports a 0 Protection stream (not an error) when there are no subscription charges in the window', async () => {
+    mockedPrisma.$queryRaw.mockResolvedValue([]);
+    mockedPrisma.subscriptionCharge.aggregate.mockResolvedValue({ _sum: { amountJod: null } });
+
+    const report = await service.getFinancialReport(new Date('2026-08-01'), new Date('2026-08-31'), 'day');
+
+    expect(report.streams.protectionJod).toBe(0);
+  });
+});
+
+describe('AdminOpsService.getFeatureFlags', () => {
+  let service: AdminOpsService;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AdminOpsService();
+  });
+
+  it('reports FEATURE_QUOTE_FIRST prerequisiteMet=true once at least one category is READY', async () => {
+    const prevQuoteFirst = process.env.FEATURE_QUOTE_FIRST;
+    process.env.FEATURE_QUOTE_FIRST = 'true';
+    mockedPrisma.categoryReadinessGate.count.mockResolvedValue(2);
+
+    const flags = await service.getFeatureFlags();
+
+    const quoteFirst = flags.find((f) => f.key === 'FEATURE_QUOTE_FIRST');
+    expect(quoteFirst).toEqual(expect.objectContaining({ enabled: true, prerequisiteMet: true }));
+    expect(mockedPrisma.categoryReadinessGate.count).toHaveBeenCalledWith({ where: { state: 'READY' } });
+
+    process.env.FEATURE_QUOTE_FIRST = prevQuoteFirst;
+  });
+
+  it('reports prerequisiteMet=false with no READY categories, and FEATURE_SUBSCRIPTIONS as a manual-decision flag (prerequisiteMet null)', async () => {
+    mockedPrisma.categoryReadinessGate.count.mockResolvedValue(0);
+
+    const flags = await service.getFeatureFlags();
+
+    expect(flags.find((f) => f.key === 'FEATURE_QUOTE_FIRST')).toEqual(expect.objectContaining({ prerequisiteMet: false }));
+    expect(flags.find((f) => f.key === 'FEATURE_SUBSCRIPTIONS')).toEqual(expect.objectContaining({ prerequisiteMet: null }));
   });
 });

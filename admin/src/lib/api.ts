@@ -244,7 +244,7 @@ export interface AtRiskOrder {
   totalJod: string | number;
   createdAt: string;
   slaArriveBy: string | null;
-  riskType: 'late' | 'unassigned';
+  riskType: 'late' | 'unassigned' | 'high_risk';
   customer: { id: string; name: string; phone?: string | null } | null;
   technician: { id: string; user?: { name: string; phone?: string | null } | null } | null;
 }
@@ -399,7 +399,9 @@ export interface BroadcastItem {
 
 export interface FinancialReport {
   series: Array<{ period: string; bookings: number; grossJod: number; platformFeeJod: number; technicianNetJod: number }>;
-  totals: { bookings: number; grossJod: number; platformFeeJod: number; technicianNetJod: number };
+  totals: { bookings: number; grossJod: number; platformFeeJod: number; technicianNetJod: number; platformFeeGstNetJod: number; platformFeeGstJod: number };
+  /** §0.4b revenue-model-by-stream. techProJod/b2bJod are always 0 — Phase 2/3, not launched yet. */
+  streams: { jobCommissionJod: number; protectionJod: number; techProJod: number; b2bJod: number };
 }
 
 export interface AdminUserItem {
@@ -546,6 +548,16 @@ export interface CategoryReadinessItem {
   maxPriceDeviationBps: number;
   priceDeviationBps: number;
   service?: { nameAr?: string | null } | null;
+}
+
+/** §0.6.1/§17.16 launch-gated flag — read-only status, not a live toggle
+ *  (these are env-configured at deploy time; see AdminOpsService.getFeatureFlags). */
+export interface FeatureFlagItem {
+  key: string;
+  enabled: boolean;
+  phase: string;
+  prerequisite: string;
+  prerequisiteMet: boolean | null;
 }
 
 export interface BookingMaterialAdminItem {

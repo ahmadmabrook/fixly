@@ -152,6 +152,73 @@ describe('admin route authorization', () => {
       pendingPayouts: expect.any(Number),
     });
   });
+
+  // Regression test: getOperationalStats' raw SQL compares enum columns
+  // (dispatch_offers.status, bookings.status) against interpolated Prisma
+  // enum values with no explicit ::"EnumType" cast — Postgres rejects that
+  // ("operator does not exist: BookingStatus = text") even though a
+  // prisma-mocked unit test can never catch it, since the mock never touches
+  // real SQL. Only a real-DB request proves this endpoint actually works.
+  it('GET /admin/stats/operational returns 200 against the real DB (not a Prisma-enum-cast 500)', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/stats/operational?windowDays=30')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data).toMatchObject({
+      windowDays: 30,
+      acceptanceRate: expect.any(Number),
+      cancellationRate: expect.any(Number),
+      complaintRate: expect.any(Number),
+      repeatBookingRate: expect.any(Number),
+    });
+  });
+
+  it('GET /admin/orders/at-risk returns 200 against the real DB, including the high_risk classification', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/orders/at-risk?limit=20')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.every((o: { riskType: string }) => ['late', 'unassigned', 'high_risk'].includes(o.riskType))).toBe(true);
+  });
+
+  it('GET /admin/reports/financial returns 200 against the real DB with GST-net totals and revenue streams', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/reports/financial?from=2020-01-01T00:00:00.000Z&to=2030-01-01T00:00:00.000Z&granularity=day')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data.totals).toMatchObject({
+      platformFeeJod: expect.any(Number),
+      platformFeeGstJod: expect.any(Number),
+      platformFeeGstNetJod: expect.any(Number),
+    });
+    expect(res.body.data.streams).toMatchObject({
+      jobCommissionJod: expect.any(Number),
+      protectionJod: expect.any(Number),
+      techProJod: 0,
+      b2bJod: 0,
+    });
+  });
+
+  it('GET /admin/feature-flags returns 200 against the real DB (SUPER_ADMIN)', async () => {
+    const token = await adminLogin();
+    const res = await request(app)
+      .get('/api/v1/admin/feature-flags')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'FEATURE_QUOTE_FIRST', enabled: expect.any(Boolean), prerequisiteMet: expect.any(Boolean) }),
+        expect.objectContaining({ key: 'FEATURE_SUBSCRIPTIONS', enabled: expect.any(Boolean), prerequisiteMet: null }),
+      ]),
+    );
+  });
 });
 
 describe('admin refund route', () => {

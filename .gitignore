@@ -34,3 +34,4 @@ graphify-out/
 
 # Nested clone (stray) — not part of the monorepo
 /fixly/
+/.impeccable

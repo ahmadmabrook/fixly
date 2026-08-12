@@ -82,6 +82,9 @@ const ACTIVITY_META: Record<ActivityFeedItem['type'], { icon: string; color: str
 const RISK_LABEL: Record<AtRiskOrder['riskType'], { ar: string; bg: string; fg: string }> = {
   late: { ar: 'متأخر', bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
   unassigned: { ar: 'غير معيّن', bg: COLOR_STATUS_WARNING_BG, fg: COLOR_STATUS_WARNING },
+  // §17.6 "high-risk orders": new customer + probation-tier technician with a
+  // prior complaint + a high booking value, all stacked on one active order.
+  high_risk: { ar: 'خطورة مرتفعة', bg: COLOR_STATUS_DANGER_BG, fg: COLOR_STATUS_DANGER },
 };
 
 const SERVICE_CHART_COLORS = [COLOR_BRAND_PRIMARY, COLOR_ACCENT_TEAL, COLOR_CHART_AMBER, COLOR_CHART_PURPLE, COLOR_CHART_PINK, COLOR_CHART_EMERALD, COLOR_CHART_RED, COLOR_CHART_INDIGO];
@@ -134,6 +137,7 @@ export default function Dashboard() {
   const filteredAtRisk = riskFilter ? atRiskItems.filter((o) => o.riskType === riskFilter) : atRiskItems;
   const lateCount = atRiskItems.filter((o) => o.riskType === 'late').length;
   const unassignedCount = atRiskItems.filter((o) => o.riskType === 'unassigned').length;
+  const highRiskCount = atRiskItems.filter((o) => o.riskType === 'high_risk').length;
 
   // Derive chart datasets once per data change so recharts isn't handed a new
   // array identity on every render (which would force a full re-render/animate).
@@ -266,6 +270,7 @@ export default function Dashboard() {
               ['', `الكل (${atRiskItems.length})`],
               ['late', `متأخر (${lateCount})`],
               ['unassigned', `غير معيّن (${unassignedCount})`],
+              ['high_risk', `خطورة مرتفعة (${highRiskCount})`],
             ] as const).map(([key, label]) => (
               <button
                 key={key || 'all'}

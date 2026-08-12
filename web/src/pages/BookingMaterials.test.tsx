@@ -98,6 +98,40 @@ describe('CustomerMaterialsSection', () => {
     expect(screen.getByRole('button', { name: /رفض والتحقق/ })).toBeInTheDocument();
   });
 
+  it('shows the side-by-side reference-vs-requested price comparison (§17.5.15) on a dispute line', async () => {
+    renderSection([disputedLine]);
+
+    await screen.findByText(/سعر أعلى من المرجع/);
+    expect(screen.getByText(/السعر المرجعي/)).toBeInTheDocument();
+    expect(screen.getByText('2.500')).toBeInTheDocument(); // referencePriceFils=2500
+    expect(screen.getByText(/السعر المطلوب/)).toBeInTheDocument();
+    // 40.000 (totalFils) legitimately appears twice: the card's own price and
+    // the comparison row's "السعر المطلوب" — both showing the same requested total.
+    expect(screen.getAllByText('40.000')).toHaveLength(2);
+  });
+
+  it('discloses the workmanship-only warranty boundary before approving a CUSTOMER_SUPPLIED line (§17.8)', async () => {
+    renderSection([{ ...pendingLine, source: 'CUSTOMER_SUPPLIED' }]);
+    await screen.findByText('أنبوب PVC');
+    expect(screen.getByText(/الضمان يغطي جودة التركيب فقط/)).toBeInTheDocument();
+  });
+
+  it('does not show the warranty-boundary disclosure for a technician-procured line', async () => {
+    renderSection([pendingLine]);
+    await screen.findByText('أنبوب PVC');
+    expect(screen.queryByText(/الضمان يغطي جودة التركيب فقط/)).not.toBeInTheDocument();
+  });
+
+  it('links a REPLACED line to its substitute, and the substitute back to the original (§17.5.13)', async () => {
+    const oldLine = { ...pendingLine, id: 'm3', status: 'REPLACED', description: 'أنبوب PVC قديم' };
+    const newLine = { ...pendingLine, id: 'm4', description: 'أنبوب PVC معدني', replacesLineId: 'm3' };
+    renderSection([oldLine, newLine]);
+
+    await screen.findByText('أنبوب PVC قديم');
+    expect(screen.getByText('استُبدلت بـ: أنبوب PVC معدني')).toBeInTheDocument();
+    expect(screen.getByText('بديل عن: أنبوب PVC قديم')).toBeInTheDocument();
+  });
+
   it('declining opens a verification request and locally hides the buttons (server state is unchanged either way)', async () => {
     const user = userEvent.setup();
     renderSection([disputedLine]);

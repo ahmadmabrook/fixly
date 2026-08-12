@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Zap } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useService } from '../hooks/useServices';
 import { useCreateBooking } from '../hooks/useBookings';
@@ -8,7 +8,7 @@ import { api, ApiError, PromoQuote, CheckoutSession, Subscription } from '../lib
 import { Card, ServiceIcon, PriceBadge, InlineRow, ConfirmDialog, StatusBadge, notify } from '../components/shared';
 import MapAddressPicker, { type AddressValue } from '../components/MapAddressPicker';
 import HyperPayWidget from '../components/HyperPayWidget';
-import { DEFAULT_GUARANTEE_DAYS, DEFAULT_PROTECTION_DISCOUNT_PERCENT, PROTECTION_GUARANTEE_DAYS } from '../lib/constants';
+import { DEFAULT_GUARANTEE_DAYS, DEFAULT_PROTECTION_DISCOUNT_PERCENT, EMERGENCY_SURCHARGE_JOD, PROTECTION_GUARANTEE_DAYS } from '../lib/constants';
 import { COLOR_BG_SUBTLE, COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_BRAND_PRIMARY, COLOR_BRAND_PRIMARY_DARK, COLOR_BRAND_PRIMARY_TINT, COLOR_ERROR_TEXT, COLOR_SUCCESS_TEXT, COLOR_TEXT_MUTED, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_SUBTLE, COLOR_WHITE } from '../lib/theme';
 
 interface BookingPageProps {
@@ -44,6 +44,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const [when, setWhen] = useState<'now' | 'later'>('now');
   const [addr, setAddr] = useState<AddressValue>({ address: 'خلدا، شارع وصفي التل', lat: DEFAULT_LAT, lng: DEFAULT_LNG });
   const [notes, setNotes] = useState('');
+  const [isEmergency, setIsEmergency] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
   const [promoInput, setPromoInput] = useState('');
@@ -56,6 +57,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   const member = sub?.status === 'ACTIVE';
   const discountPercent = sub?.discountPercent ?? DEFAULT_PROTECTION_DISCOUNT_PERCENT;
   const guaranteeDays = member ? sub?.guaranteeDays ?? PROTECTION_GUARANTEE_DAYS : DEFAULT_GUARANTEE_DAYS;
+  // §17.5.2 / §17.5.4: wallet credit is redeemed automatically server-side —
+  // this is a pre-confirmation estimate of that auto-redemption, not a toggle.
+  const { data: credits } = useQuery({ queryKey: ['credits'], queryFn: () => api.get<{ balanceJod: string | number }>('/credits/me') });
+  const creditBalance = Number(credits?.balanceJod ?? 0);
 
   // After a successful create, push the live status into the toast flow.
   useEffect(() => {
@@ -105,6 +110,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
         })(),
         promoCode: promo ? promoInput.trim() : null,
+        isEmergency,
       },
       {
         onSuccess: ({ booking, checkout: session }) => {
@@ -122,7 +128,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
         onError: (e) => notify(e instanceof Error ? e.message : 'حدث خطأ', 'error'),
       },
     );
-  }, [svc, addr, notes, when, promo, promoInput, createBooking, onDone]);
+  }, [svc, addr, notes, when, promo, promoInput, isEmergency, createBooking, onDone]);
 
   // Once a checkout session is open, render only the payment step.
   if (checkout && createdId) {
@@ -177,6 +183,10 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
   // active subscription's percentage discount, rounded to the nearest cent.
   const subDiscount = member ? Math.round(price * discountPercent) / 100 : 0;
   const memberPrice = Math.round((price - subDiscount) * 100) / 100;
+  // Surcharge is added after discounts (§17.5.2: "never discounted").
+  const preCreditTotal = (promo ? Number(promo.finalJod) : memberPrice) + (isEmergency ? EMERGENCY_SURCHARGE_JOD : 0);
+  const creditApplied = Math.min(creditBalance, preCreditTotal);
+  const finalTotal = Math.round((preCreditTotal - creditApplied) * 100) / 100;
   return (
     <main className="max-w-[1200px] mx-auto px-6 py-10">
       <button onClick={onBack} className="flex items-center gap-1" style={{ color: COLOR_BRAND_PRIMARY, fontWeight: 600, fontSize: 14 }}>
@@ -202,6 +212,23 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
                 </button>
               ))}
             </div>
+            {/* §17.5.2 / §8.4 — "time incl. emergency-surcharge chip": a disclosed,
+                customer-declared flat surcharge, own invoice line, never discounted. */}
+            <button
+              type="button"
+              onClick={() => setIsEmergency((v) => !v)}
+              aria-pressed={isEmergency}
+              className="mt-3 w-full flex items-center gap-2 p-3 rounded-xl border-2 text-start"
+              style={{ borderColor: isEmergency ? COLOR_BRAND_PRIMARY : COLOR_BORDER, background: isEmergency ? COLOR_BRAND_PRIMARY_TINT : COLOR_WHITE }}
+            >
+              <Zap size={16} color={isEmergency ? COLOR_BRAND_PRIMARY : COLOR_TEXT_SECONDARY} aria-hidden="true" />
+              <div className="flex-1">
+                <div style={{ fontWeight: 700, fontSize: 13, color: isEmergency ? COLOR_BRAND_PRIMARY : COLOR_TEXT_PRIMARY }}>طلب طارئ / خارج أوقات الدوام</div>
+                <div style={{ fontSize: 11, color: COLOR_TEXT_SECONDARY }}>
+                  رسوم طوارئ إضافية <span style={{ fontFamily: 'Inter' }}>{EMERGENCY_SURCHARGE_JOD}</span> دينار — تُعرض كبند منفصل ولا تخضع للخصومات
+                </div>
+              </div>
+            </button>
           </Card>
 
           <Card className="p-6">
@@ -298,15 +325,24 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
             />
           )}
           <InlineRow label="الخصم" value={`${promo ? Number(promo.discountJod) : 0} دينار`} />
+          {isEmergency && (
+            <InlineRow label="رسوم طوارئ / خارج الدوام" value={`+${EMERGENCY_SURCHARGE_JOD} دينار`} />
+          )}
+          {creditApplied > 0 && (
+            <InlineRow
+              label="رصيدك (يُطبَّق تلقائياً)"
+              value={<span style={{ color: COLOR_SUCCESS_TEXT }}>−{creditApplied.toFixed(2)} دينار</span>}
+            />
+          )}
           <div className="my-2 h-px bg-slate-100" />
-          {/* No-promo total reflects the actual server-charged amount
-              (list price minus the subscription discount — see
-              BookingService.create.ts's subscriberPrice). The promo-applied
-              total still comes from /promo/validate, which quotes off the
-              raw list price rather than the member price BookingService
-              actually stacks the promo on — a real but separate backend
-              discrepancy, not fixed here. */}
-          <InlineRow strong label="الإجمالي" value={`${promo ? Number(promo.finalJod) : memberPrice} دينار`} />
+          {/* Total reflects the actual server-charged amount: list price minus
+              the subscription discount (BookingService.create.ts's
+              subscriberPrice), with any promo correctly stacked on TOP of that
+              member price (not the raw list price — see promo.ts's own
+              /validate handler, which quotes off subscriberPrice for exactly
+              this reason), plus the emergency surcharge and minus the
+              auto-redeemed wallet credit estimate. */}
+          <InlineRow strong label="الإجمالي" value={`${finalTotal} دينار`} />
           <p className="mt-3 p-3 rounded-lg" style={{ background: COLOR_BRAND_PRIMARY_TINT, color: COLOR_BRAND_PRIMARY_DARK, fontSize: 12 }}>
             سيتم حجز المبلغ الآن ويُخصم بعد إتمام الخدمة.
           </p>
@@ -327,7 +363,7 @@ export default function BookingPage({ serviceId, onBack, onDone }: BookingPagePr
       {confirming && (
         <ConfirmDialog
           title="تأكيد الحجز"
-          body={`سيتم حجز ${promo ? Number(promo.finalJod) : memberPrice} دينار عبر البطاقة وخصمه بعد إتمام الخدمة.`}
+          body={`سيتم حجز ${finalTotal} دينار عبر البطاقة وخصمه بعد إتمام الخدمة.`}
           confirmLabel={isPending ? '...' : 'تأكيد والدفع'}
           onConfirm={submit}
           onCancel={() => setConfirming(false)}

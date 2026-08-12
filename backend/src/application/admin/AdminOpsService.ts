@@ -17,6 +17,20 @@ import { broadcastsSentTotal, withdrawalsProcessedTotal } from '../../shared/met
 // A booking with no technician assigned this long past creation is flagged
 // "high-risk" on the at-risk panel (Figma admin Dashboard).
 const HIGH_RISK_UNASSIGNED_MINUTES = 15;
+// §17.6 "High-risk orders — new-customer + probation-tech, high value, prior
+// complaint": a booking above this value is "high value" for that combined
+// risk classification (distinct from HIGH_RISK_UNASSIGNED_MINUTES, which
+// flags on wait time alone). Roughly 2.5-3x a typical single-visit job given
+// MIN/MAX_HOURLY_RATE_JOD of 40-60.
+const HIGH_VALUE_BOOKING_JOD = 150;
+// Statuses that count as "a prior complaint on record" for the risk check —
+// mirrors ConductReport's own lifecycle (OPEN/REVIEWING are unresolved,
+// UPHELD is a confirmed complaint; DISMISSED doesn't count).
+const OPEN_CONDUCT_STATUSES: ConductStatus[] = ['OPEN', 'REVIEWING', 'UPHELD'];
+// Jordan General Sales Tax on commission service revenue (§0.4b, §17.15):
+// modeled as 20% platform fee × (1 – 0.16 GST) = 16.8% effective — i.e. GST
+// is carved OUT of the collected fee, not added on top of it.
+const GST_RATE = new Prisma.Decimal('0.16');
 // Activity-feed lookback window — bounded so the query never scans the full
 // history (mirrors the getOperationalStats windowing convention).
 const ACTIVITY_FEED_WINDOW_HOURS = 48;
@@ -168,8 +182,28 @@ export class AdminOpsService {
       grossJod: Number(acc.grossJod),
       platformFeeJod: Number(acc.platformFeeJod),
       technicianNetJod: Number(acc.technicianNetJod),
+      // §0.4b/§17.15: commission is service revenue subject to 16% GST — the
+      // real contribution per job is the fee net of that, not the gross fee.
+      platformFeeGstNetJod: Number(acc.platformFeeJod.times(new Prisma.Decimal(1).minus(GST_RATE))),
+      platformFeeGstJod: Number(acc.platformFeeJod.times(GST_RATE)),
     };
-    return { series, totals };
+
+    // §0.4b revenue-model-by-stream (mirrors AdminPanel.tsx Finance()): job
+    // commission is the only stream computed above (from captured payments);
+    // Protection is the live subscription add-on; Tech Pro / B2B are Phase 2/3
+    // per spec and have no revenue source yet, so they report 0, not an error.
+    const protectionCharges = await prisma.subscriptionCharge.aggregate({
+      where: { status: 'CAPTURED', chargedAt: { gte: from, lt: to } },
+      _sum: { amountJod: true },
+    });
+    const streams = {
+      jobCommissionJod: totals.platformFeeJod,
+      protectionJod: Number(protectionCharges._sum.amountJod ?? 0),
+      techProJod: 0,
+      b2bJod: 0,
+    };
+
+    return { series, totals, streams };
   }
 
   // ── Operational KPIs ────────────────────────────────────
@@ -203,7 +237,7 @@ export class AdminOpsService {
       prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
         SELECT AVG(EXTRACT(EPOCH FROM (o."respondedAt" - b."createdAt")))::float AS avg_seconds
         FROM bookings b
-        JOIN dispatch_offers o ON o."bookingId" = b.id AND o.status = ${DispatchOfferStatus.ACCEPTED}
+        JOIN dispatch_offers o ON o."bookingId" = b.id AND o.status = ${DispatchOfferStatus.ACCEPTED}::"DispatchOfferStatus"
         WHERE b."createdAt" >= ${since}
       `,
       prisma.$queryRaw<Array<{ avg_seconds: number | null }>>`
@@ -224,7 +258,7 @@ export class AdminOpsService {
         FROM (
           SELECT "customerId", COUNT(*) AS cnt
           FROM bookings
-          WHERE status = ${BookingStatus.COMPLETED} AND "completedAt" >= ${since}
+          WHERE status = ${BookingStatus.COMPLETED}::"BookingStatus" AND "completedAt" >= ${since}
           GROUP BY "customerId"
         ) per_customer
       `,
@@ -361,7 +395,7 @@ export class AdminOpsService {
       technician: { select: { id: true, user: { select: { name: true, phone: true } } } },
     } satisfies Prisma.BookingSelect;
 
-    const [late, unassigned] = await Promise.all([
+    const [late, unassigned, highRisk] = await Promise.all([
       prisma.booking.findMany({
         where: {
           status: { in: ACTIVE_BOOKING_STATUSES },
@@ -379,11 +413,23 @@ export class AdminOpsService {
         take: boundedLimit,
         select: bookingSelect,
       }),
+      prisma.booking.findMany({
+        where: {
+          status: { in: ACTIVE_BOOKING_STATUSES },
+          totalJod: { gte: HIGH_VALUE_BOOKING_JOD },
+          technician: { trustTier: 'PROBATION', conductReports: { some: { status: { in: OPEN_CONDUCT_STATUSES } } } },
+          customer: { customerBookings: { none: { status: BookingStatus.COMPLETED } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: boundedLimit,
+        select: bookingSelect,
+      }),
     ]);
 
     const items = [
       ...late.map((b) => ({ ...b, riskType: 'late' as const })),
       ...unassigned.map((b) => ({ ...b, riskType: 'unassigned' as const })),
+      ...highRisk.map((b) => ({ ...b, riskType: 'high_risk' as const })),
     ];
     return { items, total: items.length };
   }
@@ -452,5 +498,35 @@ export class AdminOpsService {
 
     events.sort((a, b) => b.at.getTime() - a.at.getTime());
     return events.slice(0, boundedLimit);
+  }
+
+  // ── Feature flags (§0.6.1/§17.16 — visibility only, SUPER_ADMIN) ──
+
+  /**
+   * Read-only status of the launch-gated feature flags (mirrors
+   * AdminPanel.tsx FeatureFlags()). §17.16: "a flag is off until the
+   * *operating* prerequisite is met, not until the code exists" — these are
+   * env-configured switches an operator sets at deploy time, not something
+   * this endpoint can toggle live, so it reports current state + whether the
+   * named operating prerequisite is met, not a mutate action.
+   */
+  async getFeatureFlags() {
+    const readyCategories = await prisma.categoryReadinessGate.count({ where: { state: 'READY' } });
+    return [
+      {
+        key: 'FEATURE_QUOTE_FIRST',
+        enabled: process.env.FEATURE_QUOTE_FIRST === 'true',
+        phase: 'quote_first + materials',
+        prerequisite: 'category_readiness_gate.state = ready لفئة واحدة على الأقل (§17.5.15)',
+        prerequisiteMet: readyCategories > 0,
+      },
+      {
+        key: 'FEATURE_SUBSCRIPTIONS',
+        enabled: process.env.FEATURE_SUBSCRIPTIONS === 'true',
+        phase: 'Protection plan (Phase 2)',
+        prerequisite: 'قرار تشغيلي يدوي — لا يوجد شرط جاهزية محسوب تلقائياً',
+        prerequisiteMet: null,
+      },
+    ];
   }
 }

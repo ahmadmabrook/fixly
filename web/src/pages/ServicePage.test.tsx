@@ -51,9 +51,9 @@ describe('ServicePage', () => {
     expect(screen.getByText('لا يشمل')).toBeInTheDocument();
   });
 
-  it('shows the callout-fee banner with the exact fee amount', async () => {
+  it('shows the no-show fee banner with the exact fee amount (distinct from the quote_first inspection fee — §17.5.3)', async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText(/رسوم كشف/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/رسوم عدم حضور/)).toBeInTheDocument());
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 
@@ -61,5 +61,33 @@ describe('ServicePage', () => {
     renderPage();
     const link = await screen.findByRole('link', { name: /اطلب فحصاً مرئياً/ });
     expect(link).toHaveAttribute('href', '/quotes');
+  });
+});
+
+describe('ServicePage — quote_first archetype (§0.2 #4: Painting never shows an instant flat price)', () => {
+  const quoteFirstSvc = { ...svc, id: 'paint', nameAr: 'دهان', pricingModel: 'QUOTE_FIRST', inspectionFeeFils: 10000, priceJod: '70' };
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/services')) {
+        return { ok: true, status: 200, json: async () => ({ data: [quoteFirstSvc] }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch);
+  });
+
+  it('shows "حسب المعاينة" + the disclosed inspection fee instead of a flat price', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <ServicePage serviceId="paint" onBook={vi.fn()} onBack={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('حسب المعاينة')).toBeInTheDocument();
+    expect(screen.getByText(/رسوم معاينة/)).toBeInTheDocument();
+    expect(screen.getByText('10.00')).toBeInTheDocument();
+    expect(screen.queryByText('السعر الثابت')).not.toBeInTheDocument();
+    expect(screen.queryByText('فوراً خلال 30 دقيقة')).not.toBeInTheDocument();
   });
 });

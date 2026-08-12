@@ -337,6 +337,16 @@ components:
             grossJod: { type: number }
             platformFeeJod: { type: number }
             technicianNetJod: { type: number }
+            platformFeeGstJod: { type: number, description: '§0.4b/§17.15: platformFeeJod × 16% GST.' }
+            platformFeeGstNetJod: { type: number, description: 'platformFeeJod net of 16% GST (the real per-job contribution).' }
+        streams:
+          type: object
+          description: '§0.4b revenue-model-by-stream. techProJod/b2bJod are always 0 — Phase 3, not launched.'
+          properties:
+            jobCommissionJod: { type: number }
+            protectionJod: { type: number }
+            techProJod: { type: number }
+            b2bJod: { type: number }
 
     AdminUser:
       type: object
@@ -2303,11 +2313,11 @@ paths:
   /admin/orders/at-risk:
     get:
       tags: [Admin]
-      summary: Active bookings that are late (past SLA, not yet arrived) or unassigned too long (OPS)
+      summary: Active bookings that are late (past SLA, not yet arrived), unassigned too long, or high-risk (OPS)
       security: [{ bearerAuth: [] }]
       parameters:
         - { in: query, name: limit, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
-      responses: { '200': { description: 'Bookings tagged riskType: late | unassigned.' } }
+      responses: { '200': { description: 'Bookings tagged riskType: late | unassigned | high_risk (§17.6 — new-customer + probation-tech-with-complaint + high value).' } }
   /admin/activity-feed:
     get:
       tags: [Admin]
@@ -2442,6 +2452,34 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [PAID, REJECTED] } } } } } }
       responses: { '200': { description: Updated. } }
+  /admin/feature-flags:
+    get:
+      tags: [Admin]
+      summary: Launch-gated feature flag status — read-only (§0.6.1/§17.16, SUPER_ADMIN)
+      description: >
+        Env-configured flags with their current value and whether the named
+        operating prerequisite is met. Not a toggle endpoint — flags are set
+        at deploy time, not mutated live via this API.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Feature flags.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        enabled: { type: boolean }
+                        phase: { type: string }
+                        prerequisite: { type: string }
+                        prerequisiteMet: { type: boolean, nullable: true }
+
   /admin/admins:
     get:
       tags: [Admin]

@@ -236,6 +236,10 @@ export interface BookingMaterialItem {
   customerAckAt: string | null;
   isMicro?: boolean;
   supplierInvoiceUrl: string | null;
+  /** Set on the NEW line when it substitutes an old one (§17.5.13 edge-case
+   *  register: substitution must be same-or-higher tier, linked old→new, never
+   *  a silent swap). Points at the OLD line's id. */
+  replacesLineId?: string | null;
   material?: {
     nameAr: string;
     nameEn: string;
@@ -284,6 +288,8 @@ export interface CreateBookingInput {
   notes?: string | null;
   scheduledAt: string | null;
   promoCode?: string | null;
+  /** §17.5.2 disclosed night/emergency surcharge — customer-declared at booking time. */
+  isEmergency?: boolean;
 }
 
 /** A hosted-checkout session (HyperPay COPYandPAY widget) returned by the backend. */

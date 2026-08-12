@@ -88,8 +88,12 @@ export default function ServicePage({ serviceId, onBook, onBack }: ServicePagePr
           {svc.calloutFeeJod != null && Number(svc.calloutFeeJod) > 0 && (
             <div className="mt-4 flex items-start gap-2 p-4 rounded-2xl" style={{ background: COLOR_WARNING_BG_SOFT, border: `1px solid ${COLOR_WARNING_BORDER}` }}>
               <AlertCircle size={18} color={COLOR_WARNING_TEXT} className="shrink-0 mt-0.5" aria-hidden="true" />
+              {/* calloutFeeJod is the no-show/wasted-trip fee — semantically distinct
+                  from the quote_first inspectionFeeFils shown above (§17.5.3, spec
+                  explicitly warns against merging the two). Only applies if the
+                  customer isn't there when the technician arrives, not on every job. */}
               <p style={{ color: COLOR_WARNING_TEXT, fontSize: 13, fontWeight: 600 }}>
-                رسوم كشف <span style={{ fontFamily: 'Inter' }}>{Number(svc.calloutFeeJod)}</span> دينار تُخصم من قيمة الإصلاح.
+                رسوم عدم حضور <span style={{ fontFamily: 'Inter' }}>{Number(svc.calloutFeeJod)}</span> دينار تُطبّق إذا لم يتم العثور عليك عند وصول الفني.
               </p>
             </div>
           )}

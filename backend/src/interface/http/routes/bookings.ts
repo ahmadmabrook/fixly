@@ -54,6 +54,9 @@ bookingsRouter.post(
         return true;
       }),
     body('promoCode').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 40 }),
+    // §17.5.2: a disclosed, customer-declared flat surcharge — not
+    // auto-detected from time-of-day, so it must come from the client.
+    body('isEmergency').optional().isBoolean().toBoolean(),
   ]),
   asyncHandler(async (req, res) => {
     const booking = await bookingService.createBooking({
@@ -65,6 +68,7 @@ bookingsRouter.post(
       notes: req.body.notes ?? undefined,
       scheduledAt: req.body.scheduledAt ?? undefined,
       promoCode: req.body.promoCode ?? undefined,
+      isEmergency: req.body.isEmergency ?? undefined,
     });
 
     // Hosted-checkout providers: open the payment session now so the client can mount

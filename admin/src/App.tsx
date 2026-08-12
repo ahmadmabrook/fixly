@@ -28,6 +28,8 @@ const PriceVerifications = lazy(() => import('./pages/PriceVerifications'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 const PriceIndex = lazy(() => import('./pages/PriceIndex'));
 const CategoryReadiness = lazy(() => import('./pages/CategoryReadiness'));
+const FeatureFlags = lazy(() => import('./pages/FeatureFlags'));
+const FounderApprovals = lazy(() => import('./pages/FounderApprovals'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -141,6 +143,8 @@ export function AppShell() {
           <Route path="suppliers"   element={<RequireRole path="/suppliers"><Suppliers /></RequireRole>} />
           <Route path="price-index" element={<RequireRole path="/price-index"><PriceIndex /></RequireRole>} />
           <Route path="category-readiness" element={<RequireRole path="/category-readiness"><CategoryReadiness /></RequireRole>} />
+          <Route path="feature-flags" element={<RequireRole path="/feature-flags"><FeatureFlags /></RequireRole>} />
+          <Route path="approvals" element={<RequireRole path="/approvals"><FounderApprovals /></RequireRole>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -106,4 +106,48 @@ describe('BookingPage', () => {
     expect(await screen.findByText('إتمام الدفع')).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('form.paymentWidgets')).not.toBeNull());
   });
+
+  // §17.5.2 / §8.4: the emergency surcharge must be a disclosed, customer-declared
+  // chip in the booking flow's own invoice line — previously entirely absent from
+  // the web app (isEmergency wasn't even a field on CreateBookingInput).
+  it('toggling "طلب طارئ" adds the surcharge as its own line and sends isEmergency:true', async () => {
+    const user = userEvent.setup();
+    const postSpy = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/bookings')) {
+        postSpy(JSON.parse(init.body as string));
+        return { ok: true, status: 200, json: async () => ({ data: { booking: { id: 'b-emg', status: 'PENDING', scheduledAt: null, totalJod: '60', service: svc }, checkout: null } }) } as Response;
+      }
+      if (url.endsWith('/services')) {
+        return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch);
+
+    renderWithProviders('/services/elec/book');
+    await screen.findByLabelText('العنوان');
+
+    await user.click(screen.getByRole('button', { name: /طلب طارئ/ }));
+    expect(await screen.findByText('+10 دينار')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تأكيد الحجز' }));
+    await user.click(await screen.findByRole('button', { name: 'تأكيد والدفع' }));
+
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+    expect(postSpy.mock.calls[0][0]).toMatchObject({ isEmergency: true });
+  });
+
+  it('shows the wallet-credit auto-apply row when the customer has a balance', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/services')) return { ok: true, status: 200, json: async () => ({ data: [svc] }) } as Response;
+      if (url.endsWith('/credits/me')) return { ok: true, status: 200, json: async () => ({ data: { balanceJod: '15', items: [] } }) } as Response;
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch);
+
+    renderWithProviders('/services/elec/book');
+    await screen.findByLabelText('العنوان');
+
+    expect(await screen.findByText('رصيدك (يُطبَّق تلقائياً)')).toBeInTheDocument();
+    expect(screen.getByText('−15.00 دينار')).toBeInTheDocument();
+  });
 });

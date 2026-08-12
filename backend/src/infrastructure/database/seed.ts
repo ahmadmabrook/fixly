@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
-import { PromoType, UserRole, TechnicianStatus, AdminRole } from '@prisma/client';
+import { PromoType, UserRole, TechnicianStatus, AdminRole, PricingModel } from '@prisma/client';
 import { prisma } from './prisma';
 import { logger } from '../../shared/logger';
 
@@ -33,14 +33,21 @@ async function seed() {
     },
   };
 
-  // Services catalog (fixed-price). Prices/names match the product spec exactly
-  // (Figma "Data reference"): the catalogue the customer sees upfront.
+  // Services catalog. Prices/names/archetypes match the product spec's own
+  // canonical seed INSERT exactly (FIXLY_SYSTEM_DESIGN.md around the v1.7
+  // "seed correction" changelog entry): Electricity/Plumbing/AC/Furniture are
+  // fixed_scope; Painting is quote_first — NO instant flat price, a materials-
+  // driven job (wall area, coats, prep, paint tier) a catalogue price cannot
+  // know. Selling it flat was the exact promise the spec's own v1.7 changelog
+  // says "the business cannot keep" — priceJod is kept as a harmless legacy
+  // reference field (the web PriceBadge never renders it for QUOTE_FIRST,
+  // showing inspectionFeeFils + "حسب المعاينة" instead).
   const SERVICE_CATALOG = [
-    { id: '00000000-0000-0000-0000-000000000001', nameAr: 'كهرباء',       nameEn: 'Electricity', category: 'ELECTRICAL', priceJod: 50, durationMin: 45 },
-    { id: '00000000-0000-0000-0000-000000000002', nameAr: 'سباكة',        nameEn: 'Plumbing',    category: 'PLUMBING',   priceJod: 40, durationMin: 60 },
-    { id: '00000000-0000-0000-0000-000000000003', nameAr: 'تنظيف تكييف',  nameEn: 'AC Cleaning', category: 'HVAC',       priceJod: 30, durationMin: 45 },
-    { id: '00000000-0000-0000-0000-000000000004', nameAr: 'دهان',         nameEn: 'Painting',    category: 'PAINTING',   priceJod: 70, durationMin: 180 },
-    { id: '00000000-0000-0000-0000-000000000005', nameAr: 'تركيب أثاث',   nameEn: 'Furniture',   category: 'CARPENTRY',  priceJod: 35, durationMin: 60 },
+    { id: '00000000-0000-0000-0000-000000000001', nameAr: 'كهرباء',       nameEn: 'Electricity', category: 'ELECTRICAL', priceJod: 50, durationMin: 45,  pricingModel: PricingModel.FIXED_SCOPE, inspectionFeeFils: null as number | null },
+    { id: '00000000-0000-0000-0000-000000000002', nameAr: 'سباكة',        nameEn: 'Plumbing',    category: 'PLUMBING',   priceJod: 40, durationMin: 60,  pricingModel: PricingModel.FIXED_SCOPE, inspectionFeeFils: null as number | null },
+    { id: '00000000-0000-0000-0000-000000000003', nameAr: 'تنظيف تكييف',  nameEn: 'AC Cleaning', category: 'HVAC',       priceJod: 30, durationMin: 45,  pricingModel: PricingModel.FIXED_SCOPE, inspectionFeeFils: null as number | null },
+    { id: '00000000-0000-0000-0000-000000000004', nameAr: 'دهان',         nameEn: 'Painting',    category: 'PAINTING',   priceJod: 70, durationMin: 180, pricingModel: PricingModel.QUOTE_FIRST, inspectionFeeFils: 10000 },
+    { id: '00000000-0000-0000-0000-000000000005', nameAr: 'تركيب أثاث',   nameEn: 'Furniture',   category: 'CARPENTRY',  priceJod: 35, durationMin: 60,  pricingModel: PricingModel.FIXED_SCOPE, inspectionFeeFils: null as number | null },
   ];
 
   const services = await Promise.all(
@@ -49,7 +56,10 @@ async function seed() {
       return prisma.service.upsert({
         where: { id: s.id },
         // Keep the catalogue authoritative: re-running the seed corrects prices.
-        update: { nameAr: s.nameAr, nameEn: s.nameEn, category: s.category, priceJod: s.priceJod, durationMin: s.durationMin, ...sop },
+        update: {
+          nameAr: s.nameAr, nameEn: s.nameEn, category: s.category, priceJod: s.priceJod, durationMin: s.durationMin,
+          pricingModel: s.pricingModel, inspectionFeeFils: s.inspectionFeeFils, ...sop,
+        },
         create: { ...s, ...sop },
       });
     }),

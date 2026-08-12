@@ -107,6 +107,10 @@ export function CustomerMaterialsSection({ bookingId }: { bookingId: string }) {
           const disputeAwaitingCustomer = l.status === 'PENDING_REVIEW' && !!l.varianceReason && !l.customerAckAt && !alreadyDeclined;
           const waitingOnTech = l.status === 'PENDING_REVIEW' && !l.varianceReason;
           const highlight = needsApproval || disputeAwaitingCustomer;
+          // §17.5.13 substitution row: link old→new so a REPLACED line isn't
+          // an orphaned dead end and the new line shows what it replaced.
+          const replacedBy = l.status === 'REPLACED' ? lines.find((o) => o.replacesLineId === l.id) : undefined;
+          const replacesLine = l.replacesLineId ? lines.find((o) => o.id === l.replacesLineId) : undefined;
           return (
             <div key={l.id} className="rounded-xl p-3" style={{ border: `1px solid ${highlight ? COLOR_BRAND_PRIMARY : COLOR_BORDER}` }}>
               <div className="flex items-start justify-between gap-2">
@@ -115,16 +119,45 @@ export function CustomerMaterialsSection({ bookingId }: { bookingId: string }) {
                   <div style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 2 }}>
                     {SOURCE_LABEL[l.source]} · <span style={{ fontFamily: 'Inter' }}>{l.qty}</span>{l.unit ? ` ${l.unit}` : ''}
                   </div>
+                  {replacedBy && (
+                    <div style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 2 }}>استُبدلت بـ: {replacedBy.description}</div>
+                  )}
+                  {replacesLine && (
+                    <div style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 2 }}>بديل عن: {replacesLine.description}</div>
+                  )}
                 </div>
                 <span style={{ fontWeight: 700, fontSize: 13 }}><span style={{ fontFamily: 'Inter' }}>{jodFromFils(l.totalFils)}</span> دينار</span>
               </div>
 
               {disputeAwaitingCustomer && (
                 <div className="mt-2 rounded-lg p-2" style={{ background: COLOR_WARNING_BG }}>
-                  <p style={{ color: COLOR_WARNING_TEXT, fontSize: 12, fontWeight: 600 }}>
+                  {/* §17.5.15: "side-by-side reference-vs-requested comparison
+                      before execution, never after" — showing only the total
+                      with no reference number gives the customer nothing to
+                      actually judge the variance against. */}
+                  {l.referencePriceFils != null && (
+                    <div className="flex items-center justify-between" style={{ fontSize: 12 }}>
+                      <span style={{ color: COLOR_TEXT_MUTED }}>
+                        السعر المرجعي: <span style={{ fontFamily: 'Inter', fontWeight: 700 }}>{jodFromFils(l.referencePriceFils)}</span> دينار
+                      </span>
+                      <span style={{ color: COLOR_WARNING_TEXT, fontWeight: 700 }}>
+                        السعر المطلوب: <span style={{ fontFamily: 'Inter' }}>{jodFromFils(l.totalFils)}</span> دينار
+                      </span>
+                    </div>
+                  )}
+                  <p style={{ color: COLOR_WARNING_TEXT, fontSize: 12, fontWeight: 600, marginTop: l.referencePriceFils != null ? 6 : 0 }}>
                     سعر أعلى من المرجع — سبب الفني: {VARIANCE_REASON_LABEL[l.varianceReason as VarianceReasonKind]}{l.varianceReasonNote ? ` — ${l.varianceReasonNote}` : ''}
                   </p>
                 </div>
+              )}
+              {/* §17.8 workmanship-only warranty boundary: BookingMaterialService.approveByCustomer
+                  records customerSuppliedMaterialsAckAt as a side effect of approving THIS
+                  line — a real, non-obvious consequence the customer must see disclosed before
+                  they click "موافقة", not discover only later on their receipt. */}
+              {needsApproval && l.source === 'CUSTOMER_SUPPLIED' && (
+                <p style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 4 }}>
+                  الموافقة على مادة وفّرتها بنفسك تعني أن الضمان يغطي جودة التركيب فقط — لا يغطي عيوب المادة نفسها.
+                </p>
               )}
               {waitingOnTech && <p style={{ color: COLOR_TEXT_MUTED, fontSize: 11, marginTop: 4 }}>فرق سعر — بانتظار توضيح الفني</p>}
               {l.status === 'PENDING_REVIEW' && alreadyDeclined && (
