@@ -20,6 +20,7 @@ import { redis } from '../../infrastructure/cache/redis';
 const ADMIN_EMAIL = 'admin@fixly.jo';
 const ADMIN_PASSWORD = 'admin12345';
 const CUSTOMER_PHONE = '+962780000088';
+const SEED_SERVICE_ID = '00000000-0000-0000-0000-000000000003'; // AC Cleaning (fixed_scope)
 
 let app: Express;
 
@@ -266,6 +267,18 @@ describe('GET /admin/bookings/:id', () => {
 
   it('returns the consolidated booking/statusHistory/additionalWork/payment shape for a real booking', async () => {
     const token = await adminLogin();
+    // Create our own booking rather than relying on one existing from an
+    // earlier test/file — against a fresh CI database (no leftover local-dev
+    // state) this describe block would otherwise be the first thing to touch
+    // /admin/bookings and find nothing, an implicit cross-file ordering
+    // dependency that's brittle by construction.
+    const customerToken = await customerLogin(CUSTOMER_PHONE);
+    await request(app)
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ serviceId: SEED_SERVICE_ID, addressLine: 'خلدا', addressLat: 31.9522, addressLng: 35.9331 })
+      .expect(201);
+
     const list = await request(app)
       .get('/api/v1/admin/bookings')
       .set('Authorization', `Bearer ${token}`)
