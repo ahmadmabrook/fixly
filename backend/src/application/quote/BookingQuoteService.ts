@@ -83,16 +83,16 @@ export class BookingQuoteService {
   async create(customerId: string, input: CreateQuoteInput) {
     const service = await prisma.service.findUnique({ where: { id: input.serviceId } });
     if (!service) throw new NotFoundError('Service');
-    if (!service.isActive) throw new ConflictError('Service is not available');
+    if (!service.isActive) throw new ConflictError('هذه الخدمة غير متاحة حالياً');
 
     // Archetype-gated intake (§17.5.1): a quote_first service is never sold on
     // a bare video, and a fixed_scope video pre-check needs no site media.
     if (service.pricingModel === PricingModel.QUOTE_FIRST) {
       if (!input.siteMediaUrls || input.siteMediaUrls.length === 0) {
-        throw new ValidationError('siteMediaUrls is required to request a quote_first assessment');
+        throw new ValidationError('صور أو فيديو الموقع مطلوبة لطلب معاينة هذه الخدمة');
       }
     } else if (!input.videoUrl) {
-      throw new ValidationError('videoUrl is required for a fixed_scope video pre-check quote');
+      throw new ValidationError('رابط الفيديو مطلوب لطلب الفحص المرئي');
     }
 
     // §2.6 materials rule 5 / service_material_policies.quote_validity_hours —
@@ -144,7 +144,7 @@ export class BookingQuoteService {
   async setQuote(id: string, quotedById: string, quotedJod: number | string) {
     const quote = await prisma.bookingQuote.findUnique({ where: { id } });
     if (!quote) throw new NotFoundError('Quote');
-    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is not pending');
+    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('العرض ليس بانتظار التسعير');
     const updated = await prisma.bookingQuote.update({
       where: { id },
       data: { status: QuoteStatus.QUOTED, quotedJod: new Prisma.Decimal(quotedJod), quotedById },
@@ -234,7 +234,7 @@ export class BookingQuoteService {
   async opsReview(quoteId: string, adminId: string) {
     const quote = await prisma.bookingQuote.findUnique({ where: { id: quoteId } });
     if (!quote) throw new NotFoundError('Quote');
-    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is not pending');
+    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('العرض ليس بانتظار التسعير');
     return prisma.bookingQuote.update({
       where: { id: quoteId },
       data: { opsReviewedById: adminId, opsReviewedAt: new Date() },
@@ -252,14 +252,14 @@ export class BookingQuoteService {
   async sendItemizedQuote(quoteId: string, quotedById: string) {
     const quote = await prisma.bookingQuote.findUnique({ where: { id: quoteId }, include: { lines: true } });
     if (!quote) throw new NotFoundError('Quote');
-    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is not pending');
-    if (quote.lines.length === 0) throw new ValidationError('Cannot send a quote with no lines');
+    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('العرض ليس بانتظار التسعير');
+    if (quote.lines.length === 0) throw new ValidationError('لا يمكن إرسال عرض بدون بنود');
 
     const totalFils = (quote.labourFils ?? 0) + (quote.materialsFils ?? 0) + (quote.feesFils ?? 0);
     const hasOffCatalogueLine = quote.lines.some((l) => l.kind === QuoteLineKind.MATERIAL && l.materialId == null);
     const needsOpsReview = totalFils >= env().OPS_REVIEW_THRESHOLD_FILS || hasOffCatalogueLine;
     if (needsOpsReview && !quote.opsReviewedAt) {
-      throw new ConflictError('This quote requires ops review before it can be sent');
+      throw new ConflictError('هذا العرض يتجاوز حد المراجعة التلقائية — يجب اعتماد المراجعة أولاً قبل الإرسال');
     }
 
     const quotedJod = fromMinorUnits(totalFils);
@@ -289,7 +289,7 @@ export class BookingQuoteService {
     if (!quote) throw new NotFoundError('Quote');
     if (quote.customerId !== customerId) throw new ForbiddenError();
     if (quote.status !== QuoteStatus.QUOTED || quote.quotedJod == null) {
-      throw new ConflictError('Quote is not ready to accept');
+      throw new ConflictError('العرض غير جاهز للقبول بعد');
     }
     if (quote.expiresAt.getTime() < Date.now()) {
       await prisma.bookingQuote.update({ where: { id }, data: { status: QuoteStatus.EXPIRED } });
@@ -339,7 +339,7 @@ export class BookingQuoteService {
     // Lines are immutable once the quote is sent (§17.5.11: "quote_lines are
     // immutable after acceptance") — enforced here from QUOTED onward, before
     // the customer has even acted, so a sent quote can never be quietly edited.
-    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('Quote is no longer editable');
+    if (quote.status !== QuoteStatus.PENDING) throw new ConflictError('لم يعد بالإمكان تعديل هذا العرض');
     return quote;
   }
 
@@ -370,7 +370,8 @@ export class BookingQuoteService {
       // §17.5.13(c): an unconfirmed catalog price cannot silently back a firm,
       // customer-facing quote line.
       if (material.priceConfidence !== PriceConfidence.CONFIRMED) {
-        throw new ValidationError(`Material price is ${material.priceConfidence.toLowerCase()}, not confirmed — cannot back a firm quote line yet`);
+        const label = material.priceConfidence === PriceConfidence.ESTIMATED ? 'تقديري' : 'قيد المراجعة';
+        throw new ValidationError(`سعر هذه المادة ${label} وليس مؤكداً — لا يمكن استخدامه في عرض نهائي بعد`);
       }
     }
 

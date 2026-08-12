@@ -75,7 +75,9 @@ servicesRouter.get(
 // be able to see this before they've even signed up.
 servicesRouter.get(
   '/:id/material-policy',
-  validate([param('id').isUUID()]),
+  // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+  // nibble (0), same reasoning as POST /bookings (bookings.ts).
+  validate([param('id').isString().trim().notEmpty()]),
   asyncHandler(async (req, res) => {
     const policy = await prisma.serviceMaterialPolicy.findUnique({ where: { serviceId: req.params.id } });
     res.json({ data: policy ?? { serviceId: req.params.id, ...DEFAULT_MATERIAL_POLICY } });
@@ -89,7 +91,9 @@ servicesRouter.get(
 servicesRouter.get(
   '/:id/materials',
   authenticate,
-  validate([param('id').isUUID()]),
+  // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+  // nibble (0), same reasoning as POST /bookings (bookings.ts).
+  validate([param('id').isString().trim().notEmpty()]),
   asyncHandler(async (req, res) => {
     const { items } = await catalogService.list({ serviceId: req.params.id, isActive: true }, 200, 0);
     res.json({ data: items });

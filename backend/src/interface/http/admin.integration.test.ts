@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { createApp } from './app';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
+import { setBookingQuoteService, BookingQuoteService } from '../../application/quote/BookingQuoteService';
 
 /**
  * Integration tests for the admin panel API against the real DB + Redis
@@ -48,6 +49,11 @@ async function adminLogin(): Promise<string> {
 
 beforeAll(() => {
   app = createApp().app;
+  // Same as app.integration.test.ts: main.ts is the only place that wires
+  // this singleton up (tied to a live Socket.IO instance); createApp() alone
+  // doesn't. The admin quote-building endpoints (ops-review, itemized-offer
+  // lines, send) all go through it.
+  setBookingQuoteService(new BookingQuoteService());
 });
 
 afterAll(async () => {
@@ -346,5 +352,29 @@ describe('admin actions', () => {
 
     expect(res.body.data.id).toBe(techId);
     expect(res.body.data.isVerified).toBe(true);
+  });
+});
+
+// Same class of bug as the customer-facing quote_first fix (see
+// app.integration.test.ts): these admin routes filter/look up by serviceId
+// and were validating it with `.isUUID()`, which rejects the seeded
+// services' deterministic ids.
+describe('admin materials routes accept the seeded Painting service id', () => {
+  const PAINTING_SERVICE_ID = '00000000-0000-0000-0000-000000000004';
+
+  it('GET /admin/materials?serviceId=... (previously 422)', async () => {
+    const token = await adminLogin();
+    await request(app)
+      .get(`/api/v1/admin/materials?serviceId=${PAINTING_SERVICE_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('GET /admin/category-readiness/:serviceId (previously 422)', async () => {
+    const token = await adminLogin();
+    await request(app)
+      .get(`/api/v1/admin/category-readiness/${PAINTING_SERVICE_ID}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
   });
 });

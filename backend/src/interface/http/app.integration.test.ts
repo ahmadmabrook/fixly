@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { createApp } from './app';
 import { prisma } from '../../infrastructure/database/prisma';
 import { redis } from '../../infrastructure/cache/redis';
+import { setBookingQuoteService, BookingQuoteService } from '../../application/quote/BookingQuoteService';
 
 /**
  * Integration tests against the real DB + Redis (docker compose stack).
@@ -14,6 +15,7 @@ import { redis } from '../../infrastructure/cache/redis';
 
 const TEST_PHONE = '+962780000099';
 const SEED_SERVICE_ID = '00000000-0000-0000-0000-000000000003'; // Electrician
+const PAINTING_SERVICE_ID = '00000000-0000-0000-0000-000000000004'; // quote_first
 
 let app: Express;
 
@@ -33,6 +35,12 @@ async function login(phone: string): Promise<string> {
 
 beforeAll(() => {
   app = createApp().app;
+  // Module-level route singleton (same pattern as DispatchService) that
+  // main.ts only wires up in the real server bootstrap, tied to a live
+  // Socket.IO instance — createApp() alone never initializes it. `io` is
+  // genuinely optional here (constructor default; the live-push emit no-ops
+  // without it), which is exactly what an HTTP-only supertest needs.
+  setBookingQuoteService(new BookingQuoteService());
 });
 
 afterAll(async () => {
@@ -240,6 +248,47 @@ describe('bookings', () => {
 
     expect(create.body.data.booking.isEmergency).toBe(true);
     expect(Number(create.body.data.booking.surchargeFils)).toBe(10000);
+  });
+});
+
+// §0.2 #4 / §8.11 — the quote_first flow, end to end via real HTTP requests
+// against the real seeded Painting service. This is the exact path that was
+// silently broken in production: three separate routes validated `serviceId`
+// with express-validator's `.isUUID()`, which rejects the seeded services'
+// deterministic IDs (a non-conformant version nibble — `00000000-...-0004`
+// isn't a valid v1-v5 UUID). Every unit test for the quote/materials services
+// mocks Prisma and calls the service layer directly, bypassing the route's
+// validator entirely, so none of them could ever have caught this — only a
+// real HTTP request through the actual Express validation chain can.
+describe('quote_first flow (Painting) — real seeded service ID through the real HTTP validators', () => {
+  it('POST /quotes accepts the seeded Painting service id (previously 422 "Invalid serviceId")', async () => {
+    const token = await login(TEST_PHONE);
+    const res = await request(app)
+      .post('/api/v1/quotes')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        serviceId: PAINTING_SERVICE_ID,
+        siteMediaUrls: ['https://example.com/room.jpg'],
+        dimensionsNote: 'غرفة نوم 4×5 متر',
+        requestedTier: 'STANDARD',
+        description: 'دهان غرفة نوم كاملة',
+      })
+      .expect(201);
+
+    expect(res.body.data.serviceId).toBe(PAINTING_SERVICE_ID);
+    expect(res.body.data.status).toBe('PENDING');
+  });
+
+  it('GET /services/:id/materials (the technician BOM material picker) accepts the seeded Painting id', async () => {
+    const token = await login(TEST_PHONE);
+    await request(app)
+      .get(`/api/v1/services/${PAINTING_SERVICE_ID}/materials`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('GET /services/:id/material-policy (public) accepts the seeded Painting id', async () => {
+    await request(app).get(`/api/v1/services/${PAINTING_SERVICE_ID}/material-policy`).expect(200);
   });
 });
 

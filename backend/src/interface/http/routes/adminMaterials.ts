@@ -44,7 +44,9 @@ adminMaterialsRouter.get(
   '/materials',
   requireAdminRole('OPS'),
   validate([
-    query('serviceId').optional().isUUID(),
+    // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+    // nibble (0), same reasoning as POST /bookings (bookings.ts).
+    query('serviceId').optional().isString().trim().notEmpty(),
     query('isActive').optional().isBoolean().toBoolean(),
     ...paginationQuery(),
   ]),
@@ -70,7 +72,9 @@ adminMaterialsRouter.get(
 );
 
 const materialCatalogBodyValidators = [
-  body('serviceId').optional({ nullable: true }).isUUID(),
+  // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+  // nibble (0), same reasoning as POST /bookings (bookings.ts).
+  body('serviceId').optional({ nullable: true }).isString().trim().notEmpty(),
   body('supplierId').optional({ nullable: true }).isUUID(),
   body('catalogSource').optional().isIn(CATALOG_SOURCES),
   body('refreshCadence').optional().isIn(REFRESH_CADENCES),
@@ -283,7 +287,9 @@ adminMaterialsRouter.get(
 adminMaterialsRouter.get(
   '/category-readiness/:serviceId',
   requireAdminRole('OPS'),
-  validate([param('serviceId').isUUID()]),
+  // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+  // nibble (0), same reasoning as POST /bookings (bookings.ts).
+  validate([param('serviceId').isString().trim().notEmpty()]),
   asyncHandler(async (req, res) => {
     res.json({ data: await readinessService.get(req.params.serviceId) });
   }),

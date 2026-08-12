@@ -20,7 +20,9 @@ quotesRouter.use(authenticate, requireActiveUser);
 quotesRouter.post(
   '/',
   validate([
-    body('serviceId').isUUID(),
+    // NOTE: not .isUUID() — seeded service IDs use a non-conformant version
+    // nibble (0), same reasoning as POST /bookings (bookings.ts).
+    body('serviceId').isString().trim().notEmpty(),
     body('videoUrl').optional({ nullable: true }).isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
     body('siteMediaUrls').optional({ nullable: true }).isArray({ min: 1, max: 20 }),
     body('siteMediaUrls.*').optional().isURL({ protocols: ['https'], require_protocol: true }).isLength({ max: 500 }),
